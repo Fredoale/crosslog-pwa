@@ -222,12 +222,12 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
       <div className="max-w-4xl mx-auto p-6">
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {/* Search Type Toggle */}
-          <div className="flex gap-4 mb-6">
+          <div className="flex flex-wrap gap-3 mb-6 justify-center">
             <button
               onClick={() => setSearchType('hdr')}
-              className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all ${
+              className={`py-2 px-4 rounded-xl font-semibold transition-all text-sm ${
                 searchType === 'hdr'
-                  ? 'bg-blue-600 text-white shadow-lg scale-105'
+                  ? 'bg-blue-600 text-white shadow-lg'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -235,9 +235,9 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
             </button>
             <button
               onClick={() => setSearchType('remito')}
-              className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all ${
+              className={`py-2 px-4 rounded-xl font-semibold transition-all text-sm ${
                 searchType === 'remito'
-                  ? 'bg-blue-600 text-white shadow-lg scale-105'
+                  ? 'bg-blue-600 text-white shadow-lg'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -250,49 +250,51 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
             <label className="block text-sm font-medium text-gray-700">
               {searchType === 'hdr' ? 'Número de HDR' : 'Número de Remito'}
             </label>
-            <div className="flex gap-3">
+            <div className="space-y-3">
               <input
                 type="text"
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={searchType === 'hdr' ? 'Ej: 15417' : 'Ej: 00012345'}
-                className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-lg"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-lg"
                 disabled={loading}
               />
-              <button
-                onClick={handleSearch}
-                disabled={loading}
-                className="px-8 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Buscando...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    Buscar
-                  </>
-                )}
-              </button>
-              {(result || searchValue) && (
+              <div className="flex gap-3">
                 <button
-                  onClick={handleLimpiar}
-                  className="px-6 py-4 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all flex items-center justify-center gap-2"
+                  onClick={handleSearch}
+                  disabled={loading}
+                  className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                  Limpiar
+                  {loading ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Buscando...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      Buscar
+                    </>
+                  )}
                 </button>
-              )}
+                {(result || searchValue) && (
+                  <button
+                    onClick={handleLimpiar}
+                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Limpiar
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -352,20 +354,20 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
 
                     {/* Mini summary of deliveries */}
                     {hdr.entregas && hdr.entregas.length > 0 && (
-                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm font-semibold text-gray-700 mb-2">Entregas ({hdr.entregas.length}):</p>
-                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                      <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-700 mb-1">Entregas ({hdr.entregas.length}):</p>
+                        <div className="space-y-0.5 max-h-24 overflow-y-auto">
                           {hdr.entregas.map((entrega: any, idx: number) => (
-                            <div key={idx} className="text-xs text-gray-600 flex items-start gap-2">
-                              <span className="text-blue-600 font-semibold">#{entrega.numeroEntrega}</span>
-                              <span className="flex-1">{entrega.detalleEntregas || entrega.numeroRemito || 'Entrega'}</span>
-                              <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            <div key={idx} className="text-xs text-gray-600 flex items-start gap-1.5">
+                              <span className="text-blue-600 font-semibold text-[10px]">#{entrega.numeroEntrega}</span>
+                              <span className="flex-1 text-[10px] leading-tight">{entrega.detalleEntregas || entrega.numeroRemito || 'Entrega'}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                                 entrega.estado === 'COMPLETADO' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
                               }`}>
                                 {entrega.estado === 'COMPLETADO' ? '✓' : '○'}
                               </span>
                               {entrega.pdfUrls && entrega.pdfUrls.length > 0 && (
-                                <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-3 h-3 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                                 </svg>
                               )}
