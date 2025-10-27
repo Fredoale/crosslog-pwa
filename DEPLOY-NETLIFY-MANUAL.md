@@ -153,7 +153,7 @@ Value:  [Usuario para Consulta Interna]
 Key:    VITE_INTERNO_PASS
 Value:  [Contraseña para Consulta Interna]
 ```
-**Ejemplo:** `CroSsL0g2024!Secure`
+**Ejemplo:** `CroSsL0g2025!`
 
 ### 3. Verificar Variables
 

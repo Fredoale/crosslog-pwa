@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface QRCodeData {
@@ -64,7 +64,7 @@ const QRCodesSection: React.FC = () => {
     },
   ];
 
-  const handleDownloadQR = (qrId: string, title: string) => {
+  const handleDownloadQR = (qrId: string, _title: string) => {
     const svg = document.getElementById(`qr-${qrId}`);
     if (!svg) return;
 
