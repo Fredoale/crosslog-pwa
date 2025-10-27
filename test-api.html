@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Google Sheets API</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #0ea5e9; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #0284c7; }
+        pre { background: #f3f4f6; padding: 15px; border-radius: 5px; overflow: auto; }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        input { padding: 10px; font-size: 16px; border: 2px solid #d1d5db; border-radius: 5px; width: 200px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Google Sheets API - CROSSLOG</h1>
+
+    <div style="margin: 20px 0;">
+        <label>HDR a probar:
+            <input type="text" id="hdrInput" value="708090" />
+        </label>
+        <button onclick="testAPI()">🔍 Validar HDR</button>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        const API_KEY = 'AIzaSyD8UoubNuqWazSLcjh4bSq36EbFaXcvDB4';
+        const SPREADSHEET_ID = '1ZIpJxakO8xdQ5V2yoO6kiHvNndA7h6jhhOhBekWaGlI';
+        const SHEET_NAME = 'BASE';
+
+        async function testAPI() {
+            const hdr = document.getElementById('hdrInput').value.trim();
+            const resultDiv = document.getElementById('result');
+
+            resultDiv.innerHTML = '<p>⏳ Cargando...</p>';
+
+            try {
+                const range = `${SHEET_NAME}!A:K`;
+                const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${range}?key=${API_KEY}`;
+
+                console.log('Fetching:', url);
+
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const rows = data.values || [];
+
+                if (rows.length === 0) {
+                    resultDiv.innerHTML = '<p class="error">❌ No se encontraron datos en la hoja</p>';
+                    return;
+                }
+
+                // Indices de columnas
+                const numeroEntregaIndex = 0;  // Columna A
+                const clienteIndex = 5;        // Columna F
+                const hdrIndex = 10;           // Columna K
+
+                // Filtrar por HDR
+                const matchingRows = rows.slice(1).filter(row => {
+                    const rowHDR = row[hdrIndex];
+                    return rowHDR && rowHDR.trim() === hdr;
+                });
+
+                if (matchingRows.length === 0) {
+                    resultDiv.innerHTML = `<p class="error">❌ HDR "${hdr}" no encontrado</p>`;
+                    return;
+                }
+
+                // Mapear entregas
+                const entregas = matchingRows.map((row, index) => ({
+                    id: `${hdr}-${index}`,
+                    hdr: hdr,
+                    numeroEntrega: row[numeroEntregaIndex] || `${index + 1}`,
+                    cliente: row[clienteIndex] || 'Sin cliente',
+                    estado: 'PENDIENTE'
+                }));
+
+                resultDiv.innerHTML = `
+                    <h2 class="success">✅ HDR "${hdr}" encontrado!</h2>
+                    <p><strong>Total de entregas:</strong> ${entregas.length}</p>
+                    <h3>📦 Entregas:</h3>
+                    <pre>${JSON.stringify(entregas, null, 2)}</pre>
+                `;
+
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+            }
+        }
+
+        // Auto-ejecutar al cargar
+        window.addEventListener('load', () => {
+            testAPI();
+        });
+    </script>
+</body>
+</html>

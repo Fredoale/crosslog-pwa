@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background -->
+  <rect width="32" height="32" rx="4" fill="#1a2332"/>
+
+  <!-- Letter CL with truck -->
+  <text x="16" y="21" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#a8e063" text-anchor="middle">CL</text>
+
+  <!-- Small truck icon -->
+  <g transform="translate(11, 23) scale(0.3)" fill="#a8e063">
+    <path d="M4 6h12v8h-12zM18 10h4l3 4h-7zM6 16a2 2 0 104 0 2 2 0 00-4 0zM20 16a2 2 0 104 0 2 2 0 00-4 0"/>
+  </g>
+</svg>

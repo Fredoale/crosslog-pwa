@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"(Get-Content ''C:\\Users\\Logis\\crosslog-pwa\\N8N-CORRECIONES-FINALES.md'' | Measure-Object -Line).Lines\")",
+      "Bash(curl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

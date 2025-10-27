@@ -1,0 +1,472 @@
+## 🤖 NUEVO: ASISTENTE WHATSAPP PARA CONSULTAS
+
+### Objetivo
+Crear un flujo N8N que permita:
+- Consultar estado de HDR por WhatsApp
+- Solicitar resumen de entregas
+- Pedir remitos específicos
+- Disponible para clientes y coordinador
+
+### Arquitectura del Flujo
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    FLUJO ASISTENTE WHATSAPP                     │
+└─────────────────────────────────────────────────────────────────┘
+1. Webhook WhatsApp Business API
+   ↓
+   Recibe mensaje entrante
+
+2. Detectar Intención (Code Node)
+   ↓
+   Parsear mensaje y detectar:
+   - Consulta de estado: "estado 7366289" o "7366289"
+   - Resumen: "resumen 7366289"
+   - Remito: "remito 38269"
+
+3. Switch (Router)
+   ↓
+   ├─ Consulta Estado → Nodo 4
+   ├─ Resumen → Nodo 5
+   └─ Remito → Nodo 6
+
+4. Consulta Estado (Google Sheets Lookup + Code)
+   ↓
+   - Buscar HDR en Sistema_entregas
+   - Obtener entregas completadas/pendientes
+   - Generar mensaje de estado
+
+5. Resumen Completo (Google Sheets Lookup + Code)
+   ↓
+   - Buscar todas las entregas del HDR
+   - Generar mensaje con lista de entregas
+   - Incluir links a PDFs
+
+6. Remito Específico (Google Sheets Lookup + Code)
+   ↓
+   - Buscar número de remito
+   - Obtener HDR asociado
+   - Responder con link al PDF
+
+7. HTTP Request → WhatsApp API
+   ↓
+   Enviar respuesta al usuario
+```
+
+### Implementación Detallada
+
+#### Nodo 1: Webhook WhatsApp
+**Configuración**:
+- URL: `/webhook/whatsapp-consultas`
+- Method: POST
+- Recibe mensajes desde WhatsApp Business API
+
+**Estructura mensaje entrante**:
+```json
+{
+  "messaging_product": "whatsapp",
+  "from": "5491154096639",
+  "message": {
+    "type": "text",
+    "text": {
+      "body": "estado 7366289"
+    }
+  }
+}
+```
+
+#### Nodo 2: Detectar Intención (Code)
+```javascript
+const mensaje = $input.first().json.message.text.body.toLowerCase().trim();
+const from = $input.first().json.from;
+
+console.log('[Asistente] Mensaje recibido:', mensaje, 'de:', from);
+
+// Patrones de intención
+let intencion = 'desconocido';
+let parametro = '';
+
+// Detectar HDR (números de 7 dígitos)
+const hdrMatch = mensaje.match(/\b\d{7}\b/);
+const hdr = hdrMatch ? hdrMatch[0] : '';
+
+// Detectar remito (números de 5 dígitos)
+const remitoMatch = mensaje.match(/\b\d{5}\b/);
+const remito = remitoMatch ? remitoMatch[0] : '';
+
+if (mensaje.includes('estado') && hdr) {
+  intencion = 'consulta_estado';
+  parametro = hdr;
+} else if (mensaje.includes('resumen') && hdr) {
+  intencion = 'resumen';
+  parametro = hdr;
+} else if (mensaje.includes('remito') && remito) {
+  intencion = 'buscar_remito';
+  parametro = remito;
+} else if (hdr && !mensaje.includes('remito')) {
+  // Solo número de HDR = consulta estado por defecto
+  intencion = 'consulta_estado';
+  parametro = hdr;
+} else if (remito) {
+  // Solo número de remito
+  intencion = 'buscar_remito';
+  parametro = remito;
+} else {
+  intencion = 'ayuda';
+}
+
+return {
+  json: {
+    intencion: intencion,
+    parametro: parametro,
+    from: from,
+    mensajeOriginal: mensaje
+  }
+};
+```
+
+#### Nodo 3: Switch (Router)
+**Configuración**:
+- Output 1: `{{ $json.intencion }}` equals `consulta_estado`
+- Output 2: `{{ $json.intencion }}` equals `resumen`
+- Output 3: `{{ $json.intencion }}` equals `buscar_remito`
+- Output 4: `{{ $json.intencion }}` equals `ayuda`
+
+#### Nodo 4: Consulta Estado (Google Sheets Lookup + Code)
+
+**Google Sheets Lookup**:
+- Sheet: `Sistema_entregas`
+- Lookup Column: B (Numero_HDR)
+- Lookup Value: `{{ $json.parametro }}`
+- Return All Matches: YES
+
+**Code Node**:
+```javascript
+const entregas = $input.all().map(item => item.json);
+const hdr = $('Nodo 2').first().json.parametro;
+const from = $('Nodo 2').first().json.from;
+
+if (entregas.length === 0) {
+  return {
+    json: {
+      to: from,
+      mensaje: `❌ No encontré entregas para el HDR ${hdr}\n\nVerifica el número e intenta nuevamente.`
+    }
+  };
+}
+
+const totalEntregas = entregas.length;
+const completadas = entregas.filter(e => e.Estado === 'COMPLETADO').length;
+const pendientes = totalEntregas - completadas;
+const progreso = Math.round((completadas / totalEntregas) * 100);
+
+const chofer = entregas[0].Chofer || 'N/A';
+const fechaViaje = entregas[0].fecha_viaje || 'N/A';
+
+let mensaje = `📦 *HDR ${hdr}*\n\n`;
+mensaje += `👤 Chofer: ${chofer}\n`;
+mensaje += `📅 Fecha: ${fechaViaje}\n\n`;
+mensaje += `📊 *Estado:*\n`;
+mensaje += `✅ Completadas: ${completadas}/${totalEntregas}\n`;
+mensaje += `⏳ Pendientes: ${pendientes}\n`;
+mensaje += `📈 Progreso: ${progreso}%\n\n`;
+
+if (completadas === totalEntregas) {
+  mensaje += `🎉 *¡Todas las entregas completadas!*`;
+} else {
+  mensaje += `🚚 Entregas en progreso...`;
+}
+
+return {
+  json: {
+    to: from,
+    mensaje: mensaje
+  }
+};
+```
+
+#### Nodo 5: Resumen Completo (Code)
+```javascript
+const entregas = $input.all().map(item => item.json);
+const hdr = $('Nodo 2').first().json.parametro;
+const from = $('Nodo 2').first().json.from;
+
+if (entregas.length === 0) {
+  return {
+    json: {
+      to: from,
+      mensaje: `❌ No encontré entregas para el HDR ${hdr}`
+    }
+  };
+}
+
+const chofer = entregas[0].Chofer;
+const fechaViaje = entregas[0].fecha_viaje;
+
+let mensaje = `📋 *RESUMEN HDR ${hdr}*\n\n`;
+mensaje += `👤 ${chofer} | 📅 ${fechaViaje}\n\n`;
+
+entregas.forEach((entrega, idx) => {
+  const numero = entrega.numero_entrega || (idx + 1);
+  const destino = entrega.Detalle_entrega || 'N/A';
+
+  // Parsear destino si es array
+  let destinoFinal = destino;
+  if (destino.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(destino);
+      destinoFinal = parsed[numero - 1] || parsed[0];
+    } catch (e) {}
+  }
+
+  const estado = entrega.Estado === 'COMPLETADO' ? '✅' : '⏳';
+  const remitos = JSON.parse(entrega.numero_remitos || '[]');
+
+  mensaje += `${estado} *Entrega ${numero}*\n`;
+  mensaje += `📍 ${destinoFinal}\n`;
+  mensaje += `📄 Remito: ${remitos.join(', ')}\n`;
+
+  // Link a PDF si está completado
+  if (entrega.Estado === 'COMPLETADO') {
+    try {
+      const pdfs = JSON.parse(entrega.pdf_urls || '[]');
+      if (pdfs.length > 0) {
+        mensaje += `🔗 ${pdfs[0]}\n`;
+      }
+    } catch (e) {}
+  }
+
+  mensaje += `\n`;
+});
+
+return {
+  json: {
+    to: from,
+    mensaje: mensaje
+  }
+};
+```
+
+#### Nodo 6: Buscar Remito (Google Sheets Search + Code)
+
+**Google Sheets Search**:
+- Sheet: `Sistema_entregas`
+- Columns to Search: D (numero_remitos)
+- Search Value: `{{ $json.parametro }}`
+
+**Code Node**:
+```javascript
+const resultados = $input.all().map(item => item.json);
+const remito = $('Nodo 2').first().json.parametro;
+const from = $('Nodo 2').first().json.from;
+
+if (resultados.length === 0) {
+  return {
+    json: {
+      to: from,
+      mensaje: `❌ No encontré el remito ${remito}\n\nVerifica el número e intenta nuevamente.`
+    }
+  };
+}
+
+const entrega = resultados[0];
+const hdr = entrega.Numero_HDR;
+const destino = entrega.Detalle_entrega;
+const estado = entrega.Estado;
+
+let mensaje = `📄 *Remito ${remito}*\n\n`;
+mensaje += `📦 HDR: ${hdr}\n`;
+mensaje += `📍 Destino: ${destino}\n`;
+mensaje += `${estado === 'COMPLETADO' ? '✅ Completado' : '⏳ Pendiente'}\n\n`;
+
+if (estado === 'COMPLETADO') {
+  try {
+    const pdfs = JSON.parse(entrega.pdf_urls || '[]');
+    if (pdfs.length > 0) {
+      mensaje += `📎 Ver PDF:\n${pdfs[0]}`;
+    }
+  } catch (e) {
+    mensaje += `⚠️ PDF no disponible`;
+  }
+} else {
+  mensaje += `⏳ Entrega aún no completada`;
+}
+
+return {
+  json: {
+    to: from,
+    mensaje: mensaje
+  }
+};
+```
+
+#### Nodo 7: Mensaje de Ayuda (Code)
+```javascript
+const from = $input.first().json.from;
+
+const mensaje = `🤖 *Asistente CROSSLOG*\n\n` +
+  `Puedo ayudarte con:\n\n` +
+  `📦 *Estado de HDR*\n` +
+  `Envía: "estado 7366289" o solo "7366289"\n\n` +
+  `📋 *Resumen completo*\n` +
+  `Envía: "resumen 7366289"\n\n` +
+  `📄 *Buscar remito*\n` +
+  `Envía: "remito 38269" o solo "38269"\n\n` +
+  `💡 Ejemplos:\n` +
+  `• "7366289" → Estado del HDR\n` +
+  `• "resumen 7366289" → Lista de entregas\n` +
+  `• "38269" → Información del remito`;
+
+return {
+  json: {
+    to: from,
+    mensaje: mensaje
+  }
+};
+```
+
+#### Nodo 8: Enviar Respuesta WhatsApp (HTTP Request)
+
+**Configuración**:
+- Method: POST
+- URL: `https://graph.facebook.com/v22.0/764420436762718/messages`
+- Authentication: Header Auth
+  - Name: `Authorization`
+  - Value: `Bearer YOUR_TOKEN`
+- Body Content Type: JSON
+- Body:
+```json
+{
+  "messaging_product": "whatsapp",
+  "to": "{{ $json.to }}",
+  "type": "text",
+  "text": {
+    "body": "{{ $json.mensaje }}"
+  }
+}
+```
+
+### Testing del Asistente
+
+**Test 1 - Consulta Estado**:
+Enviar por WhatsApp: `estado 7366289`
+Respuesta esperada:
+```
+📦 HDR 7366289
+
+👤 Chofer: Martin Romero
+📅 Fecha: 25-09-2025
+
+📊 Estado:
+✅ Completadas: 2/2
+⏳ Pendientes: 0
+📈 Progreso: 100%
+
+🎉 ¡Todas las entregas completadas!
+```
+
+**Test 2 - Resumen**:
+Enviar: `resumen 7366289`
+Respuesta esperada:
+```
+📋 RESUMEN HDR 7366289
+
+👤 Martin Romero | 📅 25-09-2025
+
+✅ Entrega 1
+📍 SCC POWER - SAN PEDRO
+📄 Remito: 38269
+🔗 https://drive.google.com/...
+
+✅ Entrega 2
+📍 SOFTYS ARGENTINA - ZARATE
+📄 Remito: 37550
+🔗 https://drive.google.com/...
+```
+
+**Test 3 - Buscar Remito**:
+Enviar: `remito 38269`
+Respuesta esperada:
+```
+📄 Remito 38269
+
+📦 HDR: 7366289
+📍 Destino: SCC POWER - SAN PEDRO
+✅ Completado
+
+📎 Ver PDF:
+https://drive.google.com/...
+```
+
+---
+
+## 📊 Canvas Visual del Flujo (para N8N)
+
+```
+╔═══════════════════════════════════════════════════════════╗
+║              ASISTENTE WHATSAPP CROSSLOG                  ║
+╚═══════════════════════════════════════════════════════════╝
+
+[Webhook WhatsApp] ──┐
+                     │
+                     ▼
+            [Detectar Intención]
+                     │
+                     ▼
+              [Switch Router]
+                     │
+        ┌────────────┼────────────┬──────────┐
+        │            │            │          │
+        ▼            ▼            ▼          ▼
+   [Consulta     [Resumen]   [Buscar    [Ayuda]
+    Estado]                   Remito]
+        │            │            │          │
+        ▼            ▼            ▼          │
+  [GSheets      [GSheets]    [GSheets]      │
+   Lookup]                    Search]       │
+        │            │            │          │
+        ▼            ▼            ▼          │
+    [Code:       [Code:       [Code:        │
+   Generar      Generar      Generar        │
+   Mensaje]     Resumen]     Info]          │
+        │            │            │          │
+        └────────────┴────────────┴──────────┘
+                     │
+                     ▼
+            [HTTP Request]
+                     │
+                     ▼
+           [WhatsApp Response]
+```
+
+### Diagrama con Ubicación en Canvas
+
+```
+Posición Y=0:   [Webhook WhatsApp]
+                      │
+Posición Y=200: [Detectar Intención]
+                      │
+Posición Y=400:  [Switch Router]
+                      │
+                ┌─────┼─────┬─────┐
+                │     │     │     │
+Posición Y=600: │     │     │     └─[Ayuda]
+          [Consulta] [Resumen] [Remito]
+          X=-300     X=0      X=300   X=600
+                │     │     │
+Posición Y=800: │     │     │
+        [GSheets] [GSheets] [GSheets]
+                │     │     │
+Posición Y=1000:│     │     │
+          [Code] [Code] [Code]
+                │     │     │
+                └─────┴─────┴─────┐
+                                  │
+Posición Y=1200:         [HTTP Request]
+```
+
+---
+
+**Fecha**: 20/10/2025
+**Versión**: 4.0 - Destinos corregidos + Asistente WhatsApp
+**Proyecto**: CROSSLOG PWA - N8N Email Notifications + WhatsApp Assistant

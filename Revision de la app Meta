@@ -1,0 +1,75 @@
+Solicitud de revisión de app
+1
+Enviar para revisión
+2
+Revisión de la app en curso
+5 días aproximadamente
+3
+Resultados
+Comentarios de tu última solicitud
+Revisar comentarios
+No aprobados: whatsapp_business_messaging, whatsapp_business_management
+Verificación de la app comentarios
+App rechazada - No cumple las Condiciones de la política de privacidad
+Condiciones de la plataforma de Meta 4.a - Política de privacidad
+En nuestra revisión, descubrimos que la política de privacidad de tu app no cumple nuestras Condiciones de la plataforma. Para usar los datos de la plataforma de Facebook, debes proporcionar una política de privacidad a la que el público pueda acceder fácilmente y cumplir con ella.
+Para resolver este problema, asegúrate de que la página de la política de privacidad en tu app está disponible para el público y vuelve a enviar la app para su revisión.
+Para editar la URL de la política de privacidad que proporcionaste en esta app, visita "Mis apps", selecciona tu app y ve a "Configuración".
+Para obtener más información, visita nuestras Guías para casos de rechazo en la revisión de apps.
+Notas del revisor:
+Hi,
+
+During our review, we noticed that the provided Privacy Policy URL redirects to a webpage instead of the actual Privacy Policy. Could you please provide a valid and direct URL that links to your Privacy Policy
+whatsapp_business_messaging comentarios
+No se pudo verificar la experiencia de casos de uso en la app
+Política para desarrolladores 1.6 - Crear un producto confiable
+No pudimos verificar el caso de uso descrito en tus notas y captura de video cuando iniciamos sesión para revisar la app.
+Para resolver este problema, ten en cuenta las siguientes recomendaciones:
+Revisa que tu app esté desarrollada por completo y que haya integrado correctamente el permiso solicitado antes de volver a enviarla a revisión.
+Proporciona las credenciales de prueba correctas para acceder a tu app en un entorno de prueba o modo de desarrollo. El modo de desarrollo permite a tu app acceder a los permisos y las funciones con datos de prueba limitados a los fines de la revisión de apps.
+Si tu app está en modo activo o publicada, debes crear una app de prueba para tu app activa o publicada a fin de realizar una solicitud de revisión de la app sin vulnerar la funcionalidad de la app principal clonada.
+Proporciona la URL de prueba correcta en las notas de tu solicitud. Esto nos permitirá acceder al entorno de prueba de tu app. En el caso de las plataformas basadas en la web, utiliza nuestro depurador para verificar que nuestros revisores puedan acceder a la URL.
+Verifica que la app solicite permiso al usuario antes de acceder a sus datos.
+Para obtener más información, también puedes consultar nuestro video de Introducción a la revisión de apps y la Guía para casos de rechazo de apps durante la revisión.
+Notas del revisor:
+Hi,
+
+During our review, we noticed that the provided Privacy Policy URL redirects to a webpage instead of the actual Privacy Policy. Could you please provide a valid and direct URL that links to your Privacy Policy
+whatsapp_business_management comentarios
+No se pudo verificar la experiencia de casos de uso en la app
+Política para desarrolladores 1.6 - Crear un producto confiable
+No pudimos verificar el caso de uso descrito en tus notas y captura de video cuando iniciamos sesión para revisar la app.
+Para resolver este problema, ten en cuenta las siguientes recomendaciones:
+Revisa que tu app esté desarrollada por completo y que haya integrado correctamente el permiso solicitado antes de volver a enviarla a revisión.
+Proporciona las credenciales de prueba correctas para acceder a tu app en un entorno de prueba o modo de desarrollo. El modo de desarrollo permite a tu app acceder a los permisos y las funciones con datos de prueba limitados a los fines de la revisión de apps.
+Si tu app está en modo activo o publicada, debes crear una app de prueba para tu app activa o publicada a fin de realizar una solicitud de revisión de la app sin vulnerar la funcionalidad de la app principal clonada.
+Proporciona la URL de prueba correcta en las notas de tu solicitud. Esto nos permitirá acceder al entorno de prueba de tu app. En el caso de las plataformas basadas en la web, utiliza nuestro depurador para verificar que nuestros revisores puedan acceder a la URL.
+Verifica que la app solicite permiso al usuario antes de acceder a sus datos.
+Para obtener más información, también puedes consultar nuestro video de Introducción a la revisión de apps y la Guía para casos de rechazo de apps durante la revisión.
+Notas del revisor:
+Hi,
+
+During our review, we noticed that the provided Privacy Policy URL redirects to a webpage instead of the actual Privacy Policy. Could you please provide a valid and direct URL that links to your Privacy Policy
+Si necesitas ayuda con la revisión de apps, accede a la documentación para desarrolladores sobre la revisión de apps para consultar guías para enviar apps a revisión, videos tutoriales y recursos para solucionar problemas.
+¿Tienes dudas sobre los comentarios de la revisión?Hacer una pregunta
+Una vez que envíes la solicitud de revisión de apps, no podrás editarla. Si quieres realizar cambios, deberás cancelarla y volver a enviar otra.
+Verificación del negocio
+Enviar verificación del negocio
+Preguntas sobre tratamiento de datos
+Revisa y actualiza tus respuestas
+Se agregaron nuevas solicitudes de permisos de acceso avanzado a esta app desde la última vez que respondiste a estas preguntas. Obtén información sobre las normas sobre tratamiento de datos.
+¿Cómo usará la app whatsapp_business_manage_events?
+Revisa las políticas para whatsapp_business_manage_events e indícanos qué uso le darás
+Describe cómo tu app usa este permiso o función.
+Sube una captura de video para mostrar la experiencia del usuario final
+Confirma que cumplirás con el uso permitido
+¿Cómo usará la app whatsapp_business_messaging?
+Revisa las políticas para whatsapp_business_messaging e indícanos qué uso le darás
+Describe cómo tu app usa este permiso o función.
+Sube una captura de video para mostrar la experiencia del usuario final
+Confirma que cumplirás con el uso permitido
+¿Cómo usará la app whatsapp_business_management?
+Revisa las políticas para whatsapp_business_management e indícanos qué uso le darás
+Describe cómo tu app usa este permiso o función.
+Sube una captura de video para mostrar la experiencia del usuario final
+Confirma que cumplirás con el uso permitido

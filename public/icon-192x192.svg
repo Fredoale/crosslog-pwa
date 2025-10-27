@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <!-- Background -->
+  <rect width="192" height="192" rx="24" fill="#1a2332"/>
+
+  <!-- Green accent circle -->
+  <circle cx="96" cy="96" r="70" fill="#a8e063" opacity="0.2"/>
+
+  <!-- Letter C -->
+  <path d="M75 96c0-15 10-27 25-27 8 0 15 4 20 10l-10 8c-3-4-7-6-10-6-8 0-13 7-13 15s5 15 13 15c3 0 7-2 10-6l10 8c-5 6-12 10-20 10-15 0-25-12-25-27z" fill="#a8e063"/>
+
+  <!-- Letter L -->
+  <path d="M115 70h12v44h20v12h-32V70z" fill="#a8e063"/>
+
+  <!-- Small truck icon -->
+  <g transform="translate(80, 140) scale(0.8)" fill="#a8e063" opacity="0.6">
+    <path d="M4 6h12v8h-12zM18 10h4l3 4h-7zM6 16a2 2 0 104 0 2 2 0 00-4 0zM20 16a2 2 0 104 0 2 2 0 00-4 0"/>
+  </g>
+</svg>
