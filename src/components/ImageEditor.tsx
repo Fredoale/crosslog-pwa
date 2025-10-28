@@ -96,8 +96,8 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
 
   // Detect which handle (if any) the user clicked on
   const getHandleAtPosition = (x: number, y: number, area: CropArea): HandleType => {
-    const handleSize = 20; // Match the visual handle size
-    const edgeThreshold = 10; // Pixels from edge to detect edge drag
+    const handleSize = 40; // Increased for easier touch interaction
+    const edgeThreshold = 25; // Increased pixels from edge to detect edge drag
 
     // Check corners first (higher priority)
     if (Math.abs(x - area.x) < handleSize && Math.abs(y - area.y) < handleSize) {
@@ -426,28 +426,39 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
     // Clear the crop area
     ctx.clearRect(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
 
-    // Draw border around crop area
+    // Draw border around crop area with thicker, more visible line
     ctx.strokeStyle = '#a8e063';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 6; // Increased from 3 to 6 for better visibility
     ctx.strokeRect(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
 
-    // Draw handles
-    const cornerSize = 20;
-    const edgeHandleLength = 40;
-    const edgeHandleThickness = 6;
+    // Draw handles - larger and more visible for easier touch interaction
+    const cornerSize = 35; // Increased from 20 to 35
+    const cornerThickness = 8; // Thickness for L-shaped corners
+    const cornerLength = 35; // Length of each arm of the L
+    const edgeHandleLength = 60; // Increased from 40 to 60
+    const edgeHandleThickness = 10; // Increased from 6 to 10
     ctx.fillStyle = '#a8e063';
 
-    // Corner handles
-    // Top-left
-    ctx.fillRect(cropArea.x - cornerSize / 2, cropArea.y - cornerSize / 2, cornerSize, cornerSize);
-    // Top-right
-    ctx.fillRect(cropArea.x + cropArea.width - cornerSize / 2, cropArea.y - cornerSize / 2, cornerSize, cornerSize);
-    // Bottom-left
-    ctx.fillRect(cropArea.x - cornerSize / 2, cropArea.y + cropArea.height - cornerSize / 2, cornerSize, cornerSize);
-    // Bottom-right
-    ctx.fillRect(cropArea.x + cropArea.width - cornerSize / 2, cropArea.y + cropArea.height - cornerSize / 2, cornerSize, cornerSize);
+    // Corner handles - L-shaped for better visibility and grip
+    // Top-left corner (L shape)
+    ctx.fillRect(cropArea.x - cornerThickness / 2, cropArea.y - cornerThickness / 2, cornerLength, cornerThickness); // Horizontal
+    ctx.fillRect(cropArea.x - cornerThickness / 2, cropArea.y - cornerThickness / 2, cornerThickness, cornerLength); // Vertical
 
-    // Edge handles (linear adjustment indicators)
+    // Top-right corner (L shape)
+    ctx.fillRect(cropArea.x + cropArea.width - cornerLength + cornerThickness / 2, cropArea.y - cornerThickness / 2, cornerLength, cornerThickness); // Horizontal
+    ctx.fillRect(cropArea.x + cropArea.width - cornerThickness / 2, cropArea.y - cornerThickness / 2, cornerThickness, cornerLength); // Vertical
+
+    // Bottom-left corner (L shape)
+    ctx.fillRect(cropArea.x - cornerThickness / 2, cropArea.y + cropArea.height - cornerThickness / 2, cornerLength, cornerThickness); // Horizontal
+    ctx.fillRect(cropArea.x - cornerThickness / 2, cropArea.y + cropArea.height - cornerLength + cornerThickness / 2, cornerThickness, cornerLength); // Vertical
+
+    // Bottom-right corner (L shape)
+    ctx.fillRect(cropArea.x + cropArea.width - cornerLength + cornerThickness / 2, cropArea.y + cropArea.height - cornerThickness / 2, cornerLength, cornerThickness); // Horizontal
+    ctx.fillRect(cropArea.x + cropArea.width - cornerThickness / 2, cropArea.y + cropArea.height - cornerLength + cornerThickness / 2, cornerThickness, cornerLength); // Vertical
+
+    // Edge handles (linear adjustment indicators) - bars with circular grips
+    const circleRadius = 12; // Circle in the middle for better grip visualization
+
     // Top edge handle (centered)
     ctx.fillRect(
       cropArea.x + cropArea.width / 2 - edgeHandleLength / 2,
@@ -455,6 +466,10 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
       edgeHandleLength,
       edgeHandleThickness
     );
+    ctx.beginPath();
+    ctx.arc(cropArea.x + cropArea.width / 2, cropArea.y, circleRadius, 0, 2 * Math.PI);
+    ctx.fill();
+
     // Bottom edge handle (centered)
     ctx.fillRect(
       cropArea.x + cropArea.width / 2 - edgeHandleLength / 2,
@@ -462,6 +477,10 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
       edgeHandleLength,
       edgeHandleThickness
     );
+    ctx.beginPath();
+    ctx.arc(cropArea.x + cropArea.width / 2, cropArea.y + cropArea.height, circleRadius, 0, 2 * Math.PI);
+    ctx.fill();
+
     // Left edge handle (centered)
     ctx.fillRect(
       cropArea.x - edgeHandleThickness / 2,
@@ -469,6 +488,10 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
       edgeHandleThickness,
       edgeHandleLength
     );
+    ctx.beginPath();
+    ctx.arc(cropArea.x, cropArea.y + cropArea.height / 2, circleRadius, 0, 2 * Math.PI);
+    ctx.fill();
+
     // Right edge handle (centered)
     ctx.fillRect(
       cropArea.x + cropArea.width - edgeHandleThickness / 2,
@@ -476,6 +499,9 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
       edgeHandleThickness,
       edgeHandleLength
     );
+    ctx.beginPath();
+    ctx.arc(cropArea.x + cropArea.width, cropArea.y + cropArea.height / 2, circleRadius, 0, 2 * Math.PI);
+    ctx.fill();
   }, [cropMode, cropArea]);
 
   // Sync crop canvas with preview canvas
@@ -740,8 +766,8 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
         {/* Crop Mode */}
         {cropMode ? (
           <div className="space-y-3">
-            <div className="text-center text-white text-sm font-medium mb-2">
-              ✂️ Arrastra para seleccionar el área a recortar
+            <div className="text-center text-white text-sm font-medium mb-2 bg-white/10 p-3 rounded-lg">
+              ✂️ Arrastra para seleccionar • Ajusta por las esquinas o bordes
             </div>
             <div className="grid grid-cols-2 gap-3">
               <button
