@@ -54,6 +54,37 @@ function App() {
   // The user must authenticate each time they open the app
   // The HDR data remains persisted for continuity
 
+  // Handle hash-based routing (for QR codes)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      console.log('[App] Hash changed:', hash);
+
+      // Map hash to screen
+      if (hash === '#/consulta-cliente') {
+        setCurrentScreen('consulta-cliente');
+      } else if (hash === '#/consulta-fletero') {
+        setCurrentScreen('consulta-fletero');
+      } else if (hash === '#/consulta-interna') {
+        setCurrentScreen('consulta-interna');
+      } else if (hash === '#/login' || hash === '') {
+        setCurrentScreen('login');
+      } else if (hash === '#/consultas') {
+        setCurrentScreen('consulta-home');
+      }
+    };
+
+    // Check hash on mount
+    handleHashChange();
+
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
   // Network status monitoring
   useEffect(() => {
     const handleOnline = () => setOnline(true);
