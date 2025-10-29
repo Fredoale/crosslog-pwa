@@ -198,33 +198,37 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
     // Try different date formats
     const fechaStr = hdr.fechaViaje || '';
 
-    // Format 1: DD/MM/YYYY
-    if (fechaStr.includes('/')) {
-      const parts = fechaStr.split('/');
-      if (parts.length === 3) {
+    // Try to parse date with slash or dash separator
+    const parts = fechaStr.split(/[-/]/);
+
+    if (parts.length === 3) {
+      let hdrDate: string;
+
+      // Check if format is DD-MM-YYYY or DD/MM/YYYY (first part is day)
+      if (parts[0].length <= 2 && parts[2].length === 4) {
         const day = parts[0].padStart(2, '0');
         const month = parts[1].padStart(2, '0');
         const year = parts[2];
-        const hdrDate = `${year}-${month}-${day}`;
-        console.log('[ConsultaFletero] Converted date:', hdrDate, 'vs filter:', dateFilter);
-        return hdrDate === dateFilter;
+        hdrDate = `${year}-${month}-${day}`;
+        console.log('[ConsultaFletero] Converted DD-MM-YYYY:', fechaStr, '→', hdrDate, 'vs filter:', dateFilter);
       }
-    }
+      // Check if format is YYYY-MM-DD (first part is year)
+      else if (parts[0].length === 4 && parts[2].length <= 2) {
+        hdrDate = fechaStr;
+        console.log('[ConsultaFletero] Already YYYY-MM-DD:', hdrDate, 'vs filter:', dateFilter);
+      }
+      // Unknown format
+      else {
+        console.warn('[ConsultaFletero] Unknown date format:', fechaStr);
+        return false;
+      }
 
-    // Format 2: YYYY-MM-DD (already correct)
-    if (fechaStr.includes('-')) {
-      return fechaStr === dateFilter;
-    }
-
-    // Format 3: Try parsing with Date
-    try {
-      const hdrDateObj = new Date(fechaStr);
-      const hdrDate = hdrDateObj.toISOString().split('T')[0];
       return hdrDate === dateFilter;
-    } catch {
-      console.warn('[ConsultaFletero] Could not parse date:', fechaStr);
-      return false;
     }
+
+    // Fallback: try parsing with Date
+    console.warn('[ConsultaFletero] Could not parse date:', fechaStr);
+    return false;
   }) || [];
 
   // Calculate pagination
