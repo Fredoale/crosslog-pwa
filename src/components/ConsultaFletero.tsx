@@ -187,11 +187,44 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
   // Filter by date if filter is active
   const filteredHDRs = result?.hdrs?.filter((hdr) => {
     if (!dateFilter) return true; // No filter, show all
+
+    // Debug: log fechaViaje format
+    if (dateFilter && result?.hdrs?.[0]) {
+      console.log('[ConsultaFletero] fechaViaje example:', hdr.fechaViaje);
+      console.log('[ConsultaFletero] dateFilter selected:', dateFilter);
+    }
+
     // Compare fechaViaje with selected date
-    // fechaViaje format is typically "DD/MM/YYYY"
-    const [day, month, year] = hdr.fechaViaje.split('/');
-    const hdrDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    return hdrDate === dateFilter;
+    // Try different date formats
+    const fechaStr = hdr.fechaViaje || '';
+
+    // Format 1: DD/MM/YYYY
+    if (fechaStr.includes('/')) {
+      const parts = fechaStr.split('/');
+      if (parts.length === 3) {
+        const day = parts[0].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        const year = parts[2];
+        const hdrDate = `${year}-${month}-${day}`;
+        console.log('[ConsultaFletero] Converted date:', hdrDate, 'vs filter:', dateFilter);
+        return hdrDate === dateFilter;
+      }
+    }
+
+    // Format 2: YYYY-MM-DD (already correct)
+    if (fechaStr.includes('-')) {
+      return fechaStr === dateFilter;
+    }
+
+    // Format 3: Try parsing with Date
+    try {
+      const hdrDateObj = new Date(fechaStr);
+      const hdrDate = hdrDateObj.toISOString().split('T')[0];
+      return hdrDate === dateFilter;
+    } catch {
+      console.warn('[ConsultaFletero] Could not parse date:', fechaStr);
+      return false;
+    }
   }) || [];
 
   // Calculate pagination
