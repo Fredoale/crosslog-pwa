@@ -5,10 +5,11 @@ interface WelcomeModalProps {
   cliente: string;
   fecha: string;
   tipoTransporte?: string;
+  isCompleted?: boolean;
   onAccept: () => void;
 }
 
-export function WelcomeModal({ isOpen, chofer, hdr, cliente, fecha, tipoTransporte = 'Propio', onAccept }: WelcomeModalProps) {
+export function WelcomeModal({ isOpen, chofer, hdr, cliente, fecha, tipoTransporte = 'Propio', isCompleted = false, onAccept }: WelcomeModalProps) {
   if (!isOpen) return null;
 
   const isTercerizado = tipoTransporte && tipoTransporte !== 'Propio';
@@ -59,6 +60,27 @@ export function WelcomeModal({ isOpen, chofer, hdr, cliente, fecha, tipoTranspor
               </p>
               <p className="text-sm text-gray-500 mt-1">📅 {fecha}</p>
             </div>
+
+            {/* Completed Banner */}
+            {isCompleted && (
+              <div
+                className="rounded-xl p-4 border-2"
+                style={{
+                  backgroundColor: '#f0fdf4',
+                  borderColor: '#22c55e'
+                }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">✅</span>
+                  <h3 className="text-sm font-bold text-green-900 uppercase tracking-wide">
+                    HDR Completada
+                  </h3>
+                </div>
+                <p className="text-sm text-green-800">
+                  Esta HDR ya ha sido completada. Podés consultar la información pero no realizar cambios.
+                </p>
+              </div>
+            )}
 
             {/* Safety Section */}
             <div

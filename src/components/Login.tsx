@@ -37,7 +37,7 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
   const [error, setError] = useState<string | null>(null);
   const [validatedInfo, setValidatedInfo] = useState<{ chofer: string; fecha: string } | null>(null);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-  const [welcomeData, setWelcomeData] = useState<{ chofer: string; hdr: string; cliente: string; fecha: string; tipoTransporte?: string } | null>(null);
+  const [welcomeData, setWelcomeData] = useState<{ chofer: string; hdr: string; cliente: string; fecha: string; tipoTransporte?: string; isCompleted?: boolean } | null>(null);
 
   // Validation step state
   const [showValidationStep, setShowValidationStep] = useState(false);
@@ -79,21 +79,15 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
       console.log('[Login] Fecha:', result.fechaViaje);
       console.log('[Login] Full result:', result);
 
-      // Check if HDR is already completed
-      const todasCompletadas = result.entregas.every((e) => e.estado === 'COMPLETADO');
-      console.log('[Login] Todas completadas:', todasCompletadas);
-
-      if (todasCompletadas) {
-        setError('⚠️ Esta HDR ya se encuentra completada. No se puede modificar.');
-        setValidatedInfo(null);
-        return;
-      }
-
       // Validate chofer exists
       if (!result.chofer) {
         setError('No se encontró información del chofer para este HDR');
         return;
       }
+
+      // Check if HDR is already completed
+      const todasCompletadas = result.entregas.every((e) => e.estado === 'COMPLETADO');
+      console.log('[Login] Todas completadas:', todasCompletadas);
 
       // Show validated info
       setValidatedInfo({
@@ -157,7 +151,30 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
         fechaViaje: result.fechaViaje
       });
 
-      // Generate validation options
+      // If HDR is completed, skip validation and go directly to welcome modal
+      if (todasCompletadas) {
+        console.log('[Login] HDR completado - saltando verificación de seguridad');
+
+        // Save to store
+        setHDR(hdr.trim(), result.chofer, result.tipoTransporte);
+        setEntregas(result.entregas);
+
+        // Prepare welcome modal data
+        setWelcomeData({
+          chofer: result.chofer,
+          hdr: hdr.trim(),
+          cliente: clientName,
+          fecha: result.fechaViaje || 'Sin fecha',
+          tipoTransporte: result.tipoTransporte,
+          isCompleted: true
+        });
+
+        // Show welcome modal
+        setShowWelcomeModal(true);
+        return; // Skip validation step
+      }
+
+      // Generate validation options for non-completed HDRs
       const tipoTransporte = result.tipoTransporte || 'Propio';
 
       if (tipoTransporte === 'Propio') {
@@ -270,6 +287,7 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
           cliente={welcomeData.cliente}
           fecha={welcomeData.fecha}
           tipoTransporte={welcomeData.tipoTransporte}
+          isCompleted={welcomeData.isCompleted}
           onAccept={handleAcceptWelcome}
         />
       )}
