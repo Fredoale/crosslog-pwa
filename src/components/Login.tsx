@@ -87,7 +87,11 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
 
       // Check if HDR is already completed
       const todasCompletadas = result.entregas.every((e) => e.estado === 'COMPLETADO');
+      console.log('[Login] ========== VERIFICACIÓN DE ESTADO ==========');
+      console.log('[Login] Total entregas:', result.entregas.length);
+      console.log('[Login] Estados:', result.entregas.map(e => `${e.numeroEntrega}: ${e.estado}`));
       console.log('[Login] Todas completadas:', todasCompletadas);
+      console.log('[Login] ===============================================');
 
       // Show validated info
       setValidatedInfo({
@@ -392,13 +396,13 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
     }}>
       <div className="w-full max-w-md">
         {/* Logo Section */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4" style={{
+        <div className="text-center mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-3" style={{
             background: 'linear-gradient(135deg, #a8e063 0%, #7cc33f 100%)',
             boxShadow: '0 8px 24px rgba(168, 224, 99, 0.35)'
           }}>
             <svg
-              className="w-11 h-11"
+              className="w-9 h-9"
               fill="none"
               stroke="white"
               viewBox="0 0 24 24"
@@ -411,13 +415,13 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
               />
             </svg>
           </div>
-          <h1 className="text-5xl font-bold mb-3 tracking-wider" style={{
+          <h1 className="text-4xl font-bold mb-2 tracking-wider" style={{
             color: '#ffffff',
             textShadow: '0 2px 10px rgba(0, 0, 0, 0.3)'
           }}>
             CROSSLOG
           </h1>
-          <p className="text-sm font-semibold tracking-wide" style={{
+          <p className="text-xs font-semibold tracking-wide" style={{
             color: 'rgba(255, 255, 255, 0.7)',
             textTransform: 'uppercase',
             letterSpacing: '2px'
@@ -427,7 +431,7 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
         </div>
 
         {/* Card */}
-        <div className="card p-8 space-y-6" style={{
+        <div className="card p-6 space-y-4" style={{
           background: 'rgba(255, 255, 255, 0.98)',
           backdropFilter: 'blur(10px)',
           borderRadius: '16px',
@@ -435,10 +439,10 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
         }}>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* HDR Input */}
             <div>
-              <label htmlFor="hdr" className="block text-sm font-bold mb-3" style={{
+              <label htmlFor="hdr" className="block text-sm font-bold mb-2" style={{
                 color: '#1a2332',
                 letterSpacing: '0.3px'
               }}>
@@ -449,7 +453,7 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
                 id="hdr"
                 value={hdr}
                 onChange={(e) => setHdr(e.target.value)}
-                className="w-full px-4 py-3.5 text-lg font-semibold border-2 rounded-xl focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-3 text-lg font-semibold border-2 rounded-xl focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   borderColor: '#e5e7eb',
                   color: '#1a2332',
@@ -469,14 +473,14 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
                 disabled={validating}
                 autoComplete="off"
               />
-              <p className="text-xs mt-2.5" style={{ color: '#6b7280' }}>
+              <p className="text-xs mt-2" style={{ color: '#6b7280' }}>
                 El chofer y fecha se cargan automáticamente
               </p>
             </div>
 
             {/* Validated Info Display */}
             {validatedInfo && (
-              <div className="rounded-xl p-4 space-y-3 border-2" style={{
+              <div className="rounded-xl p-3 space-y-2 border-2" style={{
                 backgroundColor: '#f0f9e8',
                 borderColor: '#a8e063',
                 boxShadow: '0 2px 8px rgba(168, 224, 99, 0.15)'
@@ -518,7 +522,7 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
             <button
               type="submit"
               disabled={validating}
-              className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: 'linear-gradient(135deg, #a8e063 0%, #7cc33f 100%)',
                 boxShadow: '0 4px 14px rgba(168, 224, 99, 0.4)'
@@ -593,8 +597,8 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
           )}
 
           {/* Footer */}
-          <div className="text-center pt-5 border-t" style={{ borderColor: '#e5e7eb' }}>
-            <p className="text-xs font-medium mb-3" style={{ color: '#9ca3af' }}>
+          <div className="text-center pt-3 border-t" style={{ borderColor: '#e5e7eb' }}>
+            <p className="text-xs font-medium mb-2" style={{ color: '#9ca3af' }}>
               Versión 1.0.0 • CROSSLOG PWA
             </p>
             <div className="flex justify-center">
