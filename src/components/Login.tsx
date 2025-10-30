@@ -79,6 +79,16 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
       console.log('[Login] Fecha:', result.fechaViaje);
       console.log('[Login] Full result:', result);
 
+      // Check if HDR is already completed
+      const todasCompletadas = result.entregas.every((e) => e.estado === 'COMPLETADO');
+      console.log('[Login] Todas completadas:', todasCompletadas);
+
+      if (todasCompletadas) {
+        setError('⚠️ Esta HDR ya se encuentra completada. No se puede modificar.');
+        setValidatedInfo(null);
+        return;
+      }
+
       // Validate chofer exists
       if (!result.chofer) {
         setError('No se encontró información del chofer para este HDR');
