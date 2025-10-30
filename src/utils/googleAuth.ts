@@ -122,7 +122,9 @@ export class GoogleAuthManager {
         resolve(token);
       };
 
-      this.tokenClient.requestAccessToken({ prompt: 'consent' });
+      // Request token without forcing consent every time
+      // Only shows consent screen on first authorization or when token expires
+      this.tokenClient.requestAccessToken({ prompt: '' });
     });
 
     return this.tokenRequestInProgress;
