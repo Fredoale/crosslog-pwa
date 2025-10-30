@@ -329,40 +329,6 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
               Filtrar resultados
             </h3>
 
-            {/* Date Filter */}
-            <div className="mb-6 p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                📅 Filtrar por Fecha de Viaje
-              </label>
-              <div className="flex gap-3">
-                <input
-                  type="date"
-                  value={dateFilter}
-                  onChange={(e) => {
-                    setDateFilter(e.target.value);
-                    setCurrentPage(1); // Reset to first page when filtering
-                  }}
-                  className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
-                />
-                {dateFilter && (
-                  <button
-                    onClick={() => setDateFilter('')}
-                    className="px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all"
-                    title="Limpiar filtro"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              {dateFilter && (
-                <p className="text-sm text-gray-600 mt-2">
-                  Mostrando {totalResults} resultado{totalResults !== 1 ? 's' : ''} para el {new Date(dateFilter + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                </p>
-              )}
-            </div>
-
             {/* Search Type Toggle */}
             <div className="flex gap-3 mb-4">
               <button
@@ -451,6 +417,40 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
                       </p>
                     )}
                   </div>
+                </div>
+
+                {/* Date Filter */}
+                <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    📅 Filtrar por Fecha de Viaje
+                  </label>
+                  <div className="flex gap-3">
+                    <input
+                      type="date"
+                      value={dateFilter}
+                      onChange={(e) => {
+                        setDateFilter(e.target.value);
+                        setCurrentPage(1); // Reset to first page when filtering
+                      }}
+                      className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all"
+                    />
+                    {dateFilter && (
+                      <button
+                        onClick={() => setDateFilter('')}
+                        className="px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all"
+                        title="Limpiar filtro"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {dateFilter && (
+                    <p className="text-sm text-gray-600 mt-2">
+                      Mostrando {totalResults} resultado{totalResults !== 1 ? 's' : ''} para el {new Date(dateFilter + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    </p>
+                  )}
                 </div>
 
                 {paginatedHDRs.map((hdr) => (
