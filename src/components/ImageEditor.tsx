@@ -428,11 +428,10 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
 
     // Draw border around crop area with thicker, more visible line
     ctx.strokeStyle = '#a8e063';
-    ctx.lineWidth = 6; // Increased from 3 to 6 for better visibility
+    ctx.lineWidth = 12; // Increased to 12 for better visibility
     ctx.strokeRect(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
 
     // Draw handles - larger and more visible for easier touch interaction
-    const cornerSize = 35; // Increased from 20 to 35
     const cornerThickness = 8; // Thickness for L-shaped corners
     const cornerLength = 35; // Length of each arm of the L
     const edgeHandleLength = 60; // Increased from 40 to 60

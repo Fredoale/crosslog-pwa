@@ -979,10 +979,6 @@ export class GoogleSheetsAPI {
         }
       });
 
-      if (matchingHDRs.size === 0) {
-        return { found: false, message: `No se encontraron viajes completados o en curso para ${fletero}` };
-      }
-
       // Build HDR data from Sistema_entregas rows (already filtered)
       const hdrsData = [];
 
@@ -1001,6 +997,10 @@ export class GoogleSheetsAPI {
             hdrsData.push(hdrData);
           }
         }
+      }
+
+      if (hdrsData.length === 0) {
+        return { found: false, message: `No se encontraron viajes completados o en curso para ${fletero}` };
       }
 
       return {
@@ -1584,6 +1584,7 @@ export class GoogleSheetsAPI {
       return ['63', '64', '46', '813', '54', '816', '45', '41']; // Default fallback
     }
   }
+
 }
 
 // Create default instance (will be configured on app init)
