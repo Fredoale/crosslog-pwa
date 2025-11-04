@@ -154,5 +154,5 @@ export class GoogleAuthManager {
 // Create default instance
 export const googleAuth = new GoogleAuthManager({
   clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
-  scope: 'https://www.googleapis.com/auth/drive', // Changed from drive.file to allow access to existing folders
+  scope: 'https://www.googleapis.com/auth/drive.file', // Restricted scope to avoid Google verification (can still upload to specific folders by ID)
 });
