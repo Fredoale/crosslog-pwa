@@ -1,14 +1,16 @@
 # 📱 CONFIGURACIÓN NODO WHATSAPP EN N8N
 
-## ✅ TUS CREDENCIALES
+## ✅ TUS CREDENCIALES (Actualizadas)
 
 ```
 Phone Number ID: 764420436762718
 WhatsApp Business Account ID: 1687233251972684
 App ID: 1652402132069292
 App Secret: 680b61b3bf57046d09b5018edc676a4c
-Token Permanente: EAAXe2dobq6wBPinPbuSZAxOdImAmpiJm658adkdizRVZAO7RksF8woGSl0yOZCXZCtIDbZBTiRlrQ5z3xA2Sx2VyYFYxNYZCRQOwtGXKdRZAZB2CYbZA517yKSOGTNBdjp8IxDJwobfhBpz1TOeJroU2ABWh13nTN2Vri4AqMwlkV8nhSvl161a1Aq7thQh8DMrrPygZDZD
+Token Permanente (Válido): EAAXe2dobq6wBPZBNqQDXT0CBP0V5zHequ1KDhVh5APlbzAMkQnQKZApZAdwW9ETpYf8hU5F4dbmeibLEDwa79weUU7oxHaywaMGFWiqkTFIj0VZCWx2Fdyhi0yhAcavZBfAibG7cxopLFLuvlatFUGCiUat7ZCjNZCZC5zFOUbYk5rmaezMYUuG84GMc2tLJ4lj1Q8phAWGUlqTYRTzsHDTpiz4QKGLdOjjRKXqImFRk
 ```
+
+⚠️ **IMPORTANTE:** Usa ESTE token en todos los nodos de WhatsApp. Los demás están caducados.
 
 ---
 
@@ -28,7 +30,7 @@ Authentication: None (usaremos el token en Headers)
 
 Headers:
   Content-Type: application/json
-  Authorization: Bearer EAAXe2dobq6wBPinPbuSZAxOdImAmpiJm658adkdizRVZAO7RksF8woGSl0yOZCXZCtIDbZBTiRlrQ5z3xA2Sx2VyYFYxNYZCRQOwtGXKdRZAZB2CYbZA517yKSOGTNBdjp8IxDJwobfhBpz1TOeJroU2ABWh13nTN2Vri4AqMwlkV8nhSvl161a1Aq7thQh8DMrrPygZDZD
+  Authorization: Bearer EAAXe2dobq6wBPZBNqQDXT0CBP0V5zHequ1KDhVh5APlbzAMkQnQKZApZAdwW9ETpYf8hU5F4dbmeibLEDwa79weUU7oxHaywaMGFWiqkTFIj0VZCWx2Fdyhi0yhAcavZBfAibG7cxopLFLuvlatFUGCiUat7ZCjNZCZC5zFOUbYk5rmaezMYUuG84GMc2tLJ4lj1Q8phAWGUlqTYRTzsHDTpiz4QKGLdOjjRKXqImFRk
 
 Body (JSON):
 {
@@ -72,24 +74,24 @@ Body (JSON):
 }
 ```
 
+⚠️ **NOTA:** Usa el MISMO token permanente en AMBOS nodos (HDR Completado y Entrega Individual)
+
 ---
 
 ## 🧪 PRUEBA MANUAL (COMANDO CURL)
 
-Ejecuta este comando para probar tu configuración:
+Ejecuta este comando para probar tu token permanente:
 
 ```bash
 curl -X POST "https://graph.facebook.com/v18.0/764420436762718/messages" \
   -H "Authorization: Bearer EAAXe2dobq6wBPZBNqQDXT0CBP0V5zHequ1KDhVh5APlbzAMkQnQKZApZAdwW9ETpYf8hU5F4dbmeibLEDwa79weUU7oxHaywaMGFWiqkTFIj0VZCWx2Fdyhi0yhAcavZBfAibG7cxopLFLuvlatFUGCiUat7ZCjNZCZC5zFOUbYk5rmaezMYUuG84GMc2tLJ4lj1Q8phAWGUlqTYRTzsHDTpiz4QKGLdOjjRKXqImFRk" \
   -H "Content-Type: application/json" \
-  -d '{
-    "messaging_product": "whatsapp",
-    "to": "5491173603954",
-    "type": "text",
-    "text": {
-      "body": "🧪 Prueba de WhatsApp desde N8N - CROSSLOG"
-    }
-  }'
+  -d "{\"messaging_product\":\"whatsapp\",\"to\":\"5491173603954\",\"type\":\"text\",\"text\":{\"body\":\"🧪 Prueba WhatsApp - CROSSLOG OK\"}}"
+```
+
+**Versión Windows (cmd):**
+```cmd
+curl -X POST "https://graph.facebook.com/v18.0/764420436762718/messages" -H "Authorization: Bearer EAAXe2dobq6wBPZBNqQDXT0CBP0V5zHequ1KDhVh5APlbzAMkQnQKZApZAdwW9ETpYf8hU5F4dbmeibLEDwa79weUU7oxHaywaMGFWiqkTFIj0VZCWx2Fdyhi0yhAcavZBfAibG7cxopLFLuvlatFUGCiUat7ZCjNZCZC5zFOUbYk5rmaezMYUuG84GMc2tLJ4lj1Q8phAWGUlqTYRTzsHDTpiz4QKGLdOjjRKXqImFRk" -H "Content-Type: application/json" -d "{\"messaging_product\":\"whatsapp\",\"to\":\"5491173603954\",\"type\":\"text\",\"text\":{\"body\":\"Test OK\"}}"
 ```
 
 ### ✅ Respuesta Esperada:
