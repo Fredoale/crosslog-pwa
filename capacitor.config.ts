@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
     Camera: {
       presentationStyle: 'fullscreen',
       quality: 90,
-      resultType: 'base64',
+      resultType: 'dataUrl', // Use dataUrl for better PWA compatibility
       saveToGallery: false,
       correctOrientation: true,
     },

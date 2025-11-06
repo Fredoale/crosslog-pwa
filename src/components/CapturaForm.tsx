@@ -83,24 +83,21 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       const image = await Camera.getPhoto({
         quality: 95, // High quality (increased from 85)
         allowEditing: false,
-        resultType: CameraResultType.Base64,
+        resultType: CameraResultType.DataUrl, // Use DataUrl instead of Base64 for better compatibility
         source: CameraSource.Prompt, // Allow user to choose Camera or Gallery
         saveToGallery: false,
         correctOrientation: true,
       });
 
-      if (!image.base64String) {
+      if (!image.dataUrl) {
         throw new Error('No image data received');
       }
 
-      // Convert base64 to Blob
-      const byteCharacters = atob(image.base64String);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      let blob = new Blob([byteArray], { type: `image/${image.format}` });
+      console.log('[CapturaForm] Image received, converting to Blob...');
+
+      // Convert dataUrl to Blob (more reliable than base64 in PWAs)
+      const response = await fetch(image.dataUrl);
+      let blob = await response.blob();
 
       // Auto-rotate to vertical (90 degrees) for all photos
       console.log('[CapturaForm] Rotating image to vertical...');
@@ -138,9 +135,20 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         console.log('[CapturaForm] Auto-scanning document...');
         setTimeout(() => handleScanDocument(fotoId), 100);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[CapturaForm] Camera error:', err);
-      setError('Error al capturar foto. Intenta de nuevo.');
+
+      // Provide specific error messages
+      if (err?.message?.includes('User cancelled')) {
+        console.log('[CapturaForm] User cancelled photo selection');
+        // Don't show error for user cancellation
+      } else if (err?.message?.includes('permission') || err?.message?.includes('denied')) {
+        setError('Permisos denegados. Ve a Configuración > Apps > Navegador > Permisos y habilita Cámara y Almacenamiento.');
+      } else if (err?.message?.includes('could not be read') || err?.message?.includes('Failed to fetch')) {
+        setError('No se pudo leer el archivo. Intenta con otra foto o toma una nueva con la cámara.');
+      } else {
+        setError('Error al capturar foto. Intenta de nuevo o usa otra foto.');
+      }
     } finally {
       setCapturando(false);
     }
