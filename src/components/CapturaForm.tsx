@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 import { useEntregasStore } from '../stores/entregasStore';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useOfflineSync } from '../hooks/useOfflineSync';
@@ -26,6 +27,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   const [capturando, setCapturando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Firma
   const [showSignatureModal, setShowSignatureModal] = useState(false);
@@ -60,6 +62,16 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   const handleTomarFoto = async () => {
     if (fotos.length >= MAX_FOTOS) {
       setError(`Máximo ${MAX_FOTOS} remitos por entrega`);
+      return;
+    }
+
+    // Check if running on web (not native)
+    const isWeb = Capacitor.getPlatform() === 'web';
+
+    if (isWeb) {
+      // Use file input for web browsers
+      console.log('[CapturaForm] Running on web, using file input');
+      fileInputRef.current?.click();
       return;
     }
 
@@ -129,6 +141,69 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
     } catch (err) {
       console.error('[CapturaForm] Camera error:', err);
       setError('Error al capturar foto. Intenta de nuevo.');
+    } finally {
+      setCapturando(false);
+    }
+  };
+
+  const handleFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setCapturando(true);
+    setError(null);
+    setWarning(null);
+
+    try {
+      console.log('[CapturaForm] Processing file from input:', file.name);
+
+      // Convert File to Blob
+      let blob = file as Blob;
+
+      // Auto-rotate to vertical (90 degrees) for all photos
+      console.log('[CapturaForm] Rotating image to vertical...');
+      const rotationResult = await rotateToVertical(blob);
+      blob = rotationResult.blob;
+
+      if (rotationResult.rotated) {
+        console.log('[CapturaForm] ✓ Image rotated 90° to vertical');
+      }
+
+      // Create thumbnail
+      const reader = new FileReader();
+      const thumbnailPromise = new Promise<string>((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+
+      const thumbnail = await thumbnailPromise;
+      const fotoId = `foto-${Date.now()}`;
+
+      const nuevaFoto: FotoCapturada = {
+        id: fotoId,
+        blob,
+        processed: false,
+        thumbnail,
+        timestamp: new Date().toISOString(),
+        numeroRemito: '', // Start empty for manual input
+        ocrDetecting: false,
+      };
+
+      setFotos((prev) => [...prev, nuevaFoto]);
+
+      // Auto-scan if enabled
+      if (autoScan) {
+        console.log('[CapturaForm] Auto-scanning document...');
+        setTimeout(() => handleScanDocument(fotoId), 100);
+      }
+
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err) {
+      console.error('[CapturaForm] File input error:', err);
+      setError('Error al cargar foto. Intenta de nuevo.');
     } finally {
       setCapturando(false);
     }
@@ -694,6 +769,15 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
               ))}
             </div>
           )}
+
+          {/* Hidden file input for web browsers */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
 
           {/* Camera Button */}
           <button

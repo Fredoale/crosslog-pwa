@@ -1,53 +1,65 @@
 # 📱 CONFIGURACIÓN NODO WHATSAPP EN N8N
 
-## ✅ TUS CREDENCIALES (Actualizadas)
+## ✅ APP APROBADA - LISTA PARA PRODUCCIÓN
+
+**ESTADO**: `whatsapp_business_messaging` APROBADO por Meta (5 Nov 2025)
+
+**Configuración lista para usar**:
+- ✅ Token válido y funcionando
+- ✅ Permiso de producción activado
+- ✅ Sin restricciones de números de destino
+- ✅ Envío automático sin interacción previa
+
+**Ya puedes enviar mensajes a**:
+- Cualquier número de WhatsApp
+- Sin necesidad de conversación activa previa
+- Automáticamente al completar entregas
+
+---
+
+## ✅ TUS CREDENCIALES (Actualizadas y FUNCIONANDO)
 
 ```
 Phone Number ID: 764420436762718
 WhatsApp Business Account ID: 1687233251972684
 App ID: 1652402132069292
 App Secret: 680b61b3bf57046d09b5018edc676a4c
-Token Permanente (Válido): EAAXe2dobq6wBPZBNqQDXT0CBP0V5zHequ1KDhVh5APlbzAMkQnQKZApZAdwW9ETpYf8hU5F4dbmeibLEDwa79weUU7oxHaywaMGFWiqkTFIj0VZCWx2Fdyhi0yhAcavZBfAibG7cxopLFLuvlatFUGCiUat7ZCjNZCZC5zFOUbYk5rmaezMYUuG84GMc2tLJ4lj1Q8phAWGUlqTYRTzsHDTpiz4QKGLdOjjRKXqImFRk
+Token Permanente (VÁLIDO): EAAXe2dobq6wBPZBNqQDXT0CBP0V5zHequ1KDhVh5APlbzAMkQnQKZApZAdwW9ETpYf8hU5F4dbmeibLEDwa79weUU7oxHaywaMGFWiqkTFIj0VZCWx2Fdyhi0yhAcavZBfAibG7cxopLFLuvlatFUGCiUat7ZCjNZCZC5zFOUbYk5rmaezMYUuG84GMc2tLJ4lj1Q8phAWGUlqTYRTzsHDTpiz4QKGLdOjjRKXqImFRk
 ```
-
-⚠️ **IMPORTANTE:** Usa ESTE token en todos los nodos de WhatsApp. Los demás están caducados.
 
 ---
 
-## 🔧 PASO 1: Crear Nodo HTTP Request (WhatsApp HDR Completado)
+## 🔧 PASO 1A: Crear Nodo Code (Preparar Body WhatsApp)
+
+**IMPORTANTE**: Para evitar errores de JSON con emojis y caracteres especiales, primero prepara el body en un nodo Code.
 
 En N8N, después del **Nodo 2** (HDR Completado):
 
-### Agregar nodo: **HTTP Request**
+### Agregar nodo: **Code**
 
 **Configuración:**
 
-```
-Method: POST
-URL: https://graph.facebook.com/v18.0/764420436762718/messages
+```javascript
+// Preparar body de WhatsApp (evita problemas con JSON y emojis)
+const inputData = $input.item.json;
 
-Authentication: None (usaremos el token en Headers)
-
-Headers:
-  Content-Type: application/json
-  Authorization: Bearer EAAXe2dobq6wBPZBNqQDXT0CBP0V5zHequ1KDhVh5APlbzAMkQnQKZApZAdwW9ETpYf8hU5F4dbmeibLEDwa79weUU7oxHaywaMGFWiqkTFIj0VZCWx2Fdyhi0yhAcavZBfAibG7cxopLFLuvlatFUGCiUat7ZCjNZCZC5zFOUbYk5rmaezMYUuG84GMc2tLJ4lj1Q8phAWGUlqTYRTzsHDTpiz4QKGLdOjjRKXqImFRk
-
-Body (JSON):
-{
-  "messaging_product": "whatsapp",
-  "to": "5491173603954",
-  "type": "text",
-  "text": {
-    "body": "{{ $json.whatsapp.mensaje }}"
+const whatsappBody = {
+  messaging_product: "whatsapp",
+  to: inputData.whatsapp.numero,
+  type: "text",
+  text: {
+    body: inputData.whatsapp.mensaje
   }
-}
+};
+
+return { whatsappBody };
 ```
 
 ---
 
-## 🔧 PASO 2: Crear Nodo HTTP Request (WhatsApp Entrega Individual)
+## 🔧 PASO 1B: Crear Nodo HTTP Request (WhatsApp HDR Completado)
 
-En N8N, después del **Nodo 3** (Entrega Individual):
+Después del nodo Code:
 
 ### Agregar nodo: **HTTP Request**
 
@@ -63,18 +75,23 @@ Headers:
   Content-Type: application/json
   Authorization: Bearer EAAXe2dobq6wBPZBNqQDXT0CBP0V5zHequ1KDhVh5APlbzAMkQnQKZApZAdwW9ETpYf8hU5F4dbmeibLEDwa79weUU7oxHaywaMGFWiqkTFIj0VZCWx2Fdyhi0yhAcavZBfAibG7cxopLFLuvlatFUGCiUat7ZCjNZCZC5zFOUbYk5rmaezMYUuG84GMc2tLJ4lj1Q8phAWGUlqTYRTzsHDTpiz4QKGLdOjjRKXqImFRk
 
-Body (JSON):
-{
-  "messaging_product": "whatsapp",
-  "to": "5491173603954",
-  "type": "text",
-  "text": {
-    "body": "{{ $json.whatsapp.mensaje }}"
-  }
-}
+Body (Expression mode):
+  ={{ $json.whatsappBody }}
+
+Options:
+  ☑ Always Output Data
 ```
 
-⚠️ **NOTA:** Usa el MISMO token permanente en AMBOS nodos (HDR Completado y Entrega Individual)
+---
+
+## 🔧 PASO 2: Repetir para Entrega Individual
+
+En N8N, después del **Nodo 3** (Entrega Individual):
+
+1. **Agrega nodo Code** (igual que el anterior)
+2. **Agrega nodo HTTP Request** (igual que el anterior)
+
+⚠️ **NOTA:** Usa la MISMA configuración en ambos flujos (HDR Completado y Entrega Individual)
 
 ---
 
@@ -190,14 +207,22 @@ IF (¿HDR Completado?)
   │           ↓
   │         Gmail (Enviar Email HDR Completado)
   │           ↓
+  │         Code (Preparar WhatsApp Body) ✨ NUEVO
+  │           ↓
   │         HTTP Request (WhatsApp HDR Completado) ✨ NUEVO
+  │           [Options: ☑ Always Output Data]
   │
   └─ FALSE → Nodo 3 (Generar Email Entrega Individual)
                 ↓
               Gmail (Enviar Email Entrega Individual)
                 ↓
+              Code (Preparar WhatsApp Body) ✨ NUEVO
+                ↓
               HTTP Request (WhatsApp Entrega Individual) ✨ NUEVO
+                [Options: ☑ Always Output Data]
 ```
+
+**IMPORTANTE**: El flujo debe continuar incluso si WhatsApp falla. La opción "Always Output Data" garantiza esto.
 
 ---
 
@@ -219,11 +244,24 @@ Si tienes problemas:
 
 ## 💡 NOTA IMPORTANTE
 
-✅ **TOKEN PERMANENTE CONFIGURADO**
+✅ **TOKEN PERMANENTE CONFIGURADO Y FUNCIONANDO**
 
-El token permanente está activo y listo para usar. Este token NO expira a menos que lo regeneres manualmente en Meta.
+El token permanente está activo y funcionando en otro workflow de N8N. Este token NO expira a menos que lo regeneres manualmente en Meta.
 
 **Importante**:
 - Guarda este token de forma segura
 - NO lo compartas públicamente
-- Si necesitas regenerarlo, deberás actualizar todos los nodos HTTP en N8N
+- Si tienes problemas de autorización, copia la configuración del workflow que funciona
+- NO regeneres el token - ya está validado y funcionando
+
+---
+
+## 📂 ARCHIVOS CONSOLIDADOS
+
+**Para credenciales actualizadas**: Ver `WHATSAPP-CREDENTIALS.md` (fuente de verdad)
+
+**Otros archivos de referencia**:
+- `MANUAL-WHATSAPP-META-CONFIGURACION.md` - Setup completo desde cero
+- `META-APP-REVIEW-RESPUESTAS.md` - Publicación a producción
+- `test-whatsapp-token.md` - Regenerar tokens (solo si es necesario)
+- `send_whatsapp.sh` - Pruebas desde línea de comandos
