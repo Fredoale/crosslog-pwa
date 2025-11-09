@@ -29,9 +29,50 @@ export class GoogleAuthManager {
   private accessToken: string | null = null;
   private expiresAt: number = 0;
   private tokenRequestInProgress: Promise<string> | null = null;
+  private readonly STORAGE_KEY = 'google_drive_token';
 
   constructor(config: GoogleAuthConfig) {
     this.config = config;
+    // Load token from localStorage on initialization
+    this.loadTokenFromStorage();
+  }
+
+  /**
+   * Load token from localStorage
+   */
+  private loadTokenFromStorage(): void {
+    try {
+      const stored = localStorage.getItem(this.STORAGE_KEY);
+      if (stored) {
+        const data = JSON.parse(stored);
+        if (data.expiresAt && Date.now() < data.expiresAt) {
+          this.accessToken = data.accessToken;
+          this.expiresAt = data.expiresAt;
+          console.log('[GoogleAuth] ✅ Token loaded from storage, expires in', Math.floor((this.expiresAt - Date.now()) / 1000), 'seconds');
+        } else {
+          console.log('[GoogleAuth] Stored token expired, clearing');
+          localStorage.removeItem(this.STORAGE_KEY);
+        }
+      }
+    } catch (error) {
+      console.error('[GoogleAuth] Error loading token from storage:', error);
+    }
+  }
+
+  /**
+   * Save token to localStorage
+   */
+  private saveTokenToStorage(token: string, expiresIn: number): void {
+    try {
+      const expiresAt = Date.now() + (expiresIn * 1000) - 60000; // 1 min buffer
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify({
+        accessToken: token,
+        expiresAt: expiresAt
+      }));
+      console.log('[GoogleAuth] ✅ Token saved to storage');
+    } catch (error) {
+      console.error('[GoogleAuth] Error saving token to storage:', error);
+    }
   }
 
   /**
@@ -116,6 +157,9 @@ export class GoogleAuthManager {
 
         console.log('[GoogleAuth] Access token obtained, expires in', response.expires_in, 'seconds');
 
+        // Save token to localStorage for persistence
+        this.saveTokenToStorage(token, response.expires_in);
+
         // Clear the in-progress flag
         this.tokenRequestInProgress = null;
 
@@ -140,6 +184,8 @@ export class GoogleAuthManager {
       });
       this.accessToken = null;
       this.expiresAt = 0;
+      localStorage.removeItem(this.STORAGE_KEY);
+      console.log('[GoogleAuth] Token removed from storage');
     }
   }
 
