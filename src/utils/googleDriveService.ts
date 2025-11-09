@@ -116,7 +116,7 @@ async function getServiceAccountToken(): Promise<string> {
  */
 function getServiceAccountCredentials(): ServiceAccountCredentials {
   const clientEmail = import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const privateKey = import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
+  let privateKey = import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
 
   console.log('[GoogleDrive] Client email configured:', !!clientEmail);
   console.log('[GoogleDrive] Private key configured:', !!privateKey);
@@ -128,15 +128,38 @@ function getServiceAccountCredentials(): ServiceAccountCredentials {
     );
   }
 
-  // Replace \n literal strings with actual newlines
-  const formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
+  // Clean up the private key - handle various formats
+  // Remove quotes if present
+  privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
 
-  console.log('[GoogleDrive] Private key starts with:', formattedPrivateKey.substring(0, 50));
-  console.log('[GoogleDrive] Private key contains newlines:', formattedPrivateKey.includes('\n'));
+  // Replace literal \n strings with actual newlines
+  privateKey = privateKey.replace(/\\n/g, '\n');
+
+  // Ensure proper formatting
+  if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+    console.error('[GoogleDrive] ❌ Private key does not start with BEGIN marker');
+    console.error('[GoogleDrive] First 100 chars:', privateKey.substring(0, 100));
+    throw new Error('Private key format is invalid - missing BEGIN marker');
+  }
+
+  if (!privateKey.endsWith('-----END PRIVATE KEY-----\n') && !privateKey.endsWith('-----END PRIVATE KEY-----')) {
+    console.error('[GoogleDrive] ⚠️ Private key does not end with END marker properly');
+    // Add ending marker if missing
+    if (!privateKey.includes('-----END PRIVATE KEY-----')) {
+      privateKey += '\n-----END PRIVATE KEY-----\n';
+    } else if (!privateKey.endsWith('\n')) {
+      privateKey += '\n';
+    }
+  }
+
+  console.log('[GoogleDrive] Private key starts with:', privateKey.substring(0, 50));
+  console.log('[GoogleDrive] Private key ends with:', privateKey.substring(privateKey.length - 50));
+  console.log('[GoogleDrive] Private key contains newlines:', privateKey.includes('\n'));
+  console.log('[GoogleDrive] Private key line count:', privateKey.split('\n').length);
 
   return {
     client_email: clientEmail,
-    private_key: formattedPrivateKey,
+    private_key: privateKey,
   };
 }
 
@@ -154,7 +177,7 @@ async function createJWT(credentials: ServiceAccountCredentials): Promise<string
 
   const claimSet = {
     iss: credentials.client_email,
-    scope: 'https://www.googleapis.com/auth/drive.file',
+    scope: 'https://www.googleapis.com/auth/drive',
     aud: 'https://oauth2.googleapis.com/token',
     exp: expiry,
     iat: now,
@@ -175,32 +198,54 @@ async function createJWT(credentials: ServiceAccountCredentials): Promise<string
  * Sign data with RSA private key
  */
 async function signWithPrivateKey(data: string, privateKeyPem: string): Promise<ArrayBuffer> {
-  // Import private key
-  const pemContents = privateKeyPem
-    .replace('-----BEGIN PRIVATE KEY-----', '')
-    .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\s/g, '');
+  try {
+    // Import private key
+    const pemContents = privateKeyPem
+      .replace('-----BEGIN PRIVATE KEY-----', '')
+      .replace('-----END PRIVATE KEY-----', '')
+      .replace(/\s/g, '');
 
-  const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+    console.log('[GoogleDrive] PEM contents length after cleanup:', pemContents.length);
+    console.log('[GoogleDrive] PEM contents first 50 chars:', pemContents.substring(0, 50));
 
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    binaryDer,
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      hash: 'SHA-256',
-    },
-    false,
-    ['sign']
-  );
+    // Decode base64
+    let binaryDer: Uint8Array;
+    try {
+      binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+      console.log('[GoogleDrive] ✓ Successfully decoded base64, length:', binaryDer.length);
+    } catch (atobError: any) {
+      console.error('[GoogleDrive] ❌ atob() failed:', atobError.message);
+      console.error('[GoogleDrive] This usually means the private key is not valid base64');
+      console.error('[GoogleDrive] PEM contents (first 200):', pemContents.substring(0, 200));
+      throw new Error(`Failed to decode private key: ${atobError.message}`);
+    }
 
-  // Sign data
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(data);
+    const cryptoKey = await crypto.subtle.importKey(
+      'pkcs8',
+      binaryDer,
+      {
+        name: 'RSASSA-PKCS1-v1_5',
+        hash: 'SHA-256',
+      },
+      false,
+      ['sign']
+    );
 
-  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, dataBuffer);
+    console.log('[GoogleDrive] ✓ Successfully imported crypto key');
 
-  return signature;
+    // Sign data
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(data);
+
+    const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, dataBuffer);
+
+    console.log('[GoogleDrive] ✓ Successfully signed data');
+
+    return signature;
+  } catch (error: any) {
+    console.error('[GoogleDrive] ❌ Error in signWithPrivateKey:', error);
+    throw error;
+  }
 }
 
 /**
