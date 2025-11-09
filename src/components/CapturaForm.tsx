@@ -517,7 +517,9 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       setUploadProgress('Enviando datos a N8N...');
 
       const numerosRemito = fotos.map(f => f.numeroRemito).filter(Boolean);
-      const pdfUrls = succeeded.map(r => r.result.webViewLink).filter(Boolean) as string[];
+      const pdfUrls = succeeded
+        .map(r => r.result.success ? r.result.webViewLink : null)
+        .filter(Boolean) as string[];
 
       console.log('[CapturaForm] 📄 PDF URLs to send in webhook:', pdfUrls);
 
