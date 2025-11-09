@@ -3,9 +3,9 @@
   command = "npm run build"
   publish = "dist"
 
-[build.environment]
-  VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL = "${VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL}"
-  VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY = "${VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY}"
+# NOTE: Environment variables must be configured in Netlify UI at:
+# https://app.netlify.com/sites/appcrosslog/configuration/env
+# Vite reads them automatically during build if they start with VITE_
 
 # SPA routing - redirect all routes to index.html
 [[redirects]]
