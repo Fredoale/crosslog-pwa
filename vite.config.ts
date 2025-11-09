@@ -2,21 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Debug: Log environment variables during build
-console.log('=== VITE BUILD - Environment Variables ===');
-console.log('VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL:', process.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL ? '✓ Set' : '✗ Not set');
-console.log('VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:', process.env.VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY ? '✓ Set' : '✗ Not set');
-console.log('VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL value:', process.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL);
-console.log('VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY starts:', process.env.VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.substring(0, 50));
-console.log('==========================================');
-
 // https://vite.dev/config/
 export default defineConfig({
-  define: {
-    // Explicitly inject env vars into the build
-    'import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL': JSON.stringify(process.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL || ''),
-    'import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY': JSON.stringify(process.env.VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || ''),
-  },
   build: {
     target: 'esnext',
     minify: 'terser',

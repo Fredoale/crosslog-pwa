@@ -3,9 +3,14 @@
   command = "npm run build"
   publish = "dist"
 
+# Netlify Functions configuration
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # NOTE: Environment variables must be configured in Netlify UI at:
 # https://app.netlify.com/sites/appcrosslog/configuration/env
-# Vite reads them automatically during build if they start with VITE_
+# Functions have access to all environment variables automatically
 
 # SPA routing - redirect all routes to index.html
 [[redirects]]
