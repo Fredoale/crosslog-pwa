@@ -330,14 +330,30 @@ npm run build && npm run preview
 - Verificar origen en Google Cloud Console
 - Usar `http://localhost:5173` exacto
 
-### PDFs no suben
-- Verificar permisos de carpeta Drive
-- Check consola para errores OAuth
+### PDFs no suben a Drive
+**Solución:** La app usa OAuth 2.0 con token persistente en localStorage
+- Primera vez: Aparece popup de Google para autorizar (una sola vez)
+- Token se guarda automáticamente por 1 hora
+- Siguientes usos: NO pide autorización nuevamente
+- Verificar que el usuario tenga permisos de Editor en las carpetas de Drive
+- Si hay problemas, limpiar token: `localStorage.removeItem('google_drive_token')`
+
+### Token de Drive expirado
+```javascript
+// En consola del navegador:
+localStorage.removeItem('google_drive_token');
+// Recargar la página
+```
 
 ### OCR no detecta
 - Foto clara y enfocada
 - Número visible
 - Fallback: ingreso manual
+
+### Ver documentación completa
+- **Google Drive OAuth:** Ver `GOOGLE-SERVICE-ACCOUNT-SETUP.md`
+- **Deployment:** Ver `DEPLOY.md`
+- **N8N Setup:** Ver `N8N-SETUP.md`
 
 ---
 
