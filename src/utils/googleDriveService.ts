@@ -55,6 +55,8 @@ export async function uploadToGoogleDrive(
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text();
       console.error('[GoogleDrive] Upload failed:', uploadResponse.status, errorText);
+      console.error('[GoogleDrive] Folder ID used:', folderId);
+      console.error('[GoogleDrive] File name:', fileName);
       throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
     }
 
@@ -97,12 +99,14 @@ async function getServiceAccountToken(): Promise<string> {
 
   if (!tokenResponse.ok) {
     const errorText = await tokenResponse.text();
-    console.error('[GoogleDrive] Token request failed:', errorText);
-    throw new Error(`Failed to get access token: ${errorText}`);
+    console.error('[GoogleDrive] Token request failed:', tokenResponse.status, errorText);
+    console.error('[GoogleDrive] JWT used:', jwt);
+    throw new Error(`Failed to get access token: ${tokenResponse.status} - ${errorText}`);
   }
 
   const tokenData = await tokenResponse.json();
-  console.log('[GoogleDrive] Access token obtained');
+  console.log('[GoogleDrive] Access token obtained successfully');
+  console.log('[GoogleDrive] Token expires in:', tokenData.expires_in, 'seconds');
 
   return tokenData.access_token;
 }
@@ -114,6 +118,10 @@ function getServiceAccountCredentials(): ServiceAccountCredentials {
   const clientEmail = import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
 
+  console.log('[GoogleDrive] Client email configured:', !!clientEmail);
+  console.log('[GoogleDrive] Private key configured:', !!privateKey);
+  console.log('[GoogleDrive] Client email value:', clientEmail);
+
   if (!clientEmail || !privateKey) {
     throw new Error(
       'Service Account credentials not configured. Please check environment variables.'
@@ -122,6 +130,9 @@ function getServiceAccountCredentials(): ServiceAccountCredentials {
 
   // Replace \n literal strings with actual newlines
   const formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
+
+  console.log('[GoogleDrive] Private key starts with:', formattedPrivateKey.substring(0, 50));
+  console.log('[GoogleDrive] Private key contains newlines:', formattedPrivateKey.includes('\n'));
 
   return {
     client_email: clientEmail,
