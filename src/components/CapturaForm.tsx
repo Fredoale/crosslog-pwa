@@ -7,8 +7,7 @@ import { useOfflineSync } from '../hooks/useOfflineSync';
 import { SignatureCanvas } from './SignatureCanvas';
 import { ImageEditor } from './ImageEditor';
 import { generateIndividualPDF, type SignatureData } from '../utils/pdfGenerator';
-import { googleDriveUploader } from '../utils/googleDriveUpload';
-import { googleAuth } from '../utils/googleAuth';
+import { uploadToGoogleDrive } from '../utils/googleDriveService';
 import { ocrScanner } from '../utils/ocrScanner';
 import { scanDocument } from '../utils/documentScanner';
 import { rotateToVertical } from '../utils/imageRotation';
@@ -45,10 +44,6 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   // Document scanning
   const [autoScan] = useState(false); // setAutoScan reserved for future use // Auto-scan disabled by default (OpenCV issues)
 
-  // Google Drive authentication
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
-
   const { updateCaptura, updateEntregaEstado, chofer, tipoTransporte, entregas: allEntregas, clientInfo } = useEntregasStore();
   const { getCurrentLocation, location: geoLocation } = useGeolocation();
   const { savePending, syncAll } = useOfflineSync();
@@ -64,56 +59,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
     getCurrentLocation();
   }, []);
 
-  // Check Google Drive authentication on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Initialize Google Auth
-        await googleAuth.init();
-
-        // Check if already authenticated
-        const authenticated = googleAuth.isAuthenticated();
-        console.log('[CapturaForm] Google Drive authentication status:', authenticated);
-        setIsAuthenticated(authenticated);
-      } catch (error) {
-        console.error('[CapturaForm] Error checking auth:', error);
-        setIsAuthenticated(false);
-      } finally {
-        setCheckingAuth(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
-
-  const handleAuthorizeGoogleDrive = async () => {
-    try {
-      console.log('[CapturaForm] Requesting Google Drive authorization...');
-      setCheckingAuth(true);
-      setError(null);
-
-      // Request access token (opens Google popup)
-      await googleAuth.getAccessToken();
-
-      // Check authentication status
-      const authenticated = googleAuth.isAuthenticated();
-      setIsAuthenticated(authenticated);
-
-      if (authenticated) {
-        console.log('[CapturaForm] ✓ Google Drive authorized successfully');
-      }
-    } catch (error: any) {
-      console.error('[CapturaForm] Authorization error:', error);
-
-      if (error?.message?.includes('popup')) {
-        setError('Popup bloqueado. Por favor, habilita popups para este sitio y vuelve a intentar.');
-      } else {
-        setError('Error al autorizar Google Drive. Intenta de nuevo.');
-      }
-    } finally {
-      setCheckingAuth(false);
-    }
-  };
+  // Service Account authentication is automatic - no user interaction needed
 
   const handleTomarFoto = async () => {
     if (fotos.length >= MAX_FOTOS) {
@@ -506,20 +452,31 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       console.log('[CapturaForm] ===== STARTING GOOGLE DRIVE UPLOAD =====');
       setUploadProgress(`Subiendo ${pdfResults.length} PDFs a Google Drive...`);
 
-      const uploadPromises = pdfResults.map(({ pdf, numeroRemito }, index) => {
+      const uploadPromises = pdfResults.map(async ({ pdf, numeroRemito }, index) => {
         const filename = `${numeroRemito}.pdf`;
         console.log(`[CapturaForm] Uploading PDF ${index + 1}/${pdfResults.length}: ${filename}`);
-        console.log(`[CapturaForm] Using folder ID: ${clientInfo?.folderId || 'default'}`);
 
-        return googleDriveUploader.uploadWithRetry(pdf, filename, 3, clientInfo?.folderId).then(result => {
-          console.log(`[CapturaForm] ✓ Upload ${index + 1} completed:`, result.success ? 'SUCCESS' : 'FAILED');
+        const folderId = clientInfo?.folderId || import.meta.env.VITE_GOOGLE_DRIVE_FOLDER_ID || '';
+        console.log(`[CapturaForm] Using folder ID: ${folderId}`);
+
+        try {
+          const result = await uploadToGoogleDrive(pdf, filename, folderId);
+          console.log(`[CapturaForm] ✓ Upload ${index + 1} completed: SUCCESS`);
           return {
             filename,
             numeroRemito,
-            result,
+            result: { success: true, ...result },
             pdfBlob: pdf,
           };
-        });
+        } catch (error: any) {
+          console.error(`[CapturaForm] ❌ Upload ${index + 1} failed:`, error);
+          return {
+            filename,
+            numeroRemito,
+            result: { success: false, error: error.message },
+            pdfBlob: pdf,
+          };
+        }
       });
 
       console.log('[CapturaForm] Waiting for all uploads to complete...');
@@ -683,60 +640,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
       {/* Form */}
       <main className="p-4 space-y-4 pb-24">
-        {/* Google Drive Authentication Banner */}
-        {!checkingAuth && !isAuthenticated && (
-          <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4 space-y-3">
-            <div className="flex items-start gap-3">
-              <svg className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-blue-900 mb-1">
-                  Autorización Requerida
-                </p>
-                <p className="text-xs text-blue-800 mb-3">
-                  Para guardar los PDFs de remitos, necesitas autorizar el acceso a Google Drive.
-                </p>
-                <button
-                  onClick={handleAuthorizeGoogleDrive}
-                  disabled={checkingAuth}
-                  className="w-full py-3 px-4 bg-white border-2 border-blue-600 text-blue-600 font-semibold rounded-lg hover:bg-blue-50 active:bg-blue-100 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                >
-                  {checkingAuth ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Verificando...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
-                      </svg>
-                      Autorizar con Google
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Success Message */}
-        {!checkingAuth && isAuthenticated && fotos.length === 0 && (
-          <div className="bg-green-50 border-2 border-green-300 rounded-lg p-3">
-            <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <p className="text-sm font-medium text-green-800">
-                ✓ Google Drive autorizado. Listo para guardar remitos.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* Service Account handles authentication automatically - no user action needed */}
 
         {/* Error Message */}
         {error && (
