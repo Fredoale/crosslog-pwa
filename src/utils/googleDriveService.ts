@@ -1,5 +1,7 @@
-// Google Drive API using Netlify Serverless Function
-// This keeps credentials secure on the server
+// Google Drive API using OAuth 2.0
+// Simple and direct implementation
+
+import { googleAuth } from './googleAuth';
 
 interface UploadResult {
   fileId: string;
@@ -7,75 +9,64 @@ interface UploadResult {
 }
 
 /**
- * Upload file to Google Drive using Netlify Function
+ * Upload file to Google Drive using OAuth
  */
 export async function uploadToGoogleDrive(
   blob: Blob,
   fileName: string,
   folderId: string
 ): Promise<UploadResult> {
-  console.log('[GoogleDrive] Starting upload with Netlify Function');
+  console.log('[GoogleDrive] Starting upload with OAuth');
   console.log('[GoogleDrive] File:', fileName, 'Size:', blob.size, 'bytes');
 
   try {
-    // Convert blob to base64
-    const base64Data = await blobToBase64(blob);
-    console.log('[GoogleDrive] File converted to base64');
+    // Get access token (prompts user if needed)
+    const accessToken = await googleAuth.getAccessToken();
+    console.log('[GoogleDrive] Access token obtained');
 
-    // Call Netlify Function
-    const functionUrl = '/.netlify/functions/upload-to-drive';
-    console.log('[GoogleDrive] Calling function:', functionUrl);
+    // Upload file to Google Drive
+    const metadata = {
+      name: fileName,
+      parents: [folderId],
+    };
 
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        fileData: base64Data,
-        fileName: fileName,
-        folderId: folderId,
-      }),
-    });
+    const formData = new FormData();
+    formData.append(
+      'metadata',
+      new Blob([JSON.stringify(metadata)], { type: 'application/json' })
+    );
+    formData.append('file', blob);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[GoogleDrive] Function call failed:', response.status, errorText);
-      throw new Error(`Function call failed: ${response.status} - ${errorText}`);
+    console.log('[GoogleDrive] Uploading to folder:', folderId);
+
+    const uploadResponse = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: formData,
+      }
+    );
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error('[GoogleDrive] Upload failed:', uploadResponse.status, errorText);
+      console.error('[GoogleDrive] Folder ID used:', folderId);
+      console.error('[GoogleDrive] File name:', fileName);
+      throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
     }
 
-    const result = await response.json();
-
-    if (!result.success) {
-      console.error('[GoogleDrive] Upload failed:', result.error);
-      throw new Error(result.error || 'Upload failed');
-    }
-
-    console.log('[GoogleDrive] Upload successful:', result.fileId);
+    const result = await uploadResponse.json();
+    console.log('[GoogleDrive] Upload successful:', result.id);
 
     return {
-      fileId: result.fileId,
+      fileId: result.id,
       webViewLink: result.webViewLink,
     };
   } catch (error: any) {
     console.error('[GoogleDrive] Error uploading file:', error);
     throw new Error(`Error al subir archivo a Google Drive: ${error.message}`);
   }
-}
-
-/**
- * Convert Blob to base64 string
- */
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      // Remove data URL prefix (data:application/pdf;base64,)
-      const base64Data = base64.split(',')[1];
-      resolve(base64Data);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
 }
