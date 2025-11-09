@@ -222,7 +222,7 @@ async function signWithPrivateKey(data: string, privateKeyPem: string): Promise<
 
     const cryptoKey = await crypto.subtle.importKey(
       'pkcs8',
-      binaryDer,
+      binaryDer.buffer as ArrayBuffer,
       {
         name: 'RSASSA-PKCS1-v1_5',
         hash: 'SHA-256',
