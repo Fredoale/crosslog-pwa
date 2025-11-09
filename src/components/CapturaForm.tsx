@@ -465,7 +465,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
           return {
             filename,
             numeroRemito,
-            result: { success: true, ...result },
+            result: { success: true as const, fileId: result.fileId, webViewLink: result.webViewLink },
             pdfBlob: pdf,
           };
         } catch (error: any) {
@@ -473,7 +473,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
           return {
             filename,
             numeroRemito,
-            result: { success: false, error: error.message },
+            result: { success: false as const, error: error.message },
             pdfBlob: pdf,
           };
         }
@@ -518,7 +518,8 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
       const numerosRemito = fotos.map(f => f.numeroRemito).filter(Boolean);
       const pdfUrls = succeeded
-        .map(r => r.result.success ? r.result.webViewLink : null)
+        .filter(r => r.result.success)
+        .map(r => r.result.webViewLink)
         .filter(Boolean) as string[];
 
       console.log('[CapturaForm] 📄 PDF URLs to send in webhook:', pdfUrls);
