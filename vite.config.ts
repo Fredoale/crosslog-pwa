@@ -20,7 +20,7 @@ export default defineConfig({
     },
     terserOptions: {
       compress: {
-        drop_console: true,
+        drop_console: false, // Temporarily enabled for debugging
         drop_debugger: true
       }
     }
