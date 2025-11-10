@@ -22,6 +22,9 @@ interface CapturaFormProps {
 const MAX_FOTOS = 7;
 
 export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
+  // Detectar si es modo edición (entrega ya completada)
+  const isEditMode = entrega.estado === 'COMPLETADO';
+
   const [cliente, setCliente] = useState(entrega.detalleEntregas || entrega.clienteNombreCompleto || entrega.cliente);
   const [fotos, setFotos] = useState<FotoCapturada[]>([]);
   const [capturando, setCapturando] = useState(false);
@@ -58,6 +61,18 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   useEffect(() => {
     getCurrentLocation();
   }, []);
+
+  // Load existing signature if in edit mode
+  useEffect(() => {
+    if (isEditMode && entrega.nombreReceptor) {
+      // Create a dummy signature with the existing receptor name
+      setSignature({
+        dataUrl: '', // No image needed for edit mode
+        nombreReceptor: entrega.nombreReceptor,
+      });
+      console.log('[CapturaForm] Loaded existing signature:', entrega.nombreReceptor);
+    }
+  }, [isEditMode, entrega.nombreReceptor]);
 
   // Service Account authentication is automatic - no user interaction needed
 
@@ -542,11 +557,29 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       // Step 3: Send webhook to N8N
       setUploadProgress('Enviando datos a N8N...');
 
-      const numerosRemito = fotos.map(f => f.numeroRemito).filter(Boolean);
-      const pdfUrls = succeeded
+      // Get new remitos from photos
+      const nuevosRemitos = fotos.map(f => f.numeroRemito).filter(Boolean);
+      const nuevosPdfUrls = succeeded
         .filter(r => r.result.success)
         .map(r => r.result.webViewLink)
         .filter(Boolean) as string[];
+
+      // If edit mode, combine with existing remitos
+      let numerosRemito = nuevosRemitos;
+      let pdfUrls = nuevosPdfUrls;
+
+      if (isEditMode && entrega.numeroRemito) {
+        const remitosExistentes = entrega.numeroRemito.split(',').map(r => r.trim());
+        const pdfUrlsExistentes = entrega.pdfUrls || [];
+
+        numerosRemito = [...remitosExistentes, ...nuevosRemitos];
+        pdfUrls = [...pdfUrlsExistentes, ...nuevosPdfUrls];
+
+        console.log('[CapturaForm] 📝 EDIT MODE: Combining remitos');
+        console.log('[CapturaForm] Existing remitos:', remitosExistentes);
+        console.log('[CapturaForm] New remitos:', nuevosRemitos);
+        console.log('[CapturaForm] Combined remitos:', numerosRemito);
+      }
 
       console.log('[CapturaForm] 📄 PDF URLs to send in webhook:', pdfUrls);
 
@@ -587,7 +620,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         detalle_entregas: entrega.detalleEntregas,
         estado: estado,
         chofer: chofer || 'Unknown',
-        tipo_transporte: tipoTransporte || 'Propio', // Columna Q en Sistema_entregas
+        tipo_transporte: tipoTransporte || 'Propio',
         timestamp: new Date().toISOString(),
         fecha_viaje: entrega.fechaViaje || new Date().toISOString().split('T')[0],
         geolocalizacion: finalGeoLocation ? {
@@ -597,8 +630,11 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         } : undefined,
         pdf_urls: pdfUrls,
         firma_receptor: signature.nombreReceptor,
-        numero_remitos: fotos.length,
+        numero_remitos: numerosRemito.length, // Total de remitos (existentes + nuevos)
         version_app: '1.0.0',
+        // Edit mode indicator
+        is_edit: isEditMode, // Indica si es una actualización
+        remitos_agregados: isEditMode ? nuevosRemitos.length : undefined,
         // Progress summary
         total_entregas: totalEntregas,
         entregas_completadas: entregasCompletadas,
@@ -672,10 +708,24 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
             </svg>
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-white">Captura de Remito</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-white">
+                {isEditMode ? 'Agregar Más Remitos' : 'Captura de Remito'}
+              </h1>
+              {isEditMode && (
+                <span className="px-2 py-1 text-xs font-bold rounded-full" style={{ backgroundColor: '#a8e063', color: '#1a2332' }}>
+                  EDICIÓN
+                </span>
+              )}
+            </div>
             <p className="text-sm" style={{ color: '#a8e063' }}>
               {entrega.clienteNombreCompleto || entrega.cliente} - Entrega N° {entrega.numeroEntrega}
             </p>
+            {isEditMode && entrega.numeroRemito && (
+              <p className="text-xs text-gray-300 mt-1">
+                Remitos actuales: {entrega.numeroRemito}
+              </p>
+            )}
           </div>
         </div>
       </header>

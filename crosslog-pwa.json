@@ -1,0 +1,614 @@
+{
+  "name": "crosslog-pwa",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crosslog-entregas",
+        "options": {
+          "allowedOrigins": "*",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1200,
+        128
+      ],
+      "id": "26f31898-6827-406b-b7dd-451bbf144a9a",
+      "name": "Webhook",
+      "webhookId": "ac2c728f-b9f3-4fe5-b0b8-27e2980e913d",
+      "retryOnFail": false,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// NODO 1: PROCESAR DATOS DEL WEBHOOK\n// ============================================================================\n/**\n * Recibe datos del webhook y los prepara para Google Sheets\n * CONECTAR DESPUÉS DE: Webhook\n */\n\nconst webhookData = $input.first().json.body;\n\nconsole.log('[N8N Nodo 1] Datos recibidos:', JSON.stringify(webhookData, null, 2));\n\n// Extraer datos del webhook\nconst hdr = webhookData.hdr || webhookData.Numero_HDR;\nconst numeroEntrega = webhookData.numero_entrega;\nconst chofer = webhookData.chofer;\nconst fechaViaje = webhookData.fecha_viaje;\n\n// Cliente y detalles\nconst clienteId = webhookData.cliente || webhookData.Dador_carga;\nconst detalleEntrega = webhookData.detalle_entregas || webhookData.Detalle_entrega;\n\n// Remitos - convertir a JSON string\nlet numerosRemito = webhookData.numeros_remito || webhookData.numero_remitos;\nif (Array.isArray(numerosRemito)) {\n  numerosRemito = JSON.stringify(numerosRemito);\n} else if (typeof numerosRemito === 'string') {\n  // Ya es string, mantener\n} else {\n  numerosRemito = '[]';\n}\n\n// Estado\nconst estado = webhookData.estado || 'COMPLETADO';\n\n// Cantidad de remitos\nconst cantRemito = webhookData.numero_remitos || (Array.isArray(webhookData.numeros_remito) ? webhookData.numeros_remito.length : 1);\n\n// Progreso\nconst progreso = webhookData.progreso || {};\nconst entregasCompletadas = progreso.entregas_completadas || webhookData.entregas_completadas || 0;\nconst entregasPendientes = progreso.entregas_pendientes || webhookData.entregas_pendientes || 0;\nconst progresoPorcentaje = progreso.progreso_porcentaje || webhookData.progreso_porcentaje || 0;\n\n// Construir formato CARGA / DESCARGA para columna L\nconst entregasCompletadasDetalle = webhookData.entregas_completadas_detalle || [];\nconst entregasPendientesDetalle = webhookData.entregas_pendientes_detalle || [];\n\n// Combinar todos los destinos (completados + pendientes)\nconst todosLosDestinos = [...entregasCompletadasDetalle, ...entregasPendientesDetalle];\n\n// Formato: \"CARGA: ECOLAB / DESCARGA: DESTINO1 / DESTINO2 / DESTINO3\"\nlet cargaDescarga = '';\nif (clienteId && todosLosDestinos.length > 0) {\n  const descargaTexto = todosLosDestinos.join(' / ');\n  cargaDescarga = `CARGA: ${clienteId} / DESCARGA: ${descargaTexto}`;\n} else if (clienteId && detalleEntrega) {\n  // Fallback si no hay lista de destinos\n  cargaDescarga = `CARGA: ${clienteId} / DESCARGA: ${detalleEntrega}`;\n} else {\n  cargaDescarga = '';\n}\n\nconsole.log('[N8N Nodo 1] Formato CARGA/DESCARGA:', cargaDescarga);\n\n// Firma receptor - verificar que no sea URL\nlet firmaReceptor = webhookData.firma_receptor || webhookData.nombre_receptor || '';\nif (firmaReceptor.startsWith('http')) {\n  console.warn('[N8N Nodo 1] ⚠️ firma_receptor contiene URL, limpiando...');\n  firmaReceptor = '';\n}\n\n// PDFs - convertir a JSON string\nlet pdfUrls = webhookData.pdf_urls;\nif (Array.isArray(pdfUrls)) {\n  pdfUrls = JSON.stringify(pdfUrls);\n} else if (typeof pdfUrls === 'string') {\n  if (!pdfUrls.startsWith('[')) {\n    pdfUrls = JSON.stringify([pdfUrls]);\n  }\n} else {\n  pdfUrls = '[]';\n}\n\n// Corregir URLs malformados\npdfUrls = pdfUrls.replace(/\\/fbs\\/d\\//g, '/file/d/');\n\nconsole.log('[N8N Nodo 1] PDF URLs:', pdfUrls);\nconsole.log('[N8N Nodo 1] Firma receptor:', firmaReceptor);\n\n// Preparar fila para Google Sheets\nconst filaGoogleSheets = {\n  fecha_viaje: fechaViaje,                    // A\n  Numero_HDR: hdr,                            // B\n  numero_entrega: numeroEntrega,              // C\n  numero_remitos: numerosRemito,              // D\n  Dador_carga: clienteId,                     // E\n  Detalle_entrega: detalleEntrega,            // F\n  Estado: estado,                             // G\n  Chofer: chofer,                             // H\n  Cant_remito: cantRemito,                    // I\n  entregas_completadas: entregasCompletadas,  // J\n  entregas_pendientes: entregasPendientes,    // K\n  Carga_Descarga: cargaDescarga,              // L (NUEVO: formato \"CARGA: X / DESCARGA: Y / Z\")\n  firma_receptor: firmaReceptor,              // M\n  pdf_urls: pdfUrls,                          // N\n};\n\n// Retornar datos\nreturn {\n  json: {\n    // Para Google Sheets\n    googleSheets: filaGoogleSheets,\n\n    // Para siguiente nodo\n    hdr: hdr,\n    chofer: chofer,\n    fechaViaje: fechaViaje,\n    numeroEntrega: numeroEntrega,\n    detalleEntrega: detalleEntrega,\n    firmaReceptor: firmaReceptor,\n    pdfUrls: pdfUrls,\n    numerosRemito: numerosRemito,\n\n    // Flags\n    hdrCompletado: estado === 'COMPLETADO' && entregasPendientes === 0,\n    entregasCompletadas: entregasCompletadas,\n    entregasPendientes: entregasPendientes,\n    progresoPorcentaje: progresoPorcentaje,\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -992,
+        128
+      ],
+      "id": "3bd59ae9-fdd6-49e6-a9cf-17254463a4c7",
+      "name": "NODO 2: PROCESAR DATOS DEL WEBHOOK"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ZIpJxakO8xdQ5V2yoO6kiHvNndA7h6jhhOhBekWaGlI",
+          "mode": "list",
+          "cachedResultName": "VIAJES CROSSLOG",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ZIpJxakO8xdQ5V2yoO6kiHvNndA7h6jhhOhBekWaGlI/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 129279590,
+          "mode": "list",
+          "cachedResultName": "Sistema_Entregas",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ZIpJxakO8xdQ5V2yoO6kiHvNndA7h6jhhOhBekWaGlI/edit#gid=129279590"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "fecha_viaje": "={{ $json.googleSheets.fecha_viaje }}",
+            "Numero_HDR": "={{ $json.googleSheets.Numero_HDR }}",
+            "numero_entrega": "={{ $json.googleSheets.numero_entrega }}",
+            "numero_remitos": "={{ $json.googleSheets.numero_remitos }}",
+            "Dador_carga": "={{ $('Webhook').item.json.body.cliente_nombre_completo }}",
+            "Detalle_entrega": "={{ $json.detalleEntrega }}",
+            "Estado": "={{ $json.googleSheets.entregas_completadas }}/{{ $('Webhook').item.json.body.total_entregas }}",
+            "Chofer": "={{ $json.googleSheets.Chofer }}",
+            "Cant_remito": "={{ $json.googleSheets.Cant_remito }}",
+            "entregas_completadas": "={{ $json.googleSheets.entregas_completadas }}",
+            "entregas_pendientes": "={{ $json.googleSheets.entregas_pendientes }}",
+            "progreso_porcentaje": "={{ $json.progresoPorcentaje }}",
+            "firma_receptor": "={{ $json.firmaReceptor }}",
+            "pdf_urls": "={{ $json.googleSheets.pdf_urls }}",
+            "tipo_transporte": "={{ $('Webhook').item.json.body.tipo_transporte }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "fecha_viaje",
+              "displayName": "fecha_viaje",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Numero_HDR",
+              "displayName": "Numero_HDR",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "numero_entrega",
+              "displayName": "numero_entrega",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "numero_remitos",
+              "displayName": "numero_remitos",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Dador_carga",
+              "displayName": "Dador_carga",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Detalle_entrega",
+              "displayName": "Detalle_entrega",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Estado",
+              "displayName": "Estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Chofer",
+              "displayName": "Chofer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cant_remito",
+              "displayName": "Cant_remito",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "entregas_completadas",
+              "displayName": "entregas_completadas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "entregas_pendientes",
+              "displayName": "entregas_pendientes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "progreso_porcentaje",
+              "displayName": "progreso_porcentaje",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "firma_receptor",
+              "displayName": "firma_receptor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pdf_urls",
+              "displayName": "pdf_urls",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tipo_transporte",
+              "displayName": "tipo_transporte",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -784,
+        128
+      ],
+      "id": "cb416319-eca9-4bb0-b726-7bfa18866bdd",
+      "name": "NODO 3: Sistema_Entregas",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cFESNrBDXGIGncXi",
+          "name": "Google Sheets Logistica"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "498094ae-a150-49b2-8a0c-85e93643391c",
+              "leftValue": "={{ $json.entregas_pendientes }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -592,
+        128
+      ],
+      "id": "ea912637-0f7a-496c-a4c1-528c561359ed",
+      "name": "NODO 3.1: IF - Verificar_HDR_Completada"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1ZIpJxakO8xdQ5V2yoO6kiHvNndA7h6jhhOhBekWaGlI",
+          "mode": "list",
+          "cachedResultName": "VIAJES CROSSLOG",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ZIpJxakO8xdQ5V2yoO6kiHvNndA7h6jhhOhBekWaGlI/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 129279590,
+          "mode": "list",
+          "cachedResultName": "Sistema_Entregas",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ZIpJxakO8xdQ5V2yoO6kiHvNndA7h6jhhOhBekWaGlI/edit#gid=129279590"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Numero_HDR",
+              "lookupValue": "={{ $json.Numero_HDR }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -368,
+        80
+      ],
+      "id": "fc5e12ca-a3c9-4b16-bbd0-e733a23f67df",
+      "name": "NODO 4: Estado_progreso",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "cFESNrBDXGIGncXi",
+          "name": "Google Sheets Logistica"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const datos = $input.first().json;\n\nconsole.log('[N8N Nodo 3] Datos recibidos:', JSON.stringify(datos, null, 2));\n\n// Extraer valores con fallbacks defensivos\nconst hdr = datos.hdr || datos.Numero_HDR || 'N/A';\nconst chofer = datos.chofer || datos.Chofer || 'N/A';\nconst fechaViaje = datos.fechaViaje || datos.fecha_viaje || 'N/A';\nconst numeroEntrega = datos.numeroEntrega || datos.numero_entrega || '1';\nconst detalleEntrega = datos.detalleEntrega || datos.Detalle_entrega || 'N/A';\nconst firmaReceptor = datos.firmaReceptor || datos.firma_receptor || '';\n\n// Progreso\nconst entregasCompletadas = datos.entregasCompletadas || datos.entregas_completadas || 0;\nconst entregasPendientes = datos.entregasPendientes || datos.entregas_pendientes || 0;\nconst totalEntregas = entregasCompletadas + entregasPendientes;\n// Calcular porcentaje si no viene o es 0\nlet progresoPorcentaje = datos.progresoPorcentaje || datos.progreso_porcentaje || 0;\nif (progresoPorcentaje === 0 && totalEntregas > 0) {\n  progresoPorcentaje = Math.round((entregasCompletadas / totalEntregas) * 100);\n}\n\n// Parsear remitos\nlet remitos = [];\nconst numerosRemitoRaw = datos.numerosRemito || datos.numero_remitos || datos.numeros_remito;\ntry {\n  if (typeof numerosRemitoRaw === 'string' && numerosRemitoRaw.startsWith('[')) {\n    remitos = JSON.parse(numerosRemitoRaw);\n  } else if (Array.isArray(numerosRemitoRaw)) {\n    remitos = numerosRemitoRaw;\n  } else if (numerosRemitoRaw) {\n    remitos = String(numerosRemitoRaw).split(',').map(r => r.trim()).filter(r => r);\n  }\n  if (!Array.isArray(remitos)) remitos = [String(remitos)];\n} catch (e) {\n  console.error('[N8N Nodo 3] Error parseando remitos:', e);\n  remitos = [];\n}\n\n// Parsear PDFs\nlet pdfUrls = [];\nconst pdfUrlsRaw = datos.pdfUrls || datos.pdf_urls;\ntry {\n  if (typeof pdfUrlsRaw === 'string' && pdfUrlsRaw.startsWith('[')) {\n    pdfUrls = JSON.parse(pdfUrlsRaw);\n  } else if (Array.isArray(pdfUrlsRaw)) {\n    pdfUrls = pdfUrlsRaw;\n  } else if (pdfUrlsRaw) {\n    pdfUrls = String(pdfUrlsRaw).split(',').map(url => url.trim()).filter(url => url);\n  }\n  if (!Array.isArray(pdfUrls)) pdfUrls = [String(pdfUrls)];\n} catch (e) {\n  console.error('[N8N Nodo 3] Error parseando PDFs:', e);\n  pdfUrls = [];\n}\n\nconsole.log('[N8N Nodo 3] Remitos parseados:', remitos);\nconsole.log('[N8N Nodo 3] PDFs parseados:', pdfUrls);\n\n// HTML para remitos\nlet htmlRemitos = '';\nremitos.forEach((remito, idx) => {\n  const pdfUrl = pdfUrls[idx] || '';\n  htmlRemitos += `\n    <li style=\"margin: 8px 0; padding: 10px; background-color: white; border: 1px solid #e0e0e0; border-radius: 6px; display: block;\">\n      <div style=\"display: flex; justify-content: space-between; align-items: center;\">\n        <span style=\"color: #1a2332; font-weight: 500;\">Remito ${remito}</span>\n        ${pdfUrl ? `<a href=\"${pdfUrl}\" style=\"color: #a8e063; text-decoration: none; font-weight: bold; padding: 6px 14px; background-color: #f0f9e8; border-radius: 4px; font-size: 13px; display: inline-block;\" target=\"_blank\">📄 Ver PDF</a>` : ''}\n      </div>\n    </li>\n  `;\n});\n\n// Retornar datos para Gmail\nreturn {\n  json: {\n    email: {\n      subject: `📦 Entrega Registrada - HDR ${hdr} - Entrega ${numeroEntrega}`,\n      toEmail: 'logistica@crosslog.com.ar',\n      hdr: hdr,\n      chofer: chofer,\n      fechaViaje: fechaViaje,\n      numeroEntrega: numeroEntrega,\n      detalleEntrega: detalleEntrega,\n      firmaReceptor: firmaReceptor,\n      cantidadRemitos: remitos.length,\n      htmlRemitos: htmlRemitos,\n      progreso: `${entregasCompletadas} de ${totalEntregas}`,\n      progresoPorcentaje: progresoPorcentaje,\n      fechaRegistro: new Date().toLocaleDateString('es-AR', {\n        timeZone: 'America/Argentina/Buenos_Aires',\n        year: 'numeric',\n        month: '2-digit',\n        day: '2-digit',\n      }),\n    },\n    whatsapp: {\n      numero: '5491154096639', // Número de WhatsApp\n      mensaje: `📦 *ENTREGA REGISTRADA*\n\n━━━━━━━━━━━━━━━━━━━━━\n🆔 *HDR:* ${hdr}\n📍 *Entrega N°:* ${numeroEntrega}\n👤 *Chofer:* ${chofer}\n📅 *Fecha:* ${fechaViaje}\n━━━━━━━━━━━━━━━━━━━━━\n\n🎯 *Destino*\n${detalleEntrega}\n${firmaReceptor ? `✍️ *Recibió:* ${firmaReceptor}` : ''}\n\n*Remitos (${remitos.length})*\n${remitos.map((r, idx) => {\n  const pdfUrl = pdfUrls[idx] || '';\n  if (pdfUrl) {\n    // Limpiar URL - quitar parámetros\n    const cleanUrl = pdfUrl.split('?')[0];\n    return `• Remito ${r}\\n  📄 ${cleanUrl}`;\n  }\n  return `• Remito ${r}`;\n}).join('\\n')}\n\n📊 *Progreso del HDR*\n✓ ${entregasCompletadas} de ${totalEntregas} entregas completadas\n⏳ ${entregasPendientes} pendiente${entregasPendientes !== 1 ? 's' : ''}\n📈 ${totalEntregas > 0 ? Math.round((entregasCompletadas / totalEntregas) * 100) : 0}% completado\n\n━━━━━━━━━━━━━━━━━━━━━\n\n*Resumen enviado por email*\n\n*CROSSLOG*\n_Servicios Logísticos | Warehousing_`,\n    },\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        272
+      ],
+      "id": "2ff22690-1eb2-4ba3-9af0-3e9747b4cfbb",
+      "name": "[Nodo 5: GENERAR EMAIL PARA ENTREGA INDIVIDUAL"
+    },
+    {
+      "parameters": {
+        "sendTo": "Logisticacrosslog@gmail.com",
+        "subject": "=Completada HDR: {{ $json.email.hdr }}   - Crosslog",
+        "message": "=<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Entrega Registrada</title>\n  <style>\n    @media only screen and (max-width: 600px) {\n      .container { width: 100% !important; }\n      .header { padding: 20px !important; }\n    }\n  </style>\n</head>\n<body style=\"margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5;\">\n\n  <!-- Outer Table (Full Width Container) -->\n  <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #f5f5f5;\">\n    <tr>\n      <td align=\"center\" style=\"padding: 20px 0;\">\n\n        <!-- Inner Table (Main Content - Max 600px) -->\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"600\" class=\"container\" style=\"max-width: 600px; background-color: #ffffff; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: 0 auto;\">\n\n          <!-- Header with Gradient -->\n          <tr>\n            <td class=\"header\" align=\"center\" style=\"background: linear-gradient(135deg, #1a2332 0%, #2d3e50 100%); padding: 30px; border-radius: 10px 10px 0 0;\">\n\n              <!-- Package Icon Circle (Properly Centered) -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                <tr>\n                  <td align=\"center\">\n                    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n                      <tr>\n                        <td align=\"center\" valign=\"middle\" width=\"80\" height=\"80\" style=\"background-color: #2196f3; border-radius: 50%; font-size: 40px; color: white; line-height: 80px;\">\n                          📦\n                        </td>\n                      </tr>\n                    </table>\n                  </td>\n                </tr>\n              </table>\n\n              <h1 style=\"color: white; margin: 20px 0 10px 0; font-size: 28px; text-align: center;\">\n                Entrega Registrada\n              </h1>\n\n              <p style=\"color: #a8e063; margin: 0; font-size: 18px; font-weight: bold; text-align: center;\">\n                HDR {{ $json.email.hdr }} - Entrega {{ $json.email.numeroEntrega }}\n              </p>\n\n              <p style=\"color: #ffffff; margin: 15px 0 0 0; font-size: 14px; text-align: center;\">\n                {{ $json.email.fechaRegistro }}\n              </p>\n            </td>\n          </tr>\n\n          <!-- Logo CROSSLOG -->\n          <tr>\n            <td align=\"center\" style=\"padding: 20px 30px; border-bottom: 2px solid #a8e063;\">\n              <h2 style=\"color: #1a2332; margin: 0; font-size: 28px; letter-spacing: 2px;\">\n                CROSSLOG\n              </h2>\n              <p style=\"color: #a8e063; margin: 5px 0 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px;\">\n                Servicios Logísticos | Warehousing\n              </p>\n            </td>\n          </tr>\n\n          <!-- Content -->\n          <tr>\n            <td style=\"padding: 25px 30px;\">\n\n              <!-- Chofer Info -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #e3f2fd; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;\">\n                <tr>\n                  <td style=\"padding: 15px;\">\n                    <p style=\"margin: 0; color: #1976d2; font-size: 12px; font-weight: bold; text-transform: uppercase;\">\n                      CHOFER\n                    </p>\n                    <p style=\"margin: 5px 0 0 0; color: #1a2332; font-size: 18px; font-weight: bold;\">\n                      {{ $json.email.chofer }}\n                    </p>\n                    <p style=\"margin: 5px 0 0 0; color: #666; font-size: 14px;\">\n                      Fecha: {{ $json.email.fechaViaje }}\n                    </p>\n                  </td>\n                </tr>\n              </table>\n\n              <!-- Progreso Info -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #fff3cd; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;\">\n                <tr>\n                  <td style=\"padding: 15px;\">\n                    <p style=\"margin: 0; color: #856404; font-size: 12px; font-weight: bold; text-transform: uppercase;\">\n                      PROGRESO DEL HDR\n                    </p>\n                    <p style=\"margin: 5px 0 0 0; color: #1a2332; font-size: 18px; font-weight: bold;\">\n                      {{ $json.email.progreso }} / Entregas al ({{ $json.email.progresoPorcentaje }}%)\n                    </p>\n                  </td>\n                </tr>\n              </table>\n\n              <!-- Destino Info -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #f8f9fa; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #a8e063;\">\n                <tr>\n                  <td style=\"padding: 15px;\">\n                    <p style=\"margin: 0; color: #666; font-size: 12px; font-weight: bold; text-transform: uppercase;\">\n                      📍 Destino\n                    </p>\n                    <p style=\"margin: 5px 0 0 0; color: #1a2332; font-size: 16px; font-weight: 500;\">\n                      {{ $json.email.detalleEntrega }}\n                    </p>\n                    {{ $json.email.firmaReceptor ? '<p style=\"margin: 10px 0 0 0; color: #666; font-size: 14px;\">✍️ Recibió: <strong>' + $json.email.firmaReceptor + '</strong></p>' : '' }}\n                  </td>\n                </tr>\n              </table>\n\n              <!-- Remitos -->\n              <h3 style=\"color: #1a2332; margin: 20px 0 15px 0; font-size: 18px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px;\">\n                Remitos ({{ $json.email.cantidadRemitos }})\n              </h3>\n              <ul style=\"margin: 0; padding-left: 20px; list-style: none;\">\n                {{ $json.email.htmlRemitos }}\n              </ul>\n\n            </td>\n          </tr>\n\n          <!-- Footer -->\n          <tr>\n            <td align=\"center\" style=\"background-color: #f8f9fa; padding: 20px 30px; border-radius: 0 0 10px 10px; border-top: 2px solid #a8e063;\">\n              <p style=\"margin: 0 0 10px 0; color: #2d3e50; font-size: 12px; font-weight: bold;\">\n                Generado automáticamente por CROSSLOG PWA\n              </p>\n              <p style=\"margin: 0; color: #999; font-size: 11px;\">\n                Datos sincronizados desde la app del chofer\n              </p>\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;\">\n                <tr>\n                  <td align=\"center\">\n                    <p style=\"margin: 0; color: #666; font-size: 11px;\">\n                      CROSSLOG - Servicios Logísticos<br>\n                      📧 logistica@crosslog.com.ar\n                    </p>\n                  </td>\n                </tr>\n              </table>\n            </td>\n          </tr>\n\n        </table>\n\n      </td>\n    </tr>\n  </table>\n\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -192,
+        272
+      ],
+      "id": "9b7aa45c-a367-4114-82d0-1f2c7131d8df",
+      "name": "NODO 5.1: HDR COMPLETADA1",
+      "webhookId": "5d3794f3-c022-4dc6-bccc-e652bd1ebbcf",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "xp161SYqABKa2c1c",
+          "name": "Gmil Logistica"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n  // NODO 2: GENERAR EMAIL PARA HDR COMPLETADO\n  // ============================================================================\n  /**\n   * Genera HTML con todas las entregas del HDR completado\n   * CONECTAR DESPUÉS DE: Google Sheets Lookup en hoja Sistema_entregas\n   *\n   * IMPORTANTE: El Google Sheets Lookup debe buscar en Sistema_entregas (NO Estado_progreso)\n   * - Sheet: Sistema_entregas\n   * - Lookup Column: B (Numero_HDR)\n   * - Return All Matches: YES\n   */\n\n  // Obtener TODAS las entregas del Google Sheets Lookup\n  const inputData = $input.all().map(item => item.json);\n\n  // ====== DEBUGGING Y VALIDACIÓN ======\n  console.log('=== NODO 2 DEBUG ===');\n  console.log('[NODO 2] Total items recibidos del Lookup:', inputData.length);\n\n  if (inputData.length === 0) {\n    // Intentar obtener el HDR del nodo anterior para dar mejor error\n    try {\n      const nodoAnterior = $('NODO 1: PROCESAR DATOS DEL WEBHOOK').first().json;\n      const hdrBuscado = nodoAnterior.hdr || 'DESCONOCIDO';\n      console.error('[NODO 2] ERROR: Lookup retornó 0 filas para HDR:', hdrBuscado);\n      throw new Error(`No se encontraron entregas para HDR: ${hdrBuscado}. Verificar: 1) HDR existe en\n  Sistema_entregas, 2) Columna B se llama \"Numero_HDR\", 3) Delay suficiente entre Append y Lookup.`);\n    } catch (e) {\n      throw new Error('No se encontraron entregas para este HDR. El Google Sheets Lookup retornó 0 resultados.');\n    }\n  }\n\n  // Mostrar columnas disponibles y primer item\n  console.log('[NODO 2] Columnas disponibles:', Object.keys(inputData[0]));\n  console.log('[NODO 2] Primer item completo:', JSON.stringify(inputData[0], null, 2));\n\n  // Detectar si viene de Estado_progreso (datos agrupados) o Sistema_entregas (filas individuales)\n  const primeraFila = inputData[0];\n\n  // Validar que primeraFila tenga datos\n  if (!primeraFila || typeof primeraFila !== 'object') {\n    throw new Error('[NODO 2] ERROR: primeraFila no es un objeto válido');\n  }\n\n  const vieneDeEstadoProgreso = primeraFila.Cliente && Array.isArray(JSON.parse(primeraFila.Cliente || '[]'));\n\n  let todasLasEntregas = [];\n  let hdr, chofer, fechaViaje;\n\n  if (vieneDeEstadoProgreso) {\n    // CASO 1: Viene de Estado_progreso (datos agrupados) - NECESITA DESAGRUPAR\n    console.log('[N8N Nodo 2] ⚠️ Detectado input de Estado_progreso - desagrupando...');\n\n    hdr = primeraFila.Numero_HDR || primeraFila['Numero HDR'] || primeraFila.hdr;\n    chofer = primeraFila.Chofer || primeraFila.chofer;\n    fechaViaje = primeraFila.fecha_viaje || primeraFila.Fecha_Viaje || primeraFila['Fecha Viaje'] || '';\n\n    // Validar que HDR existe\n    if (!hdr) {\n      console.error('[NODO 2] ERROR: No se pudo extraer HDR de primeraFila');\n      console.error('[NODO 2] Claves intentadas: Numero_HDR, Numero HDR, hdr');\n      console.error('[NODO 2] Claves disponibles:', Object.keys(primeraFila));\n      throw new Error('[NODO 2] No se pudo extraer el HDR de los datos de Estado_progreso. Columnas disponibles: ' +\n  Object.keys(primeraFila).join(', '));\n    }\n\n    // Parsear arrays agrupados\n    let clientes = [];\n    let remitos = [];\n    let pdfUrls = [];\n\n    try {\n      clientes = JSON.parse(primeraFila.Cliente || '[]');\n    } catch (e) {\n      clientes = [primeraFila.Cliente || ''];\n    }\n\n    try {\n      remitos = JSON.parse(primeraFila.numero_remitos || '[]');\n    } catch (e) {\n      remitos = [primeraFila.numero_remitos || ''];\n    }\n\n    try {\n      pdfUrls = JSON.parse(primeraFila.pdf_urls || '[]');\n    } catch (e) {\n      pdfUrls = [primeraFila.pdf_urls || ''];\n    }\n\n    const firmaReceptor = primeraFila.firma_receptor || '';\n\n    // Crear una entrega por cada cliente\n    todasLasEntregas = clientes.map((cliente, index) => ({\n      numero_entrega: (index + 1).toString(),\n      Detalle_entrega: cliente, // Ya viene parseado, no es JSON string\n      numero_remitos: JSON.stringify([remitos[index] || '']), // Array con 1 remito\n      pdf_urls: JSON.stringify([pdfUrls[index] || '']), // Array con 1 PDF\n      firma_receptor: firmaReceptor,\n    }));\n\n    console.log('[N8N Nodo 2] Entregas desagrupadas:', todasLasEntregas.length);\n\n  } else {\n    // CASO 2: Viene de Sistema_entregas (filas individuales) - CORRECTO\n    console.log('[N8N Nodo 2] ✓ Detectado input de Sistema_entregas');\n\n    todasLasEntregas = inputData;\n\n    // Intentar múltiples nombres de columna para HDR\n    hdr = primeraFila.Numero_HDR || primeraFila['Numero HDR'] || primeraFila.hdr || primeraFila['Número HDR'] ||\n  primeraFila.NUMERO_HDR;\n    chofer = primeraFila.Chofer || primeraFila.chofer;\n    fechaViaje = primeraFila.fecha_viaje || primeraFila.Fecha_Viaje || primeraFila['Fecha Viaje'];\n\n    // Validar que HDR existe\n    if (!hdr) {\n      console.error('[NODO 2] ERROR: No se pudo extraer HDR de Sistema_entregas');\n      console.error('[NODO 2] Claves intentadas: Numero_HDR, Numero HDR, hdr, Número HDR, NUMERO_HDR');\n      console.error('[NODO 2] Claves disponibles:', Object.keys(primeraFila));\n      console.error('[NODO 2] Valores de la primera fila:', JSON.stringify(primeraFila, null, 2));\n      throw new Error('[NODO 2] No se pudo extraer el HDR de Sistema_entregas. Columnas disponibles: ' +\n  Object.keys(primeraFila).join(', '));\n    }\n  }\n\n  console.log('[N8N Nodo 2] HDR extraído:', hdr);\n  console.log('[N8N Nodo 2] Chofer:', chofer);\n  console.log('[N8N Nodo 2] Total entregas procesadas:', todasLasEntregas.length);\n\n  // Generar HTML para cada entrega\n  let htmlEntregas = '';\n  let totalRemitos = 0;\n\n  todasLasEntregas.forEach((entrega, index) => {\n    const numeroEntrega = parseInt(entrega.numero_entrega) || (index + 1);\n\n    console.log(`[N8N Nodo 2] Procesando entrega ${index + 1}:`, {\n      numero_entrega: entrega.numero_entrega,\n      Detalle_entrega: entrega.Detalle_entrega,\n      numero_remitos: entrega.numero_remitos,\n      pdf_urls: entrega.pdf_urls\n    });\n\n    // Parsear Detalle_entrega si es JSON array\n    // IMPORTANTE: Usar el número de entrega como índice (numero_entrega - 1)\n    let detalleEntrega = entrega.Detalle_entrega || '';\n    if (detalleEntrega.startsWith('[') && detalleEntrega.endsWith(']')) {\n      try {\n        const parsed = JSON.parse(detalleEntrega);\n        if (Array.isArray(parsed) && parsed.length > 0) {\n          // Usar el índice basado en numero_entrega (entrega 1 = index 0, entrega 2 = index 1)\n          const entregaIndex = numeroEntrega - 1;\n          detalleEntrega = parsed[entregaIndex] || parsed[parsed.length - 1];\n          console.log(`[N8N Nodo 2] Array detectado, usando índice ${entregaIndex}: \"${detalleEntrega}\"`);\n        }\n      } catch (e) {\n        console.warn('[N8N Nodo 2] Error parseando Detalle_entrega:', e);\n      }\n    }\n\n    console.log(`[N8N Nodo 2] Destino parseado: \"${detalleEntrega}\"`);\n\n    const firmaReceptor = entrega.firma_receptor || '';\n\n    // Parsear remitos\n    let remitos = [];\n    try {\n      remitos = JSON.parse(entrega.numero_remitos || '[]');\n      if (!Array.isArray(remitos)) remitos = [String(remitos)];\n    } catch (e) {\n      remitos = String(entrega.numero_remitos || '').split(',').map(r => r.trim()).filter(r => r);\n    }\n\n    // Parsear PDFs\n    let pdfUrls = [];\n    try {\n      pdfUrls = JSON.parse(entrega.pdf_urls || '[]');\n      if (!Array.isArray(pdfUrls)) pdfUrls = [String(pdfUrls)];\n    } catch (e) {\n      pdfUrls = String(entrega.pdf_urls || '').split(',').map(url => url.trim()).filter(url => url);\n    }\n\n    totalRemitos += remitos.length;\n\n    // HTML para esta entrega (estilo PWA con \"Completado\")\n    htmlEntregas += `\n      <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #f8f9fa; border-radius:\n  8px; margin-bottom: 20px; border-left: 4px solid #a8e063; box-shadow: 0 2px 4px rgba(0,0,0,0.05);\">\n        <tr>\n          <td style=\"padding: 20px;\">\n            <!-- Header con número y badge -->\n            <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n              <tr>\n                <td style=\"width: 60%;\">\n                  <h3 style=\"color: #1a2332; margin: 0; font-size: 18px; font-weight: bold;\">Entrega N°\n  ${numeroEntrega}</h3>\n                </td>\n                <td align=\"right\" style=\"width: 40%;\">\n                  <span style=\"background-color: #a8e063; color: white; padding: 6px 16px; border-radius: 20px;\n  font-size: 12px; font-weight: bold; text-transform: uppercase; display: inline-block;\">Completado</span>\n                </td>\n              </tr>\n            </table>\n\n            ${detalleEntrega ? `\n            <!-- Destino -->\n            <div style=\"margin-top: 15px; margin-bottom: 12px;\">\n              <p style=\"margin: 0 0 5px 0; color: #666; font-size: 12px; text-transform: uppercase; font-weight:\n  bold;\">DESTINO</p>\n              <p style=\"margin: 0; color: #1a2332; font-size: 16px; font-weight: 500; line-height:\n  1.4;\">${detalleEntrega}</p>\n            </div>\n            ` : ''}\n\n            <!-- Remitos -->\n            <div style=\"margin-top: 15px;\">\n              <p style=\"margin: 0 0 8px 0; color: #666; font-size: 12px; text-transform: uppercase; font-weight:\n  bold;\">REMITOS (${remitos.length})</p>\n    `;\n\n    remitos.forEach((remito, idx) => {\n      const pdfUrl = pdfUrls[idx] || '';\n      htmlEntregas += `\n              <!-- Remito ${remito} -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: white;\n  border-radius: 6px; margin-bottom: 8px; border: 1px solid #e0e0e0;\">\n                <tr>\n                  <td style=\"padding: 12px; width: 60%;\">\n                    <span style=\"color: #1a2332; font-weight: 500; font-size: 14px;\">Remito ${remito}</span>\n                  </td>\n                  <td align=\"right\" style=\"padding: 12px; width: 40%;\">\n                    ${pdfUrl ? `<a href=\"${pdfUrl}\" style=\"color: #a8e063; text-decoration: none; font-weight: bold;\n  padding: 8px 16px; background-color: #f0f9e8; border-radius: 6px; font-size: 13px; display: inline-block;\"\n  target=\"_blank\">📄 Ver PDF</a>` : ''}\n                  </td>\n                </tr>\n              </table>\n      `;\n    });\n\n    htmlEntregas += `\n            </div>\n\n            ${firmaReceptor && !firmaReceptor.startsWith('http') ? `\n            <!-- Firma receptor -->\n            <div style=\"margin-top: 15px; padding-top: 12px; border-top: 1px solid #e0e0e0;\">\n              <p style=\"margin: 0; color: #666; font-size: 13px;\">Recibido por: <strong style=\"color: #1a2332;\n  font-size: 14px;\">${firmaReceptor}</strong></p>\n            </div>\n            ` : ''}\n          </td>\n        </tr>\n      </table>\n    `;\n  });\n\n  console.log('[N8N Nodo 2] HTML generado, entregas:', todasLasEntregas.length, 'remitos:', totalRemitos);\n\n  // Generar HTML de barra de progreso\n  const htmlProgressBar = `\n  <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"margin-bottom: 30px;\">\n    <tr>\n      <td>\n        <p style=\"margin: 0 0 12px 0; color: #1a2332; font-size: 13px; font-weight: 600; text-align: center;\n  text-transform: uppercase; letter-spacing: 0.5px;\">\n          Progreso Completado\n        </p>\n        <!-- Progress Bar Container -->\n        <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #e8f5e9; border-radius:\n   12px; overflow: hidden;\">\n          <tr>\n            <td style=\"padding: 0;\">\n              <!-- Progress Bar Fill (100%) -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background: linear-gradient(135deg,\n   #66bb6a 0%, #4caf50 100%); height: 28px;\">\n                <tr>\n                  <td align=\"center\" valign=\"middle\">\n                    <span style=\"color: white; font-size: 14px; font-weight: 700; text-shadow: 0 1px 3px\n  rgba(0,0,0,0.15); letter-spacing: 0.3px;\">\n                      ✓ 100%\n                    </span>\n                  </td>\n                </tr>\n              </table>\n            </td>\n          </tr>\n        </table>\n        <p style=\"margin: 10px 0 0 0; color: #66bb6a; font-size: 12px; text-align: center; font-weight: 500;\">\n          Todas las entregas del HDR han sido completadas\n        </p>\n      </td>\n    </tr>\n  </table>\n  `;\n\n  // Retornar datos para Gmail\n  return {\n    json: {\n      email: {\n        subject: `✅ HDR ${hdr} COMPLETADO - ${chofer}`,\n        toEmail: 'logistica@crosslog.com.ar',\n        hdr: hdr,\n        chofer: chofer,\n        fechaViaje: fechaViaje,\n        totalEntregas: todasLasEntregas.length,\n        totalRemitos: totalRemitos,\n        htmlProgressBar: htmlProgressBar,\n        htmlEntregas: htmlEntregas,\n        fechaCompletado: new Date().toLocaleDateString('es-AR', {\n          timeZone: 'America/Argentina/Buenos_Aires',\n          year: 'numeric',\n          month: '2-digit',\n          day: '2-digit',\n        }),\n      },\n      whatsapp: {\n        numero: '5491154096639', // Número de WhatsApp\n        mensaje: `*HDR ${hdr} - COMPLETADO* ✅\n\n  ━━━━━━━━━━━━━━━━━━━━━\n  👤 *Chofer:* ${chofer}\n  📅 *Fecha:* ${fechaViaje}\n  ━━━━━━━━━━━━━━━━━━━━━\n\n  📊 *Resumen General*\n  ✓ ${todasLasEntregas.length} entregas completadas\n  ✓ ${totalRemitos} remitos entregados\n\n  📦 *Detalle de Entregas*\n  ${todasLasEntregas.map((entrega, index) => {\n    const numeroEntrega = parseInt(entrega.numero_entrega) || (index + 1);\n    let detalleEntrega = entrega.Detalle_entrega || '';\n\n    // Parsear destino si es array\n    if (detalleEntrega.startsWith('[') && detalleEntrega.endsWith(']')) {\n      try {\n        const parsed = JSON.parse(detalleEntrega);\n        if (Array.isArray(parsed) && parsed.length > 0) {\n          const entregaIndex = numeroEntrega - 1;\n          detalleEntrega = parsed[entregaIndex] || parsed[parsed.length - 1];\n        }\n      } catch (e) {}\n    }\n\n    const firmaReceptor = entrega.firma_receptor || '';\n\n    // Parsear remitos\n    let remitos = [];\n    try {\n      remitos = JSON.parse(entrega.numero_remitos || '[]');\n      if (!Array.isArray(remitos)) remitos = [String(remitos)];\n    } catch (e) {\n      remitos = String(entrega.numero_remitos || '').split(',').map(r => r.trim()).filter(r => r);\n    }\n\n    // Parsear PDFs\n    let pdfUrls = [];\n    try {\n      pdfUrls = JSON.parse(entrega.pdf_urls || '[]');\n      if (!Array.isArray(pdfUrls)) pdfUrls = [String(pdfUrls)];\n    } catch (e) {\n      pdfUrls = String(entrega.pdf_urls || '').split(',').map(url => url.trim()).filter(url => url);\n    }\n\n    // Generar texto de remitos con links\n    const remitosTexto = remitos.map((remito, idx) => {\n      const pdfUrl = pdfUrls[idx] || '';\n      if (pdfUrl) {\n        // Limpiar URL - quitar parámetros\n        const cleanUrl = pdfUrl.split('?')[0];\n        return `${remito} → ${cleanUrl}`;\n      }\n      return remito;\n    }).join('\\n   ');\n\n    return `\n  *Entrega N° ${numeroEntrega}*\n  🎯 ${detalleEntrega}\n  Remito${remitos.length > 1 ? 's' : ''} (${remitos.length}):\n     ${remitosTexto}${firmaReceptor ? `\\n✍️ Recibió: ${firmaReceptor}` : ''}`;\n  }).join('\\n')}\n\n  ━━━━━━━━━━━━━━━━━━━━━\n\n  *Resumen enviado por email*\n\n  *CROSSLOG*\n  _Servicios Logísticos | Warehousing_`,\n      },\n    }\n  };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        80
+      ],
+      "id": "b81418f8-4e88-4101-8f1b-e3969f3306af",
+      "name": "NODO 4.1: GENERAR EMAIL PARA HDR COMPLETADO"
+    },
+    {
+      "parameters": {
+        "sendTo": "Logisticacrosslog@gmail.com",
+        "subject": "=Completada HDR: {{ $json.email.hdr }}   - Crosslog",
+        "message": "=<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>HDR Completado</title>\n  <style>\n    @media only screen and (max-width: 600px) {\n      .container { width: 100% !important; }\n      .header { padding: 20px !important; }\n      .stats-table td { display: block !important; width: 100% !important; padding: 0 !important; margin-bottom: 10px; }\n    }\n  </style>\n</head>\n<body style=\"margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5;\">\n\n  <!-- Outer Table (Full Width Container) -->\n  <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #f5f5f5;\">\n    <tr>\n      <td align=\"center\" style=\"padding: 20px 0;\">\n\n        <!-- Inner Table (Main Content - Max 600px) -->\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"600\" class=\"container\" style=\"max-width: 600px; background-color: #ffffff; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: 0 auto;\">\n\n          <!-- Header with Gradient -->\n          <tr>\n            <td class=\"header\" align=\"center\" style=\"background: linear-gradient(135deg, #1a2332 0%, #2d3e50 100%); padding: 30px; border-radius: 10px 10px 0 0;\">\n\n              <!-- Checkmark Circle (Properly Centered) -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                <tr>\n                  <td align=\"center\">\n                    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n                      <tr>\n                        <td align=\"center\" valign=\"middle\" width=\"80\" height=\"80\" style=\"background-color: #a8e063; border-radius: 50%; font-size: 48px; color: white; line-height: 80px;\">\n                          ✓\n                        </td>\n                      </tr>\n                    </table>\n                  </td>\n                </tr>\n              </table>\n\n              <h1 style=\"color: white; margin: 20px 0 10px 0; font-size: 32px; text-align: center;\">\n                HDR {{ $json.email.hdr }}\n              </h1>\n\n              <p style=\"color: #a8e063; margin: 0; font-size: 20px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; text-align: center;\">\n                COMPLETADO\n              </p>\n\n              <p style=\"color: #ffffff; margin: 15px 0 0 0; font-size: 14px; text-align: center;\">\n                {{ $json.email.fechaCompletado }}\n              </p>\n            </td>\n          </tr>\n\n          <!-- Logo CROSSLOG -->\n          <tr>\n            <td align=\"center\" style=\"padding: 20px 30px; border-bottom: 2px solid #a8e063;\">\n              <h2 style=\"color: #1a2332; margin: 0; font-size: 28px; letter-spacing: 2px;\">\n                CROSSLOG\n              </h2>\n              <p style=\"color: #a8e063; margin: 5px 0 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px;\">\n                Servicios Logísticos | Warehousing\n              </p>\n            </td>\n          </tr>\n\n          <!-- Content -->\n          <tr>\n            <td style=\"padding: 25px 30px;\">\n\n              <!-- Chofer Info -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #e3f2fd; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;\">\n                <tr>\n                  <td style=\"padding: 15px;\">\n                    <p style=\"margin: 0; color: #1976d2; font-size: 12px; font-weight: bold; text-transform: uppercase;\">\n                      CHOFER\n                    </p>\n                    <p style=\"margin: 5px 0 0 0; color: #1a2332; font-size: 18px; font-weight: bold;\">\n                      {{ $json.email.chofer }}\n                    </p>\n                    <p style=\"margin: 5px 0 0 0; color: #666; font-size: 14px;\">\n                      Fecha: {{ $json.email.fechaViaje }}\n                    </p>\n                  </td>\n                </tr>\n              </table>\n\n              <!-- Stats Table -->\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" class=\"stats-table\" style=\"margin-bottom: 25px;\">\n                <tr>\n                  <td width=\"50%\" style=\"padding-right: 10px;\">\n                    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border: 2px solid #a8e063; border-radius: 8px;\">\n                      <tr>\n                        <td align=\"center\" style=\"padding: 20px;\">\n                          <p style=\"margin: 0; font-size: 36px; font-weight: bold; color: #a8e063;\">\n                            {{ $json.email.totalEntregas }}\n                          </p>\n                          <p style=\"margin: 5px 0 0 0; font-size: 14px; color: #2d3e50; font-weight: bold;\">\n                            Entregas\n                          </p>\n                        </td>\n                      </tr>\n                    </table>\n                  </td>\n                  <td width=\"50%\" style=\"padding-left: 10px;\">\n                    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border: 2px solid #a8e063; border-radius: 8px;\">\n                      <tr>\n                        <td align=\"center\" style=\"padding: 20px;\">\n                          <p style=\"margin: 0; font-size: 36px; font-weight: bold; color: #a8e063;\">\n                            {{ $json.email.totalRemitos }}\n                          </p>\n                          <p style=\"margin: 5px 0 0 0; font-size: 14px; color: #2d3e50; font-weight: bold;\">\n                            Remitos\n                          </p>\n                        </td>\n                      </tr>\n                    </table>\n                  </td>\n                </tr>\n              </table>\n\n              <!-- Progress Bar 100% (Generated by Node 2) -->\n              {{ $json.email.htmlProgressBar }}\n\n              <!-- Section Title -->\n              <h3 style=\"color: #1a2332; margin: 30px 0 20px 0; font-size: 20px; border-bottom: 2px solid #a8e063; padding-bottom: 10px;\">\n                Detalle de Entregas\n              </h3>\n\n              <!-- Dynamic Entregas (Generated by Node 2) -->\n              <div>\n                {{ $json.email.htmlEntregas }}\n              </div>\n\n            </td>\n          </tr>\n\n          <!-- Footer -->\n          <tr>\n            <td align=\"center\" style=\"background-color: #f8f9fa; padding: 20px 30px; border-radius: 0 0 10px 10px; border-top: 2px solid #a8e063;\">\n              <p style=\"margin: 0 0 10px 0; color: #2d3e50; font-size: 12px; font-weight: bold;\">\n                Generado automáticamente por CROSSLOG PWA\n              </p>\n              <p style=\"margin: 0; color: #999; font-size: 11px;\">\n                Datos sincronizados desde la app del chofer\n              </p>\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;\">\n                <tr>\n                  <td align=\"center\">\n                    <p style=\"margin: 0; color: #666; font-size: 11px;\">\n                      CROSSLOG - Servicios Logísticos<br>\n                      📧 logistica@crosslog.com.ar\n                    </p>\n                  </td>\n                </tr>\n              </table>\n            </td>\n          </tr>\n\n        </table>\n\n      </td>\n    </tr>\n  </table>\n\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        32,
+        -64
+      ],
+      "id": "81cc266e-7b95-4329-b056-add022b2213f",
+      "name": "NODO 4.2: HDR COMPLETADA",
+      "webhookId": "5d3794f3-c022-4dc6-bccc-e652bd1ebbcf",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "xp161SYqABKa2c1c",
+          "name": "Gmil Logistica"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "764420436762718",
+        "recipientPhoneNumber": "={{ $json.telefonoDestinatario || '5491154096639'  }}",
+        "textBody": "={{ $json.whatsapp.mensaje }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        48,
+        128
+      ],
+      "id": "53065a6b-62c0-4e43-83ae-e6ef0f58ec87",
+      "name": "Send message",
+      "webhookId": "8cb5d94c-d81c-4ada-8ee5-50f1c59cea26",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "GbAABGHjJYfNfCnx",
+          "name": "WhatsApp Token permanente"
+        }
+      },
+      "notes": "✅ CONFIGURADO:\n- Phone Number ID: 764420436762718\n- WABA ID: 1687233251972684\n- Destinatario: 5491154096639\n⚠️ PENDIENTE: Configurar credenciales de WhatsApp Business Cloud API"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "fredoale.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+            "content-length": "678",
+            "accept": "application/json",
+            "accept-encoding": "gzip, br",
+            "accept-language": "es-ES,es;q=0.9",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "186.148.70.75",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "AR",
+            "cf-ray": "9996acdd078bd5e6-GRU",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "dnt": "1",
+            "origin": "https://appcrosslog.netlify.app",
+            "priority": "u=1, i",
+            "referer": "https://appcrosslog.netlify.app/",
+            "sec-ch-ua": "\"Google Chrome\";v=\"141\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "186.148.70.75, 104.23.254.170",
+            "x-forwarded-host": "fredoale.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-20-65bb84f5c9-rng5l",
+            "x-is-trusted": "yes",
+            "x-real-ip": "186.148.70.75"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "hdr": "15512",
+            "numero_entrega": "1",
+            "numeros_remito": [
+              "102030"
+            ],
+            "cliente": "ONTEC-MIRGOR (BARADERO)",
+            "cliente_nombre_completo": "TOYOTA",
+            "detalle_entregas": "ONTEC-MIRGOR (BARADERO)",
+            "estado": "COMPLETADO",
+            "chofer": "Transporte",
+            "tipo_transporte": "FALZONE",
+            "timestamp": "2025-11-04T19:56:31.695Z",
+            "fecha_viaje": "05-11-2025",
+            "pdf_urls": [
+              "https://drive.google.com/file/d/1Dl7uJWkW0x-YtmmtRhlsUn-HNsGDd6pB/view?usp=drivesdk"
+            ],
+            "firma_receptor": "Alfredo Flores",
+            "numero_remitos": 1,
+            "version_app": "1.0.0",
+            "total_entregas": 1,
+            "entregas_completadas": 1,
+            "entregas_pendientes": 0,
+            "progreso_porcentaje": 100,
+            "entregas_completadas_detalle": [
+              "ONTEC-MIRGOR (BARADERO)"
+            ],
+            "entregas_pendientes_detalle": []
+          },
+          "webhookUrl": "https://fredoale.app.n8n.cloud/webhook/crosslog-entregas",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "NODO 2: PROCESAR DATOS DEL WEBHOOK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NODO 2: PROCESAR DATOS DEL WEBHOOK": {
+      "main": [
+        [
+          {
+            "node": "NODO 3: Sistema_Entregas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NODO 3: Sistema_Entregas": {
+      "main": [
+        [
+          {
+            "node": "NODO 3.1: IF - Verificar_HDR_Completada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NODO 3.1: IF - Verificar_HDR_Completada": {
+      "main": [
+        [
+          {
+            "node": "NODO 4: Estado_progreso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "[Nodo 5: GENERAR EMAIL PARA ENTREGA INDIVIDUAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NODO 4: Estado_progreso": {
+      "main": [
+        [
+          {
+            "node": "NODO 4.1: GENERAR EMAIL PARA HDR COMPLETADO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "[Nodo 5: GENERAR EMAIL PARA ENTREGA INDIVIDUAL": {
+      "main": [
+        [
+          {
+            "node": "NODO 5.1: HDR COMPLETADA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NODO 4.1: GENERAR EMAIL PARA HDR COMPLETADO": {
+      "main": [
+        [
+          {
+            "node": "NODO 4.2: HDR COMPLETADA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NODO 4.2: HDR COMPLETADA": {
+      "main": [
+        []
+      ]
+    },
+    "NODO 5.1: HDR COMPLETADA1": {
+      "main": [
+        []
+      ]
+    },
+    "Send message": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "0cf9a984-4a88-43b6-bf9d-46f3f0825a7b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "71fe8cf04eb8137a8c9681a7267cfd7fbd1e13061d8e3136831fdd34575830bf"
+  },
+  "id": "jzDlDcTdQCxgiJ0n",
+  "tags": []
+}

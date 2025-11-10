@@ -299,16 +299,10 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
           sortedEntregas.map((entrega) => (
             <div
               key={entrega.id}
-              className={`card p-4 transition-transform ${
-                entrega.estado !== 'COMPLETADO'
-                  ? 'cursor-pointer active:scale-[0.98]'
-                  : 'cursor-default opacity-90'
-              }`}
+              className="card p-4 transition-transform cursor-pointer active:scale-[0.98]"
               onClick={() => {
-                // Only allow clicking on non-completed entregas
-                if (entrega.estado !== 'COMPLETADO') {
-                  onSelectEntrega(entrega);
-                }
+                // Allow clicking on ALL entregas (including completed ones for editing)
+                onSelectEntrega(entrega);
               }}
             >
               <div className="flex items-start justify-between mb-3">
@@ -372,8 +366,8 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
 
               </div>
 
-              {/* Action Button - Only show if not completed */}
-              {entrega.estado !== 'COMPLETADO' && (
+              {/* Action Button */}
+              {entrega.estado !== 'COMPLETADO' ? (
                 <button
                   className="w-full py-3 rounded-lg font-semibold transition-opacity text-white hover:opacity-90 active:opacity-75"
                   style={{ background: 'linear-gradient(135deg, #1a2332 0%, #2d3e50 100%)' }}
@@ -398,6 +392,27 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
                       />
                     </svg>
                     Iniciar Entrega
+                  </span>
+                </button>
+              ) : (
+                <button
+                  className="w-full py-3 rounded-lg font-semibold transition-opacity text-white hover:opacity-90 active:opacity-75"
+                  style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectEntrega(entrega);
+                  }}
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                      />
+                    </svg>
+                    Agregar Más Remitos
                   </span>
                 </button>
               )}
