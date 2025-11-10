@@ -6,6 +6,7 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { SignatureCanvas } from './SignatureCanvas';
 import { ImageEditor } from './ImageEditor';
+import { Toast } from './Toast';
 import { generateIndividualPDF, type SignatureData } from '../utils/pdfGenerator';
 import { uploadToGoogleDrive } from '../utils/googleDriveService';
 import { ocrScanner } from '../utils/ocrScanner';
@@ -40,6 +41,11 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   // Procesamiento
   const [processing, setProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
+
+  // Toast notification
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
 
   // Document scanning
   const [autoScan] = useState(false); // setAutoScan reserved for future use // Auto-scan disabled by default (OpenCV issues)
@@ -574,7 +580,14 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
       // Force immediate sync to send to N8N
       console.log('[CapturaForm] Forcing immediate sync to N8N...');
-      await syncAll();
+      const syncSuccess = await syncAll();
+
+      // Show confirmation toast
+      if (syncSuccess) {
+        setToastMessage(`✅ Entrega registrada correctamente - HDR ${entrega.hdr}`);
+        setToastType('success');
+        setShowToast(true);
+      }
 
       // NOTE: Google Sheets writes are now handled by N8N webhook
       // The webhook receives the data and writes to both Sistema_entregas and Estado_progreso
@@ -618,6 +631,16 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f5f5f5' }}>
+      {/* Toast Notification */}
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          duration={10000}
+          onClose={() => setShowToast(false)}
+        />
+      )}
+
       {/* Header */}
       <header className="sticky top-0 z-10 shadow-lg" style={{
         background: 'linear-gradient(135deg, #1a2332 0%, #2d3e50 100%)'

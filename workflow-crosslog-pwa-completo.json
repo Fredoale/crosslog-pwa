@@ -1,0 +1,390 @@
+{
+  "name": "✅ CROSSLOG PWA - Flujo Completo con WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crosslog-entrega",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook - Recibir Entrega",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "crosslog-entrega-webhook",
+      "id": "webhook-trigger"
+    },
+    {
+      "parameters": {
+        "functionCode": "const webhookData = $input.first().json.body;\n\nconsole.log('[N8N Nodo 1] Datos recibidos:', JSON.stringify(webhookData, null, 2));\n\nconst hdr = webhookData.hdr || webhookData.Numero_HDR;\nconst numeroEntrega = webhookData.numero_entrega;\nconst chofer = webhookData.chofer;\nconst fechaViaje = webhookData.fecha_viaje;\nconst clienteId = webhookData.cliente || webhookData.Dador_carga;\nconst detalleEntrega = webhookData.detalle_entregas || webhookData.Detalle_entrega;\n\nlet numerosRemito = webhookData.numeros_remito || webhookData.numero_remitos;\nif (Array.isArray(numerosRemito)) {\n  numerosRemito = JSON.stringify(numerosRemito);\n} else if (typeof numerosRemito === 'string') {\n  // Ya es string\n} else {\n  numerosRemito = '[]';\n}\n\nconst estado = webhookData.estado || 'COMPLETADO';\nconst cantRemito = webhookData.numero_remitos || (Array.isArray(webhookData.numeros_remito) ? webhookData.numeros_remito.length : 1);\n\nconst progreso = webhookData.progreso || {};\nconst entregasCompletadas = progreso.entregas_completadas || webhookData.entregas_completadas || 0;\nconst entregasPendientes = progreso.entregas_pendientes || webhookData.entregas_pendientes || 0;\nconst progresoPorcentaje = progreso.progreso_porcentaje || webhookData.progreso_porcentaje || 0;\n\nconst entregasCompletadasDetalle = webhookData.entregas_completadas_detalle || [];\nconst entregasPendientesDetalle = webhookData.entregas_pendientes_detalle || [];\nconst todosLosDestinos = [...entregasCompletadasDetalle, ...entregasPendientesDetalle];\n\nlet cargaDescarga = '';\nif (clienteId && todosLosDestinos.length > 0) {\n  const descargaTexto = todosLosDestinos.join(' / ');\n  cargaDescarga = `CARGA: ${clienteId} / DESCARGA: ${descargaTexto}`;\n} else if (clienteId && detalleEntrega) {\n  cargaDescarga = `CARGA: ${clienteId} / DESCARGA: ${detalleEntrega}`;\n} else {\n  cargaDescarga = '';\n}\n\nlet firmaReceptor = webhookData.firma_receptor || webhookData.nombre_receptor || '';\nif (firmaReceptor.startsWith('http')) {\n  firmaReceptor = '';\n}\n\nlet pdfUrls = webhookData.pdf_urls;\nif (Array.isArray(pdfUrls)) {\n  pdfUrls = JSON.stringify(pdfUrls);\n} else if (typeof pdfUrls === 'string') {\n  if (!pdfUrls.startsWith('[')) {\n    pdfUrls = JSON.stringify([pdfUrls]);\n  }\n} else {\n  pdfUrls = '[]';\n}\n\npdfUrls = pdfUrls.replace(/\\/fbs\\/d\\//g, '/file/d/');\n\nconst filaGoogleSheets = {\n  fecha_viaje: fechaViaje,\n  Numero_HDR: hdr,\n  numero_entrega: numeroEntrega,\n  numero_remitos: numerosRemito,\n  Dador_carga: clienteId,\n  Detalle_entrega: detalleEntrega,\n  Estado: estado,\n  Chofer: chofer,\n  Cant_remito: cantRemito,\n  entregas_completadas: entregasCompletadas,\n  entregas_pendientes: entregasPendientes,\n  Carga_Descarga: cargaDescarga,\n  firma_receptor: firmaReceptor,\n  pdf_urls: pdfUrls,\n};\n\nreturn {\n  json: {\n    googleSheets: filaGoogleSheets,\n    hdr: hdr,\n    chofer: chofer,\n    fechaViaje: fechaViaje,\n    numeroEntrega: numeroEntrega,\n    detalleEntrega: detalleEntrega,\n    firmaReceptor: firmaReceptor,\n    pdfUrls: pdfUrls,\n    numerosRemito: numerosRemito,\n    hdrCompletado: estado === 'COMPLETADO' && entregasPendientes === 0,\n    entregasCompletadas: entregasCompletadas,\n    entregasPendientes: entregasPendientes,\n    progresoPorcentaje: progresoPorcentaje,\n  }\n};"
+      },
+      "name": "Nodo 1 - Procesar Datos",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "id": "procesar-datos"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_SPREADSHEET_ID_AQUI",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sistema_entregas",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "fecha_viaje": "={{ $json.googleSheets.fecha_viaje }}",
+            "Numero_HDR": "={{ $json.googleSheets.Numero_HDR }}",
+            "numero_entrega": "={{ $json.googleSheets.numero_entrega }}",
+            "numero_remitos": "={{ $json.googleSheets.numero_remitos }}",
+            "Dador_carga": "={{ $json.googleSheets.Dador_carga }}",
+            "Detalle_entrega": "={{ $json.googleSheets.Detalle_entrega }}",
+            "Estado": "={{ $json.googleSheets.Estado }}",
+            "Chofer": "={{ $json.googleSheets.Chofer }}",
+            "Cant_remito": "={{ $json.googleSheets.Cant_remito }}",
+            "entregas_completadas": "={{ $json.googleSheets.entregas_completadas }}",
+            "entregas_pendientes": "={{ $json.googleSheets.entregas_pendientes }}",
+            "Carga_Descarga": "={{ $json.googleSheets.Carga_Descarga }}",
+            "firma_receptor": "={{ $json.googleSheets.firma_receptor }}",
+            "pdf_urls": "={{ $json.googleSheets.pdf_urls }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Google Sheets - Append Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [650, 300],
+      "id": "append-row",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENCIAL_GOOGLE_SHEETS",
+          "name": "Google Sheets OAuth2"
+        }
+      },
+      "notes": "⚠️ CONFIGURAR: Reemplazar TU_SPREADSHEET_ID_AQUI con tu ID de Google Sheets"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hdrCompletado }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "IF - ¿HDR Completado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "id": "if-hdr-completado"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_SPREADSHEET_ID_AQUI",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sistema_entregas",
+          "mode": "name"
+        },
+        "options": {
+          "returnAllMatches": true
+        },
+        "lookupColumn": "Numero_HDR",
+        "lookupValue": "={{ $json.hdr }}"
+      },
+      "name": "Google Sheets - Lookup HDR",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1050, 200],
+      "id": "lookup-hdr",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENCIAL_GOOGLE_SHEETS",
+          "name": "Google Sheets OAuth2"
+        }
+      },
+      "notes": "⚠️ CONFIGURAR: Reemplazar TU_SPREADSHEET_ID_AQUI"
+    },
+    {
+      "parameters": {
+        "functionCode": "const inputData = $input.all().map(item => item.json);\n\nif (inputData.length === 0) {\n  throw new Error('No se encontraron entregas para este HDR');\n}\n\nconst primeraFila = inputData[0];\nconst vieneDeEstadoProgreso = primeraFila.Cliente && Array.isArray(JSON.parse(primeraFila.Cliente || '[]'));\n\nlet todasLasEntregas = [];\nlet hdr, chofer, fechaViaje;\n\nif (vieneDeEstadoProgreso) {\n  hdr = primeraFila.Numero_HDR;\n  chofer = primeraFila.Chofer;\n  fechaViaje = primeraFila.fecha_viaje || primeraFila.Fecha_Viaje || '';\n\n  let clientes = [];\n  let remitos = [];\n  let pdfUrls = [];\n\n  try { clientes = JSON.parse(primeraFila.Cliente || '[]'); } catch (e) { clientes = [primeraFila.Cliente || '']; }\n  try { remitos = JSON.parse(primeraFila.numero_remitos || '[]'); } catch (e) { remitos = [primeraFila.numero_remitos || '']; }\n  try { pdfUrls = JSON.parse(primeraFila.pdf_urls || '[]'); } catch (e) { pdfUrls = [primeraFila.pdf_urls || '']; }\n\n  const firmaReceptor = primeraFila.firma_receptor || '';\n\n  todasLasEntregas = clientes.map((cliente, index) => ({\n    numero_entrega: (index + 1).toString(),\n    Detalle_entrega: cliente,\n    numero_remitos: JSON.stringify([remitos[index] || '']),\n    pdf_urls: JSON.stringify([pdfUrls[index] || '']),\n    firma_receptor: firmaReceptor,\n  }));\n} else {\n  todasLasEntregas = inputData;\n  hdr = primeraFila.Numero_HDR;\n  chofer = primeraFila.Chofer;\n  fechaViaje = primeraFila.fecha_viaje;\n}\n\nlet htmlEntregas = '';\nlet totalRemitos = 0;\n\ntodasLasEntregas.forEach((entrega, index) => {\n  const numeroEntrega = parseInt(entrega.numero_entrega) || (index + 1);\n  let detalleEntrega = entrega.Detalle_entrega || '';\n  \n  if (detalleEntrega.startsWith('[') && detalleEntrega.endsWith(']')) {\n    try {\n      const parsed = JSON.parse(detalleEntrega);\n      if (Array.isArray(parsed) && parsed.length > 0) {\n        const entregaIndex = numeroEntrega - 1;\n        detalleEntrega = parsed[entregaIndex] || parsed[parsed.length - 1];\n      }\n    } catch (e) {}\n  }\n\n  const firmaReceptor = entrega.firma_receptor || '';\n\n  let remitos = [];\n  try {\n    remitos = JSON.parse(entrega.numero_remitos || '[]');\n    if (!Array.isArray(remitos)) remitos = [String(remitos)];\n  } catch (e) {\n    remitos = String(entrega.numero_remitos || '').split(',').map(r => r.trim()).filter(r => r);\n  }\n\n  let pdfUrls = [];\n  try {\n    pdfUrls = JSON.parse(entrega.pdf_urls || '[]');\n    if (!Array.isArray(pdfUrls)) pdfUrls = [String(pdfUrls)];\n  } catch (e) {\n    pdfUrls = String(entrega.pdf_urls || '').split(',').map(url => url.trim()).filter(url => url);\n  }\n\n  totalRemitos += remitos.length;\n\n  htmlEntregas += `\n    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #f8f9fa; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #a8e063; box-shadow: 0 2px 4px rgba(0,0,0,0.05);\">\n      <tr>\n        <td style=\"padding: 20px;\">\n          <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n            <tr>\n              <td style=\"width: 60%;\">\n                <h3 style=\"color: #1a2332; margin: 0; font-size: 18px; font-weight: bold;\">Entrega N° ${numeroEntrega}</h3>\n              </td>\n              <td align=\"right\" style=\"width: 40%;\">\n                <span style=\"background-color: #a8e063; color: white; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; display: inline-block;\">Completado</span>\n              </td>\n            </tr>\n          </table>\n          ${detalleEntrega ? `\n          <div style=\"margin-top: 15px; margin-bottom: 12px;\">\n            <p style=\"margin: 0 0 5px 0; color: #666; font-size: 12px; text-transform: uppercase; font-weight: bold;\">DESTINO</p>\n            <p style=\"margin: 0; color: #1a2332; font-size: 16px; font-weight: 500; line-height: 1.4;\">${detalleEntrega}</p>\n          </div>\n          ` : ''}\n          <div style=\"margin-top: 15px;\">\n            <p style=\"margin: 0 0 8px 0; color: #666; font-size: 12px; text-transform: uppercase; font-weight: bold;\">REMITOS (${remitos.length})</p>\n  `;\n\n  remitos.forEach((remito, idx) => {\n    const pdfUrl = pdfUrls[idx] || '';\n    htmlEntregas += `\n            <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: white; border-radius: 6px; margin-bottom: 8px; border: 1px solid #e0e0e0;\">\n              <tr>\n                <td style=\"padding: 12px; width: 60%;\">\n                  <span style=\"color: #1a2332; font-weight: 500; font-size: 14px;\">Remito ${remito}</span>\n                </td>\n                <td align=\"right\" style=\"padding: 12px; width: 40%;\">\n                  ${pdfUrl ? `<a href=\"${pdfUrl}\" style=\"color: #a8e063; text-decoration: none; font-weight: bold; padding: 8px 16px; background-color: #f0f9e8; border-radius: 6px; font-size: 13px; display: inline-block;\" target=\"_blank\">📄 Ver PDF</a>` : ''}\n                </td>\n              </tr>\n            </table>\n    `;\n  });\n\n  htmlEntregas += `\n          </div>\n          ${firmaReceptor && !firmaReceptor.startsWith('http') ? `\n          <div style=\"margin-top: 15px; padding-top: 12px; border-top: 1px solid #e0e0e0;\">\n            <p style=\"margin: 0; color: #666; font-size: 13px;\">Recibido por: <strong style=\"color: #1a2332; font-size: 14px;\">${firmaReceptor}</strong></p>\n          </div>\n          ` : ''}\n        </td>\n      </tr>\n    </table>\n  `;\n});\n\nconst htmlProgressBar = `\n<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"margin-bottom: 30px;\">\n  <tr>\n    <td>\n      <p style=\"margin: 0 0 12px 0; color: #1a2332; font-size: 13px; font-weight: 600; text-align: center; text-transform: uppercase; letter-spacing: 0.5px;\">\n        Progreso Completado\n      </p>\n      <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #e8f5e9; border-radius: 12px; overflow: hidden;\">\n        <tr>\n          <td style=\"padding: 0;\">\n            <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background: linear-gradient(135deg, #66bb6a 0%, #4caf50 100%); height: 28px;\">\n              <tr>\n                <td align=\"center\" valign=\"middle\">\n                  <span style=\"color: white; font-size: 14px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.15); letter-spacing: 0.3px;\">✓ 100%</span>\n                </td>\n              </tr>\n            </table>\n          </td>\n        </tr>\n      </table>\n      <p style=\"margin: 10px 0 0 0; color: #66bb6a; font-size: 12px; text-align: center; font-weight: 500;\">\n        Todas las entregas del HDR han sido completadas\n      </p>\n    </td>\n  </tr>\n</table>\n`;\n\nreturn {\n  json: {\n    email: {\n      subject: `✅ HDR ${hdr} COMPLETADO - ${chofer}`,\n      toEmail: 'logistica@crosslog.com.ar',\n      hdr: hdr,\n      chofer: chofer,\n      fechaViaje: fechaViaje,\n      totalEntregas: todasLasEntregas.length,\n      totalRemitos: totalRemitos,\n      htmlProgressBar: htmlProgressBar,\n      htmlEntregas: htmlEntregas,\n      fechaCompletado: new Date().toLocaleDateString('es-AR', {\n        timeZone: 'America/Argentina/Buenos_Aires',\n        year: 'numeric',\n        month: '2-digit',\n        day: '2-digit',\n      }),\n    },\n    whatsapp: {\n      numero: '5491154096639',\n      mensaje: `*HDR ${hdr} - COMPLETADO* ✅\\n\\n━━━━━━━━━━━━━━━━━━━━━\\n👤 *Chofer:* ${chofer}\\n📅 *Fecha:* ${fechaViaje}\\n━━━━━━━━━━━━━━━━━━━━━\\n\\n📊 *Resumen General*\\n✓ ${todasLasEntregas.length} entregas completadas\\n✓ ${totalRemitos} remitos entregados\\n\\n📦 *Detalle de Entregas*\\n${todasLasEntregas.map((entrega, index) => {\n  const numeroEntrega = parseInt(entrega.numero_entrega) || (index + 1);\n  let detalleEntrega = entrega.Detalle_entrega || '';\n  if (detalleEntrega.startsWith('[') && detalleEntrega.endsWith(']')) {\n    try {\n      const parsed = JSON.parse(detalleEntrega);\n      if (Array.isArray(parsed) && parsed.length > 0) {\n        const entregaIndex = numeroEntrega - 1;\n        detalleEntrega = parsed[entregaIndex] || parsed[parsed.length - 1];\n      }\n    } catch (e) {}\n  }\n  const firmaReceptor = entrega.firma_receptor || '';\n  let remitos = [];\n  try {\n    remitos = JSON.parse(entrega.numero_remitos || '[]');\n    if (!Array.isArray(remitos)) remitos = [String(remitos)];\n  } catch (e) {\n    remitos = String(entrega.numero_remitos || '').split(',').map(r => r.trim()).filter(r => r);\n  }\n  let pdfUrls = [];\n  try {\n    pdfUrls = JSON.parse(entrega.pdf_urls || '[]');\n    if (!Array.isArray(pdfUrls)) pdfUrls = [String(pdfUrls)];\n  } catch (e) {\n    pdfUrls = String(entrega.pdf_urls || '').split(',').map(url => url.trim()).filter(url => url);\n  }\n  const remitosTexto = remitos.map((remito, idx) => {\n    const pdfUrl = pdfUrls[idx] || '';\n    if (pdfUrl) {\n      const cleanUrl = pdfUrl.split('?')[0];\n      return `${remito} → ${cleanUrl}`;\n    }\n    return remito;\n  }).join('\\n   ');\n  return `\\n*Entrega N° ${numeroEntrega}*\\n🎯 ${detalleEntrega}\\nRemito${remitos.length > 1 ? 's' : ''} (${remitos.length}):\\n   ${remitosTexto}${firmaReceptor ? `\\n✍️ Recibió: ${firmaReceptor}` : ''}`;\n}).join('\\n')}\\n\\n━━━━━━━━━━━━━━━━━━━━━\\n\\n*Resumen enviado por email*\\n\\n*CROSSLOG*\\n_Servicios Logísticos | Warehousing_`,\n    },\n  }\n};"
+      },
+      "name": "Nodo 2 - Email HDR Completado",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 200],
+      "id": "email-hdr-completado"
+    },
+    {
+      "parameters": {
+        "functionCode": "const datos = $input.first().json;\n\nconst hdr = datos.hdr || datos.Numero_HDR || 'N/A';\nconst chofer = datos.chofer || datos.Chofer || 'N/A';\nconst fechaViaje = datos.fechaViaje || datos.fecha_viaje || 'N/A';\nconst numeroEntrega = datos.numeroEntrega || datos.numero_entrega || '1';\nconst detalleEntrega = datos.detalleEntrega || datos.Detalle_entrega || 'N/A';\nconst firmaReceptor = datos.firmaReceptor || datos.firma_receptor || '';\n\nconst entregasCompletadas = datos.entregasCompletadas || datos.entregas_completadas || 0;\nconst entregasPendientes = datos.entregasPendientes || datos.entregas_pendientes || 0;\nconst totalEntregas = entregasCompletadas + entregasPendientes;\nlet progresoPorcentaje = datos.progresoPorcentaje || datos.progreso_porcentaje || 0;\nif (progresoPorcentaje === 0 && totalEntregas > 0) {\n  progresoPorcentaje = Math.round((entregasCompletadas / totalEntregas) * 100);\n}\n\nlet remitos = [];\nconst numerosRemitoRaw = datos.numerosRemito || datos.numero_remitos || datos.numeros_remito;\ntry {\n  if (typeof numerosRemitoRaw === 'string' && numerosRemitoRaw.startsWith('[')) {\n    remitos = JSON.parse(numerosRemitoRaw);\n  } else if (Array.isArray(numerosRemitoRaw)) {\n    remitos = numerosRemitoRaw;\n  } else if (numerosRemitoRaw) {\n    remitos = String(numerosRemitoRaw).split(',').map(r => r.trim()).filter(r => r);\n  }\n  if (!Array.isArray(remitos)) remitos = [String(remitos)];\n} catch (e) {\n  remitos = [];\n}\n\nlet pdfUrls = [];\nconst pdfUrlsRaw = datos.pdfUrls || datos.pdf_urls;\ntry {\n  if (typeof pdfUrlsRaw === 'string' && pdfUrlsRaw.startsWith('[')) {\n    pdfUrls = JSON.parse(pdfUrlsRaw);\n  } else if (Array.isArray(pdfUrlsRaw)) {\n    pdfUrls = pdfUrlsRaw;\n  } else if (pdfUrlsRaw) {\n    pdfUrls = String(pdfUrlsRaw).split(',').map(url => url.trim()).filter(url => url);\n  }\n  if (!Array.isArray(pdfUrls)) pdfUrls = [String(pdfUrls)];\n} catch (e) {\n  pdfUrls = [];\n}\n\nlet htmlRemitos = '';\nremitos.forEach((remito, idx) => {\n  const pdfUrl = pdfUrls[idx] || '';\n  htmlRemitos += `\n    <li style=\"margin: 8px 0; padding: 10px; background-color: white; border: 1px solid #e0e0e0; border-radius: 6px; display: block;\">\n      <div style=\"display: flex; justify-content: space-between; align-items: center;\">\n        <span style=\"color: #1a2332; font-weight: 500;\">Remito ${remito}</span>\n        ${pdfUrl ? `<a href=\"${pdfUrl}\" style=\"color: #a8e063; text-decoration: none; font-weight: bold; padding: 6px 14px; background-color: #f0f9e8; border-radius: 4px; font-size: 13px; display: inline-block;\" target=\"_blank\">📄 Ver PDF</a>` : ''}\n      </div>\n    </li>\n  `;\n});\n\nreturn {\n  json: {\n    email: {\n      subject: `📦 Entrega Registrada - HDR ${hdr} - Entrega ${numeroEntrega}`,\n      toEmail: 'logistica@crosslog.com.ar',\n      hdr: hdr,\n      chofer: chofer,\n      fechaViaje: fechaViaje,\n      numeroEntrega: numeroEntrega,\n      detalleEntrega: detalleEntrega,\n      firmaReceptor: firmaReceptor,\n      cantidadRemitos: remitos.length,\n      htmlRemitos: htmlRemitos,\n      progreso: `${entregasCompletadas} de ${totalEntregas}`,\n      progresoPorcentaje: progresoPorcentaje,\n      fechaRegistro: new Date().toLocaleDateString('es-AR', {\n        timeZone: 'America/Argentina/Buenos_Aires',\n        year: 'numeric',\n        month: '2-digit',\n        day: '2-digit',\n      }),\n    },\n    whatsapp: {\n      numero: '5491154096639',\n      mensaje: `📦 *ENTREGA REGISTRADA*\\n\\n━━━━━━━━━━━━━━━━━━━━━\\n🆔 *HDR:* ${hdr}\\n📍 *Entrega N°:* ${numeroEntrega}\\n👤 *Chofer:* ${chofer}\\n📅 *Fecha:* ${fechaViaje}\\n━━━━━━━━━━━━━━━━━━━━━\\n\\n🎯 *Destino*\\n${detalleEntrega}\\n${firmaReceptor ? `✍️ *Recibió:* ${firmaReceptor}` : ''}\\n\\n*Remitos (${remitos.length})*\\n${remitos.map((r, idx) => {\n  const pdfUrl = pdfUrls[idx] || '';\n  if (pdfUrl) {\n    const cleanUrl = pdfUrl.split('?')[0];\n    return `• Remito ${r}\\n  📄 ${cleanUrl}`;\n  }\n  return `• Remito ${r}`;\n}).join('\\n')}\\n\\n📊 *Progreso del HDR*\\n✓ ${entregasCompletadas} de ${totalEntregas} entregas completadas\\n⏳ ${entregasPendientes} pendiente${entregasPendientes !== 1 ? 's' : ''}\\n📈 ${totalEntregas > 0 ? Math.round((entregasCompletadas / totalEntregas) * 100) : 0}% completado\\n\\n━━━━━━━━━━━━━━━━━━━━━\\n\\n*Resumen enviado por email*\\n\\n*CROSSLOG*\\n_Servicios Logísticos | Warehousing_`,\n    },\n  }\n};"
+      },
+      "name": "Nodo 3 - Email Individual",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 400],
+      "id": "email-individual"
+    },
+    {
+      "parameters": {
+        "fromEmail": "logistica@crosslog.com.ar",
+        "toEmail": "={{ $json.email.toEmail }}",
+        "subject": "={{ $json.email.subject }}",
+        "emailType": "html",
+        "message": "<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>HDR Completado</title>\n</head>\n<body style=\"margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5;\">\n  <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #f5f5f5;\">\n    <tr>\n      <td align=\"center\" style=\"padding: 20px 0;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"600\" style=\"max-width: 600px; background-color: #ffffff; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: 0 auto;\">\n          <tr>\n            <td align=\"center\" style=\"background: linear-gradient(135deg, #1a2332 0%, #2d3e50 100%); padding: 30px; border-radius: 10px 10px 0 0;\">\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                <tr>\n                  <td align=\"center\">\n                    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n                      <tr>\n                        <td align=\"center\" valign=\"middle\" width=\"80\" height=\"80\" style=\"background-color: #a8e063; border-radius: 50%; font-size: 48px; color: white; line-height: 80px;\">✓</td>\n                      </tr>\n                    </table>\n                  </td>\n                </tr>\n              </table>\n              <h1 style=\"color: white; margin: 20px 0 10px 0; font-size: 32px; text-align: center;\">HDR {{ $json.email.hdr }}</h1>\n              <p style=\"color: #a8e063; margin: 0; font-size: 20px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; text-align: center;\">COMPLETADO</p>\n              <p style=\"color: #ffffff; margin: 15px 0 0 0; font-size: 14px; text-align: center;\">{{ $json.email.fechaCompletado }}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding: 20px 30px; border-bottom: 2px solid #a8e063;\">\n              <h2 style=\"color: #1a2332; margin: 0; font-size: 28px; letter-spacing: 2px;\">CROSSLOG</h2>\n              <p style=\"color: #a8e063; margin: 5px 0 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px;\">Servicios Logísticos | Warehousing</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"padding: 25px 30px;\">\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #e3f2fd; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;\">\n                <tr>\n                  <td style=\"padding: 15px;\">\n                    <p style=\"margin: 0; color: #1976d2; font-size: 12px; font-weight: bold; text-transform: uppercase;\">CHOFER</p>\n                    <p style=\"margin: 5px 0 0 0; color: #1a2332; font-size: 18px; font-weight: bold;\">{{ $json.email.chofer }}</p>\n                    <p style=\"margin: 5px 0 0 0; color: #666; font-size: 14px;\">Fecha: {{ $json.email.fechaViaje }}</p>\n                  </td>\n                </tr>\n              </table>\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"margin-bottom: 25px;\">\n                <tr>\n                  <td width=\"50%\" style=\"padding-right: 10px;\">\n                    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border: 2px solid #a8e063; border-radius: 8px;\">\n                      <tr>\n                        <td align=\"center\" style=\"padding: 20px;\">\n                          <p style=\"margin: 0; font-size: 36px; font-weight: bold; color: #a8e063;\">{{ $json.email.totalEntregas }}</p>\n                          <p style=\"margin: 5px 0 0 0; font-size: 14px; color: #2d3e50; font-weight: bold;\">Entregas</p>\n                        </td>\n                      </tr>\n                    </table>\n                  </td>\n                  <td width=\"50%\" style=\"padding-left: 10px;\">\n                    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border: 2px solid #a8e063; border-radius: 8px;\">\n                      <tr>\n                        <td align=\"center\" style=\"padding: 20px;\">\n                          <p style=\"margin: 0; font-size: 36px; font-weight: bold; color: #a8e063;\">{{ $json.email.totalRemitos }}</p>\n                          <p style=\"margin: 5px 0 0 0; font-size: 14px; color: #2d3e50; font-weight: bold;\">Remitos</p>\n                        </td>\n                      </tr>\n                    </table>\n                  </td>\n                </tr>\n              </table>\n              {{ $json.email.htmlProgressBar }}\n              <h3 style=\"color: #1a2332; margin: 30px 0 20px 0; font-size: 20px; border-bottom: 2px solid #a8e063; padding-bottom: 10px;\">Detalle de Entregas</h3>\n              <div>{{ $json.email.htmlEntregas }}</div>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"background-color: #f8f9fa; padding: 20px 30px; border-radius: 0 0 10px 10px; border-top: 2px solid #a8e063;\">\n              <p style=\"margin: 0 0 10px 0; color: #2d3e50; font-size: 12px; font-weight: bold;\">Generado automáticamente por CROSSLOG PWA</p>\n              <p style=\"margin: 0; color: #999; font-size: 11px;\">Datos sincronizados desde la app del chofer</p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>"
+      },
+      "name": "Gmail - HDR Completado",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1450, 100],
+      "id": "gmail-hdr-completado",
+      "credentials": {
+        "smtp": {
+          "id": "TU_CREDENCIAL_GMAIL_SMTP",
+          "name": "Gmail SMTP"
+        }
+      },
+      "notes": "⚠️ CONFIGURAR: Credenciales SMTP de Gmail"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "764420436762718",
+        "recipientPhoneNumber": "={{ $json.whatsapp.numero }}",
+        "messageType": "text",
+        "message": "={{ $json.whatsapp.mensaje }}"
+      },
+      "name": "WhatsApp - HDR Completado",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1450, 200],
+      "id": "whatsapp-hdr-completado",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "TU_CREDENCIAL_WHATSAPP",
+          "name": "WhatsApp Business Cloud API"
+        }
+      },
+      "notes": "✅ CONFIGURADO: WhatsApp sin mensaje previo\n- Phone Number ID: 764420436762718\n- Recipient: dinámico desde $json.whatsapp.numero"
+    },
+    {
+      "parameters": {
+        "fromEmail": "logistica@crosslog.com.ar",
+        "toEmail": "={{ $json.email.toEmail }}",
+        "subject": "={{ $json.email.subject }}",
+        "emailType": "html",
+        "message": "<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Entrega Registrada</title>\n</head>\n<body style=\"margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; background-color: #f5f5f5;\">\n  <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #f5f5f5;\">\n    <tr>\n      <td align=\"center\" style=\"padding: 20px 0;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"600\" style=\"max-width: 600px; background-color: #ffffff; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin: 0 auto;\">\n          <tr>\n            <td align=\"center\" style=\"background: linear-gradient(135deg, #1a2332 0%, #2d3e50 100%); padding: 30px; border-radius: 10px 10px 0 0;\">\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\">\n                <tr>\n                  <td align=\"center\">\n                    <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n                      <tr>\n                        <td align=\"center\" valign=\"middle\" width=\"80\" height=\"80\" style=\"background-color: #2196f3; border-radius: 50%; font-size: 40px; color: white; line-height: 80px;\">📦</td>\n                      </tr>\n                    </table>\n                  </td>\n                </tr>\n              </table>\n              <h1 style=\"color: white; margin: 20px 0 10px 0; font-size: 28px; text-align: center;\">Entrega Registrada</h1>\n              <p style=\"color: #a8e063; margin: 0; font-size: 18px; font-weight: bold; text-align: center;\">HDR {{ $json.email.hdr }} - Entrega {{ $json.email.numeroEntrega }}</p>\n              <p style=\"color: #ffffff; margin: 15px 0 0 0; font-size: 14px; text-align: center;\">{{ $json.email.fechaRegistro }}</p>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"padding: 20px 30px; border-bottom: 2px solid #a8e063;\">\n              <h2 style=\"color: #1a2332; margin: 0; font-size: 28px; letter-spacing: 2px;\">CROSSLOG</h2>\n              <p style=\"color: #a8e063; margin: 5px 0 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px;\">Servicios Logísticos | Warehousing</p>\n            </td>\n          </tr>\n          <tr>\n            <td style=\"padding: 25px 30px;\">\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #e3f2fd; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;\">\n                <tr>\n                  <td style=\"padding: 15px;\">\n                    <p style=\"margin: 0; color: #1976d2; font-size: 12px; font-weight: bold; text-transform: uppercase;\">CHOFER</p>\n                    <p style=\"margin: 5px 0 0 0; color: #1a2332; font-size: 18px; font-weight: bold;\">{{ $json.email.chofer }}</p>\n                    <p style=\"margin: 5px 0 0 0; color: #666; font-size: 14px;\">Fecha: {{ $json.email.fechaViaje }}</p>\n                  </td>\n                </tr>\n              </table>\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #fff3cd; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;\">\n                <tr>\n                  <td style=\"padding: 15px;\">\n                    <p style=\"margin: 0; color: #856404; font-size: 12px; font-weight: bold; text-transform: uppercase;\">PROGRESO DEL HDR</p>\n                    <p style=\"margin: 5px 0 0 0; color: #1a2332; font-size: 18px; font-weight: bold;\">{{ $json.email.progreso }} ({{ $json.email.progresoPorcentaje }}%)</p>\n                  </td>\n                </tr>\n              </table>\n              <table cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color: #f8f9fa; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #a8e063;\">\n                <tr>\n                  <td style=\"padding: 15px;\">\n                    <p style=\"margin: 0; color: #666; font-size: 12px; font-weight: bold; text-transform: uppercase;\">📍 Destino</p>\n                    <p style=\"margin: 5px 0 0 0; color: #1a2332; font-size: 16px; font-weight: 500;\">{{ $json.email.detalleEntrega }}</p>\n                    {{ $json.email.firmaReceptor ? '<p style=\"margin: 10px 0 0 0; color: #666; font-size: 14px;\">✍️ Recibió: <strong>' + $json.email.firmaReceptor + '</strong></p>' : '' }}\n                  </td>\n                </tr>\n              </table>\n              <h3 style=\"color: #1a2332; margin: 20px 0 15px 0; font-size: 18px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px;\">Remitos ({{ $json.email.cantidadRemitos }})</h3>\n              <ul style=\"margin: 0; padding-left: 20px; list-style: none;\">{{ $json.email.htmlRemitos }}</ul>\n            </td>\n          </tr>\n          <tr>\n            <td align=\"center\" style=\"background-color: #f8f9fa; padding: 20px 30px; border-radius: 0 0 10px 10px; border-top: 2px solid #a8e063;\">\n              <p style=\"margin: 0 0 10px 0; color: #2d3e50; font-size: 12px; font-weight: bold;\">Generado automáticamente por CROSSLOG PWA</p>\n              <p style=\"margin: 0; color: #999; font-size: 11px;\">Datos sincronizados desde la app del chofer</p>\n            </td>\n          </tr>\n        </table>\n      </td>\n    </tr>\n  </table>\n</body>\n</html>"
+      },
+      "name": "Gmail - Entrega Individual",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "id": "gmail-individual",
+      "credentials": {
+        "smtp": {
+          "id": "TU_CREDENCIAL_GMAIL_SMTP",
+          "name": "Gmail SMTP"
+        }
+      },
+      "notes": "⚠️ CONFIGURAR: Credenciales SMTP de Gmail"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "764420436762718",
+        "recipientPhoneNumber": "={{ $json.whatsapp.numero }}",
+        "messageType": "text",
+        "message": "={{ $json.whatsapp.mensaje }}"
+      },
+      "name": "WhatsApp - Entrega Individual",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1450, 400],
+      "id": "whatsapp-individual",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "TU_CREDENCIAL_WHATSAPP",
+          "name": "WhatsApp Business Cloud API"
+        }
+      },
+      "notes": "✅ CONFIGURADO: WhatsApp sin mensaje previo\n- Phone Number ID: 764420436762718\n- Recipient: dinámico desde $json.whatsapp.numero"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Entrega procesada correctamente\", \"hdr\": $json.hdr } }}"
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1650, 300],
+      "id": "respond-webhook"
+    }
+  ],
+  "connections": {
+    "Webhook - Recibir Entrega": {
+      "main": [
+        [
+          {
+            "node": "Nodo 1 - Procesar Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nodo 1 - Procesar Datos": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Append Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Append Row": {
+      "main": [
+        [
+          {
+            "node": "IF - ¿HDR Completado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - ¿HDR Completado?": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Lookup HDR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nodo 3 - Email Individual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Lookup HDR": {
+      "main": [
+        [
+          {
+            "node": "Nodo 2 - Email HDR Completado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nodo 2 - Email HDR Completado": {
+      "main": [
+        [
+          {
+            "node": "Gmail - HDR Completado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WhatsApp - HDR Completado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nodo 3 - Email Individual": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Entrega Individual",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WhatsApp - Entrega Individual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - HDR Completado": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp - HDR Completado": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Entrega Individual": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp - Entrega Individual": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["crosslog", "pwa", "whatsapp", "entregas"],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-09T00:00:00.000Z",
+  "versionId": "2.0"
+}

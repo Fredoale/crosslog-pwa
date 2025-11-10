@@ -142,13 +142,13 @@ export function useOfflineSync() {
     console.log(`[useOfflineSync] PDF uploaded: ${filename} -> ${result.fileId}`);
   };
 
-  const syncEntrega = async (data: any): Promise<void> => {
+  const syncEntrega = async (data: any): Promise<any> => {
     // Send to N8N webhook
     const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
 
     if (!webhookUrl || webhookUrl.includes('your-n8n-instance')) {
       console.warn('[useOfflineSync] N8N webhook URL not configured, skipping');
-      return;
+      return { status: 'skipped', message: 'Webhook not configured' };
     }
 
     console.log('[useOfflineSync] ===== SENDING TO N8N =====');
@@ -179,6 +179,15 @@ export function useOfflineSync() {
       const responseText = await response.text();
       console.log('[useOfflineSync] N8N response:', responseText);
       console.log('[useOfflineSync] ✓ Entrega synced to N8N successfully');
+
+      // Parse JSON response from N8N
+      try {
+        const jsonResponse = JSON.parse(responseText);
+        return jsonResponse;
+      } catch {
+        // If not JSON, return text response
+        return { status: 'success', message: responseText };
+      }
     } catch (error) {
       console.error('[useOfflineSync] ===== FETCH ERROR =====');
       console.error('[useOfflineSync] Error type:', error instanceof TypeError ? 'TypeError (likely CORS)' : typeof error);
