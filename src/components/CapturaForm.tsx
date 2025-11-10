@@ -417,9 +417,35 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
     const estado = 'COMPLETADO'; // Always COMPLETED when finalized
 
     setProcessing(true);
-    setUploadProgress('Generando PDFs...');
+    setUploadProgress('Obteniendo ubicación...');
 
     try {
+      // Step 0: Get fresh geolocation before sending
+      console.log('[CapturaForm] ===== CAPTURING GEOLOCATION =====');
+      console.log('[CapturaForm] Current geoLocation:', geoLocation);
+
+      let finalGeoLocation = geoLocation;
+
+      // Try to get fresh location if current one is null or old
+      if (!geoLocation || !geoLocation.timestamp) {
+        console.log('[CapturaForm] No geolocation available, capturing now...');
+        try {
+          finalGeoLocation = await getCurrentLocation();
+          console.log('[CapturaForm] ✓ Fresh geolocation captured:', finalGeoLocation);
+        } catch (geoError) {
+          console.warn('[CapturaForm] ⚠️ Failed to get fresh location:', geoError);
+          // Continue without location
+        }
+      } else {
+        console.log('[CapturaForm] ✓ Using cached geolocation');
+      }
+
+      if (!finalGeoLocation) {
+        console.warn('[CapturaForm] ⚠️ NO GEOLOCATION AVAILABLE - continuing without it');
+      }
+
+      setUploadProgress('Generando PDFs...');
+
       // Step 1: Generate PDFs (one per foto/remito)
       console.log('[CapturaForm] ===== STARTING PDF GENERATION =====');
       console.log('[CapturaForm] Number of fotos:', fotos.length);
@@ -433,7 +459,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
           signature,
           numeroRemito: foto.numeroRemito || 'SIN_NUMERO',
           cliente,
-          geolocalizacion: geoLocation || undefined,
+          geolocalizacion: finalGeoLocation || undefined,
         });
 
         console.log(`[CapturaForm] ✓ PDF ${index + 1} generated successfully`);
@@ -539,6 +565,19 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         .filter(e => e.estado !== 'COMPLETADO' && e.id !== entrega.id)
         .map(e => e.detalleEntregas || e.clienteNombreCompleto || e.cliente);
 
+      // Log geolocation status before sending
+      console.log('[CapturaForm] ===== GEOLOCATION STATUS =====');
+      console.log('[CapturaForm] finalGeoLocation:', finalGeoLocation);
+      if (finalGeoLocation) {
+        console.log('[CapturaForm] ✓ Geolocation AVAILABLE:', {
+          lat: finalGeoLocation.lat,
+          lng: finalGeoLocation.lng,
+          accuracy: finalGeoLocation.accuracy,
+        });
+      } else {
+        console.warn('[CapturaForm] ⚠️ Geolocation NOT AVAILABLE - will send undefined');
+      }
+
       const webhookData = {
         hdr: entrega.hdr,
         numero_entrega: entrega.numeroEntrega,
@@ -551,10 +590,10 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         tipo_transporte: tipoTransporte || 'Propio', // Columna Q en Sistema_entregas
         timestamp: new Date().toISOString(),
         fecha_viaje: entrega.fechaViaje || new Date().toISOString().split('T')[0],
-        geolocalizacion: geoLocation ? {
-          lat: geoLocation.lat,
-          lng: geoLocation.lng,
-          accuracy: geoLocation.accuracy,
+        geolocalizacion: finalGeoLocation ? {
+          lat: finalGeoLocation.lat,
+          lng: finalGeoLocation.lng,
+          accuracy: finalGeoLocation.accuracy,
         } : undefined,
         pdf_urls: pdfUrls,
         firma_receptor: signature.nombreReceptor,
@@ -592,7 +631,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
           nombreReceptor: signature.nombreReceptor,
           timestamp: new Date().toISOString(),
         },
-        geolocalizacion: geoLocation || undefined,
+        geolocalizacion: finalGeoLocation || undefined,
         timestamp: new Date().toISOString(),
       });
 
