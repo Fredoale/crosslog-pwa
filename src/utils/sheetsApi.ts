@@ -125,9 +125,11 @@ export class GoogleSheetsAPI {
   private async getCompletedEntregas(hdr: string): Promise<Entrega[] | null> {
     try {
       const range = 'Sistema_entregas!A:N';
-      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+      // IMPORTANTE: Usar spreadsheetEntregasId para Sistema_entregas, NO spreadsheetId
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
 
       console.log('[SheetsAPI] Checking if HDR', hdr, 'is completed in Sistema_entregas');
+      console.log('[SheetsAPI] Using spreadsheetEntregasId:', this.config.spreadsheetEntregasId);
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -478,7 +480,8 @@ export class GoogleSheetsAPI {
   private async initSistemaEntregasHeaders(): Promise<void> {
     try {
       const range = 'Sistema_entregas!A1:N1';
-      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+      // IMPORTANTE: Usar spreadsheetEntregasId para Sistema_entregas
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -502,7 +505,7 @@ export class GoogleSheetsAPI {
           'Num_Fotos'
         ]];
 
-        const updateUrl = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?valueInputOption=RAW&key=${this.config.apiKey}`;
+        const updateUrl = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?valueInputOption=RAW&key=${this.config.apiKey}`;
         await fetch(updateUrl, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -602,9 +605,11 @@ export class GoogleSheetsAPI {
         data.tipoTransporte || 'Propio', // Q: Tipo_Transporte
       ]];
 
-      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}:append?valueInputOption=USER_ENTERED&key=${this.config.apiKey}`;
+      // IMPORTANTE: Usar spreadsheetEntregasId para Sistema_entregas
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}:append?valueInputOption=USER_ENTERED&key=${this.config.apiKey}`;
 
       console.log('[SheetsAPI] Submitting to Sistema_entregas:', values[0]);
+      console.log('[SheetsAPI] Using spreadsheetEntregasId:', this.config.spreadsheetEntregasId);
 
       const response = await fetch(url, {
         method: 'POST',
@@ -1590,7 +1595,8 @@ export class GoogleSheetsAPI {
 // Create default instance (will be configured on app init)
 export const sheetsApi = new GoogleSheetsAPI({
   apiKey: import.meta.env.VITE_GOOGLE_SHEETS_API_KEY || '',
-  spreadsheetId: import.meta.env.VITE_GOOGLE_SPREADSHEET_ID || '',
+  spreadsheetId: import.meta.env.VITE_GOOGLE_SPREADSHEET_ID || '', // BASE sheet
+  spreadsheetEntregasId: import.meta.env.VITE_GOOGLE_SPREADSHEET_ENTREGAS_ID || '', // Sistema_Entregas sheet
   viajesCrosslogSheet: 'BASE',
   formResponsesSheet: 'Form_Responses',
 });

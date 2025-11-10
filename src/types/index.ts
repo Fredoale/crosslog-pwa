@@ -84,7 +84,8 @@ export interface HDRValidationResponse {
 
 export interface GoogleSheetsConfig {
   apiKey: string;
-  spreadsheetId: string;
+  spreadsheetId: string; // BASE sheet (para que el chofer comience)
+  spreadsheetEntregasId: string; // Sistema_Entregas sheet (para registro)
   viajesCrosslogSheet: string;
   formResponsesSheet: string;
 }
