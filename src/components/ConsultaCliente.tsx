@@ -156,8 +156,11 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
 
   const handleLimpiar = () => {
     setSearchValue('');
-    setResult(null);
     setCurrentPage(1);
+    // Reload all client HDRs instead of clearing results
+    if (clienteId) {
+      loadClientHDRs();
+    }
   };
 
   // Filter by date if filter is active
@@ -270,6 +273,33 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
 
       {/* Search Section */}
       <div className="max-w-4xl mx-auto p-6">
+        {/* Loading State */}
+        {loading && !result && (
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center mb-6">
+            <svg className="animate-spin h-12 w-12 text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p className="text-lg font-semibold text-gray-700">Cargando sus entregas...</p>
+          </div>
+        )}
+
+        {/* Refresh Button */}
+        {result && (
+          <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+            <button
+              onClick={loadClientHDRs}
+              disabled={loading}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Actualizar lista
+            </button>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {/* Search Type Toggle */}
           <div className="flex flex-wrap gap-3 mb-6 justify-center">

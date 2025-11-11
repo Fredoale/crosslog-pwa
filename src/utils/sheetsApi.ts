@@ -958,8 +958,14 @@ export class GoogleSheetsAPI {
 
       console.log('[SheetsAPI] Searching for fletero:', normalizedFletero);
       let debuggedFirstRow = false;
+      let debuggedCrosslogRow = false;
       let matchedCount = 0;
       let totalRows = 0;
+      let emptyColumnQCount = 0;
+      let crosslogCount = 0;
+
+      // Lista de fleteros conocidos
+      const KNOWN_FLETEROS = ['VIMAAB', 'BARCO', 'PRODAN', 'LOGZO', 'DON PEDRO', 'CALLTRUCK', 'ANDROSIUK', 'FALZONE'];
 
       // Filter rows by fletero (from column Q: Tipo_Transporte)
       rowsSistema.slice(1).forEach((row: string[]) => {
@@ -971,18 +977,48 @@ export class GoogleSheetsAPI {
 
         if (!rowHDR) return;
 
-        // Si columna Q está vacía, es CROSSLOG (transporte propio)
-        const rowFletero = rowFleteroRaw || 'CROSSLOG';
+        // Track empty column Q
+        if (!rowFleteroRaw) {
+          emptyColumnQCount++;
+        }
+
+        // Determinar el tipo de transporte:
+        // - Si columna Q está vacía O tiene un nombre de chofer (no está en lista de fleteros) → CROSSLOG
+        // - Si columna Q tiene un nombre de fletero conocido → usar ese fletero
+        let rowFletero: string;
+        if (!rowFleteroRaw) {
+          rowFletero = 'CROSSLOG';
+          crosslogCount++;
+        } else {
+          // Verificar si es un fletero conocido
+          const isKnownFletero = KNOWN_FLETEROS.some(f => rowFleteroRaw.includes(f));
+          if (isKnownFletero) {
+            rowFletero = rowFleteroRaw;
+          } else {
+            // Es un nombre de chofer, entonces es CROSSLOG
+            rowFletero = 'CROSSLOG';
+            crosslogCount++;
+          }
+        }
 
         // Debug first row
         if (!debuggedFirstRow) {
           console.log('[SheetsAPI] First row analysis:');
           console.log('  - HDR:', rowHDR);
-          console.log('  - Column Q (raw):', row[tipoTransporteIndex]);
-          console.log('  - Column Q (processed):', rowFletero);
+          console.log('  - Column Q (raw):', rowFleteroRaw);
+          console.log('  - Is known fletero?', KNOWN_FLETEROS.some(f => rowFleteroRaw?.includes(f)));
+          console.log('  - Determined as:', rowFletero);
           console.log('  - Looking for:', normalizedFletero);
-          console.log('  - Match?', rowFletero === normalizedFletero || rowFletero.includes(normalizedFletero));
           debuggedFirstRow = true;
+        }
+
+        // Debug first CROSSLOG row if searching for CROSSLOG
+        if (normalizedFletero === 'CROSSLOG' && !debuggedCrosslogRow && rowFletero === 'CROSSLOG') {
+          console.log('[SheetsAPI] First CROSSLOG row:');
+          console.log('  - HDR:', rowHDR);
+          console.log('  - Column Q raw value:', rowFleteroRaw);
+          console.log('  - Identified as CROSSLOG (chofer name or empty)');
+          debuggedCrosslogRow = true;
         }
 
         // Match fletero (exact or contains)
@@ -1008,7 +1044,14 @@ export class GoogleSheetsAPI {
         }
       });
 
-      console.log(`[SheetsAPI] Fletero filter results: ${matchedCount} matched rows out of ${totalRows} total rows`);
+      console.log(`[SheetsAPI] Fletero filter results:`);
+      console.log(`  - Total rows: ${totalRows}`);
+      console.log(`  - Rows with empty column Q: ${emptyColumnQCount}`);
+      console.log(`  - Rows identified as CROSSLOG (chofer names): ${crosslogCount}`);
+      console.log(`  - Matched rows: ${matchedCount}`);
+      if (normalizedFletero === 'CROSSLOG') {
+        console.log(`  - Expected to match ${crosslogCount} CROSSLOG rows`);
+      }
 
       // Build HDR data from Sistema_entregas rows (already filtered)
       const hdrsData = [];
@@ -1018,7 +1061,16 @@ export class GoogleSheetsAPI {
         const hdrRows = rowsSistema.slice(1).filter((row: string[]) => {
           const rowHDR = row[hdrIndex]?.trim();
           const rowFleteroRaw = row[tipoTransporteIndex]?.trim().toUpperCase();
-          const rowFletero = rowFleteroRaw || 'CROSSLOG'; // Si está vacío, es CROSSLOG (transporte propio)
+
+          // Aplicar la misma lógica de determinación de fletero
+          let rowFletero: string;
+          if (!rowFleteroRaw) {
+            rowFletero = 'CROSSLOG';
+          } else {
+            const isKnownFletero = KNOWN_FLETEROS.some(f => rowFleteroRaw.includes(f));
+            rowFletero = isKnownFletero ? rowFleteroRaw : 'CROSSLOG';
+          }
+
           return rowHDR === hdr && (rowFletero === normalizedFletero || rowFletero.includes(normalizedFletero));
         });
 
@@ -1469,13 +1521,41 @@ export class GoogleSheetsAPI {
     // Q=16: tipo_transporte (ej: FALZONE, BARCO, o vacío=PROPIO)
 
     const firstRow = rows[0];
-    const fechaViaje = firstRow[0]?.trim() || '';
+    const fechaViajeRaw = firstRow[0]?.trim() || '';
+
+    // Convertir fecha de YYYY/MM/DD a DD/MM/YYYY
+    let fechaViaje = fechaViajeRaw;
+    if (fechaViajeRaw) {
+      const parts = fechaViajeRaw.split(/[-/]/);
+      if (parts.length === 3) {
+        // Si el primer elemento tiene 4 dígitos, es YYYY-MM-DD o YYYY/MM/DD
+        if (parts[0].length === 4) {
+          const [year, month, day] = parts;
+          fechaViaje = `${day}/${month}/${year}`;
+        }
+        // Si ya está en formato DD-MM-YYYY o DD/MM/YYYY, convertir a DD/MM/YYYY
+        else if (parts[0].length <= 2 && parts[2].length === 4) {
+          fechaViaje = parts.join('/');
+        }
+      }
+    }
+
     const hdr = firstRow[1]?.trim() || '';
     const chofer = firstRow[7]?.trim() || ''; // H (Chofer)
 
-    // Q (Tipo_Transporte) - Si está vacío, es PROPIO
-    const tipoTransporteRaw = firstRow[16]?.trim() || '';
-    const fletero = tipoTransporteRaw || 'PROPIO';
+    // Q (Tipo_Transporte) - Determinar tipo de transporte
+    const tipoTransporteRaw = firstRow[16]?.trim().toUpperCase() || '';
+    const KNOWN_FLETEROS = ['VIMAAB', 'BARCO', 'PRODAN', 'LOGZO', 'DON PEDRO', 'CALLTRUCK', 'ANDROSIUK', 'FALZONE'];
+
+    let fletero: string;
+    if (!tipoTransporteRaw) {
+      // Si está vacío, es CROSSLOG
+      fletero = 'CROSSLOG';
+    } else {
+      // Si es un fletero conocido, usar ese nombre
+      const isKnownFletero = KNOWN_FLETEROS.some(f => tipoTransporteRaw.includes(f));
+      fletero = isKnownFletero ? tipoTransporteRaw : 'CROSSLOG';
+    }
 
     const entregas = rows.map((row, idx) => {
       const numeroEntrega = row[2]?.trim() || `${idx + 1}`;  // C

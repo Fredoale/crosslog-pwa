@@ -23,7 +23,6 @@ const FLETEROS: FleteroEmpresa[] = [
   'LOGZO',
   'DON PEDRO',
   'CALLTRUCK',
-  'FALZONE',
   'ANDROSIUK',
   'VIMAAB',
 ];
