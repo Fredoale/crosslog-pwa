@@ -845,7 +845,8 @@ export class GoogleSheetsAPI {
       // STEP 2: If searching by remito, check Sistema_entregas sheet
       if (params.numeroRemito) {
         const rangeSistema = 'Sistema_entregas!A:N';
-        const urlSistema = `${this.baseUrl}/${this.config.spreadsheetId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+        // IMPORTANTE: Usar spreadsheetEntregasId para Sistema_entregas
+        const urlSistema = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${rangeSistema}?key=${this.config.apiKey}`;
 
         const responseSistema = await fetch(urlSistema);
         if (responseSistema.ok) {
@@ -929,7 +930,9 @@ export class GoogleSheetsAPI {
 
       // Search ONLY in Sistema_entregas (completed/in-progress trips)
       const rangeSistema = 'Sistema_entregas!A:Q';
-      const urlSistema = `${this.baseUrl}/${this.config.spreadsheetId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+      // IMPORTANTE: Usar spreadsheetEntregasId para Sistema_entregas
+      const urlSistema = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+      console.log('[SheetsAPI] Using spreadsheetEntregasId for fletero search:', this.config.spreadsheetEntregasId);
 
       const responseSistema = await fetch(urlSistema);
       if (!responseSistema.ok) {
@@ -1030,7 +1033,9 @@ export class GoogleSheetsAPI {
       console.log('[SheetsAPI] Fetching all HDRs from Sistema_entregas', filterBy ? 'with filter' : '');
 
       const rangeSistema = 'Sistema_entregas!A:Q';
-      const urlSistema = `${this.baseUrl}/${this.config.spreadsheetId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+      // IMPORTANTE: Usar spreadsheetEntregasId para consultas
+      const urlSistema = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+      console.log('[SheetsAPI] Using spreadsheetEntregasId for getAllHDRs:', this.config.spreadsheetEntregasId);
 
       const responseSistema = await fetch(urlSistema);
       if (!responseSistema.ok) {
@@ -1231,7 +1236,9 @@ export class GoogleSheetsAPI {
       console.log('[SheetsAPI] Searching HDR in Sistema_entregas:', hdr, 'Filter:', filterBy);
 
       const rangeSistema = 'Sistema_entregas!A:Q';
-      const urlSistema = `${this.baseUrl}/${this.config.spreadsheetId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+      // IMPORTANTE: Usar spreadsheetEntregasId para consultas
+      const urlSistema = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+      console.log('[SheetsAPI] Using spreadsheetEntregasId for search:', this.config.spreadsheetEntregasId);
 
       const responseSistema = await fetch(urlSistema);
       if (!responseSistema.ok) {
@@ -1304,7 +1311,9 @@ export class GoogleSheetsAPI {
       console.log('[SheetsAPI] Searching Remito in Sistema_entregas:', numeroRemito, 'Filter:', filterBy);
 
       const rangeSistema = 'Sistema_entregas!A:Q';
-      const urlSistema = `${this.baseUrl}/${this.config.spreadsheetId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+      // IMPORTANTE: Usar spreadsheetEntregasId para consultas
+      const urlSistema = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${rangeSistema}?key=${this.config.apiKey}`;
+      console.log('[SheetsAPI] Using spreadsheetEntregasId for remito search:', this.config.spreadsheetEntregasId);
 
       const responseSistema = await fetch(urlSistema);
       if (!responseSistema.ok) {
