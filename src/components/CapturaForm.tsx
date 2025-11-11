@@ -97,6 +97,27 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
     setWarning(null);
 
     try {
+      // Request camera permissions explicitly before taking photo
+      console.log('[CapturaForm] Checking camera permissions...');
+      const permissionStatus = await Camera.checkPermissions();
+      console.log('[CapturaForm] Permission status:', permissionStatus);
+
+      // If permissions not granted, request them
+      if (permissionStatus.camera !== 'granted' || permissionStatus.photos !== 'granted') {
+        console.log('[CapturaForm] Requesting camera permissions...');
+        const requestResult = await Camera.requestPermissions();
+        console.log('[CapturaForm] Permission request result:', requestResult);
+
+        // Check if still denied after request
+        if (requestResult.camera === 'denied' || requestResult.photos === 'denied') {
+          setError('Permisos de cámara denegados. Ve a Configuración de la aplicación y habilita los permisos de Cámara y Fotos.');
+          setCapturando(false);
+          return;
+        }
+      }
+
+      console.log('[CapturaForm] ✓ Permissions granted, taking photo...');
+
       const image = await Camera.getPhoto({
         quality: 95, // High quality (increased from 85)
         allowEditing: false,
@@ -555,7 +576,12 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       console.log('[CapturaForm] ✓ At least', succeeded.length, 'PDF(s) uploaded successfully, proceeding...');
 
       // Step 3: Send webhook to N8N
-      setUploadProgress('Enviando datos a N8N...');
+      setUploadProgress('Enviando datos al Sistema de Entregas...');
+
+      // Scroll to bottom to show progress
+      setTimeout(() => {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }, 100);
 
       // Get new remitos from photos
       const nuevosRemitos = fotos.map(f => f.numeroRemito).filter(Boolean);
@@ -925,93 +951,6 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
           </p>
         </div>
 
-        {/* Progress Summary - Show when there are photos */}
-        {fotos.length > 0 && (
-          <div className="card p-4 space-y-3 border-2" style={{
-            background: 'linear-gradient(to bottom right, #f5f5f5, #ffffff)',
-            borderColor: '#a8e063'
-          }}>
-            <h3 className="text-sm font-bold" style={{ color: '#1a2332' }}>📊 Progreso del HDR</h3>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-white rounded-lg p-3 text-center border-2" style={{ borderColor: '#2d3e50' }}>
-                <p className="text-2xl font-bold" style={{ color: '#2d3e50' }}>{totalEntregas}</p>
-                <p className="text-xs font-medium" style={{ color: '#2d3e50' }}>Total</p>
-              </div>
-              <div className="bg-white rounded-lg p-3 text-center border-2" style={{ borderColor: '#a8e063' }}>
-                <p className="text-2xl font-bold" style={{ color: '#a8e063' }}>{entregasCompletadas}</p>
-                <p className="text-xs font-medium" style={{ color: '#2d3e50' }}>Completadas</p>
-              </div>
-              <div className="bg-white rounded-lg p-3 text-center border-2 border-orange-300">
-                <p className="text-2xl font-bold text-orange-600">{entregasPendientes}</p>
-                <p className="text-xs font-medium" style={{ color: '#2d3e50' }}>Pendientes</p>
-              </div>
-            </div>
-
-            {isUltimaEntrega ? (
-              <div className="rounded-lg p-3 border-2" style={{
-                backgroundColor: '#a8e063',
-                borderColor: '#a8e063'
-              }}>
-                <p className="text-sm font-bold text-white text-center">
-                  🎉 ¡Esta es la última entrega del HDR!
-                </p>
-                <p className="text-xs text-white text-center mt-1">
-                  Al finalizar esta entrega, el HDR estará completado
-                </p>
-              </div>
-            ) : (
-              <div className="rounded-lg p-3 border-2" style={{
-                background: 'linear-gradient(135deg, #1a2332 0%, #2d3e50 100%)',
-                borderColor: '#2d3e50'
-              }}>
-                <p className="text-sm font-bold text-white text-center">
-                  🚚 Quedan {entregasPendientes - 1} entregas pendientes
-                </p>
-                <p className="text-xs text-center mt-1" style={{ color: '#a8e063' }}>
-                  Estado: En Reparto
-                </p>
-              </div>
-            )}
-
-            {/* List of completed deliveries */}
-            {entregasCompletadas > 0 && (
-              <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
-                <p className="text-xs font-bold mb-2" style={{ color: '#a8e063' }}>
-                  ✓ Entregas Completadas:
-                </p>
-                <div className="space-y-1">
-                  {allEntregas
-                    .filter(e => e.estado === 'COMPLETADO')
-                    .map(e => (
-                      <p key={e.id} className="text-xs" style={{ color: '#2d3e50' }}>
-                        • {e.detalleEntregas || e.clienteNombreCompleto || e.cliente}
-                      </p>
-                    ))}
-                </div>
-              </div>
-            )}
-
-            {/* List of pending deliveries */}
-            {entregasPendientes > 1 && (
-              <div className="mt-2 p-3 bg-white rounded-lg border border-gray-200">
-                <p className="text-xs font-bold mb-2 text-orange-600">
-                  ⏳ Entregas Pendientes:
-                </p>
-                <div className="space-y-1">
-                  {allEntregas
-                    .filter(e => e.estado !== 'COMPLETADO' && e.id !== entrega.id)
-                    .map(e => (
-                      <p key={e.id} className="text-xs" style={{ color: '#2d3e50' }}>
-                        • {e.detalleEntregas || e.clienteNombreCompleto || e.cliente}
-                      </p>
-                    ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Firma */}
         <div className="card p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -1051,6 +990,83 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
             </button>
           )}
         </div>
+
+        {/* Progress Summary - Shows after photos are taken */}
+        {fotos.length > 0 && (
+          <div className="card p-4 space-y-3 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-gray-800">Progreso de Viaje</h3>
+                <p className="text-xs text-gray-600">HDR {entrega.hdr}</p>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-semibold text-gray-700">
+                  {entregasCompletadas} de {totalEntregas} entregas
+                </span>
+                <span className="text-xs font-bold text-blue-700">
+                  {Math.round((entregasCompletadas / totalEntregas) * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
+                <div
+                  className="h-full rounded-full transition-all duration-500 shadow-sm"
+                  style={{
+                    width: `${(entregasCompletadas / totalEntregas) * 100}%`,
+                    background: 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Details Grid */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              {/* Completadas */}
+              <div className="bg-green-100 rounded-lg p-3 border border-green-300">
+                <div className="flex items-center gap-2 mb-1">
+                  <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-xs font-bold text-green-800">Completadas</span>
+                </div>
+                <p className="text-2xl font-bold text-green-700">{entregasCompletadas}</p>
+              </div>
+
+              {/* Pendientes */}
+              <div className="bg-orange-100 rounded-lg p-3 border border-orange-300">
+                <div className="flex items-center gap-2 mb-1">
+                  <svg className="w-4 h-4 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-xs font-bold text-orange-800">Pendientes</span>
+                </div>
+                <p className="text-2xl font-bold text-orange-700">{entregasPendientes}</p>
+              </div>
+            </div>
+
+            {/* Last Delivery Indicator */}
+            {isUltimaEntrega && (
+              <div className="mt-2 bg-yellow-100 border-2 border-yellow-400 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm font-bold text-yellow-800">
+                    ¡Última entrega del viaje!
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Geolocation Info */}
         {geoLocation && (
