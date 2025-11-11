@@ -31,6 +31,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Firma
   const [showSignatureModal, setShowSignatureModal] = useState(false);
@@ -46,6 +47,9 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
   // Document scanning
   const [autoScan] = useState(false); // setAutoScan reserved for future use // Auto-scan disabled by default (OpenCV issues)
+
+  // Show camera/gallery options
+  const [showCameraOptions, setShowCameraOptions] = useState(false);
 
   const { updateCaptura, updateEntregaEstado, chofer, tipoTransporte, entregas: allEntregas, clientInfo } = useEntregasStore();
   const { getCurrentLocation, location: geoLocation } = useGeolocation();
@@ -82,13 +86,20 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       return;
     }
 
+    // Hide options after selection
+    setShowCameraOptions(false);
+
     // Check if running on web (not native)
     const isWeb = Capacitor.getPlatform() === 'web';
 
     if (isWeb) {
-      // Use file input for web browsers
-      console.log('[CapturaForm] Running on web, using file input');
-      fileInputRef.current?.click();
+      // Use appropriate file input for web browsers
+      console.log('[CapturaForm] Running on web, using file input for:', source === CameraSource.Camera ? 'CAMERA' : 'GALLERY');
+      if (source === CameraSource.Camera) {
+        cameraInputRef.current?.click();
+      } else {
+        fileInputRef.current?.click();
+      }
       return;
     }
 
@@ -920,7 +931,17 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
             </div>
           )}
 
-          {/* Hidden file input for web browsers */}
+          {/* Hidden file inputs for web browsers */}
+          {/* Camera input - forces camera on mobile browsers */}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+          {/* Gallery input - allows selecting from gallery */}
           <input
             ref={fileInputRef}
             type="file"
@@ -929,62 +950,97 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
             className="hidden"
           />
 
-          {/* Camera and Gallery Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* Camera Button */}
+          {/* Add Remito Button */}
+          {!showCameraOptions ? (
             <button
-              onClick={() => handleCapturarFoto(CameraSource.Camera)}
+              onClick={() => setShowCameraOptions(true)}
               disabled={capturando || fotos.length >= MAX_FOTOS || processing}
-              className="btn-primary py-4"
+              className="btn-primary w-full py-4"
             >
-              {capturando ? (
-                <span className="flex flex-col items-center justify-center gap-2">
-                  <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span className="text-sm">Capturando...</span>
+              <span className="flex items-center justify-center gap-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span className="text-lg font-bold">
+                  {fotos.length === 0 ? 'Agregar Remito' : 'Agregar Otro Remito'}
                 </span>
-              ) : (
-                <span className="flex flex-col items-center justify-center gap-2">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className="text-base font-bold">📷 CÁMARA</span>
-                </span>
-              )}
+              </span>
             </button>
+          ) : (
+            /* Camera and Gallery Options */
+            <div className="space-y-3">
+              <div className="text-center">
+                <p className="text-sm font-semibold text-gray-700 mb-3">¿Cómo deseas agregar el remito?</p>
+              </div>
 
-            {/* Gallery Button */}
-            <button
-              onClick={() => handleCapturarFoto(CameraSource.Photos)}
-              disabled={capturando || fotos.length >= MAX_FOTOS || processing}
-              className="btn-secondary py-4"
-            >
-              {capturando ? (
-                <span className="flex flex-col items-center justify-center gap-2">
-                  <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span className="text-sm">Cargando...</span>
-                </span>
-              ) : (
-                <span className="flex flex-col items-center justify-center gap-2">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span className="text-base font-bold">🖼️ GALERÍA</span>
-                </span>
-              )}
-            </button>
-          </div>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Camera Button */}
+                <button
+                  onClick={() => handleCapturarFoto(CameraSource.Camera)}
+                  disabled={capturando || processing}
+                  className="btn-primary py-6"
+                >
+                  {capturando ? (
+                    <span className="flex flex-col items-center justify-center gap-2">
+                      <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span className="text-sm">Capturando...</span>
+                    </span>
+                  ) : (
+                    <span className="flex flex-col items-center justify-center gap-2">
+                      <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="text-base font-bold">CÁMARA</span>
+                      <span className="text-xs text-gray-600">Tomar foto</span>
+                    </span>
+                  )}
+                </button>
+
+                {/* Gallery Button */}
+                <button
+                  onClick={() => handleCapturarFoto(CameraSource.Photos)}
+                  disabled={capturando || processing}
+                  className="btn-secondary py-6"
+                >
+                  {capturando ? (
+                    <span className="flex flex-col items-center justify-center gap-2">
+                      <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span className="text-sm">Cargando...</span>
+                    </span>
+                  ) : (
+                    <span className="flex flex-col items-center justify-center gap-2">
+                      <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-base font-bold">GALERÍA</span>
+                      <span className="text-xs text-gray-600">Elegir foto</span>
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Cancel button */}
+              <button
+                onClick={() => setShowCameraOptions(false)}
+                disabled={capturando || processing}
+                className="w-full py-2 text-gray-600 text-sm font-medium hover:text-gray-800"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
 
           {/* Photo count hint */}
           {fotos.length > 0 && (
-            <p className="text-xs text-gray-600 text-center font-semibold">
-              {fotos.length} foto{fotos.length > 1 ? 's' : ''} agregada{fotos.length > 1 ? 's' : ''} de {MAX_FOTOS} máximo
+            <p className="text-xs text-gray-600 text-center font-semibold mt-2">
+              {fotos.length} remito{fotos.length > 1 ? 's' : ''} agregado{fotos.length > 1 ? 's' : ''} de {MAX_FOTOS} máximo
             </p>
           )}
         </div>
