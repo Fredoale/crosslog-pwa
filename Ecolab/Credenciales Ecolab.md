@@ -49,16 +49,16 @@ Con la integración:
 
 2. **Registrar nueva aplicación**
    - Ir a: Azure Active Directory → App registrations → New registration
-   - **Name**: `CROSSLOG Integration` (o el nombre que prefieran)
+   - **Name**: `CROSSLOG Integration`
    - **Supported account types**: Accounts in this organizational directory only (Ecolab only - Single tenant)
    - **Redirect URI**:
      - Platform: `Web`
-     - URL: `https://crosslog-pwa.web.app/callback` (o la URL de tu PWA)
+     - URL: `https://crosslog-entregas.netlify.app/callback`
    - Click: **Register**
 
 3. **Anotar credenciales** (IMPORTANTE - Necesitamos estos datos):
-   - ✅ **Application (client) ID**: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
-   - ✅ **Directory (tenant) ID**: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+   - ✅ **Application (client) ID**: Proporcionado por IT de Ecolab
+   - ✅ **Directory (tenant) ID**: Proporcionado por IT de Ecolab
 
 4. **Crear Client Secret** (contraseña de la app):
    - Ir a: Certificates & secrets → New client secret
