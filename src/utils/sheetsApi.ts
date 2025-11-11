@@ -33,8 +33,9 @@ export class GoogleSheetsAPI {
    */
   private async fetchClientesMap(): Promise<Map<string, string>> {
     try {
-      const range = 'MAESTRA_CLIENTES!A:B';
-      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+      const range = 'Clientes!A:B';
+      // IMPORTANTE: Usar spreadsheetEntregasId para leer Clientes
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -77,8 +78,9 @@ export class GoogleSheetsAPI {
     folderId?: string;
   } | null> {
     try {
-      const range = 'MAESTRA_CLIENTES!A:E';
-      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+      const range = 'Clientes!A:E';
+      // IMPORTANTE: Usar spreadsheetEntregasId para leer Clientes
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
 
       console.log('[SheetsAPI] Fetching client info for:', clientId);
 
@@ -1120,8 +1122,10 @@ export class GoogleSheetsAPI {
     try {
       console.log('[SheetsAPI] Authenticating cliente with code:', codigo);
 
-      const range = 'ACCESOS_CLIENTES!A:E';
-      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+      const range = 'Accesos_clientes!A:E';
+      // IMPORTANTE: Usar spreadsheetEntregasId para accesos
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
+      console.log('[SheetsAPI] Using spreadsheetEntregasId for Accesos_clientes:', this.config.spreadsheetEntregasId);
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -1173,8 +1177,10 @@ export class GoogleSheetsAPI {
     try {
       console.log('[SheetsAPI] Authenticating fletero with code:', codigo);
 
-      const range = 'ACCESOS_FLETEROS!A:D';
-      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+      const range = 'Accesos_fleteros!A:E';
+      // IMPORTANTE: Usar spreadsheetEntregasId para accesos
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
+      console.log('[SheetsAPI] Using spreadsheetEntregasId for Accesos_fleteros:', this.config.spreadsheetEntregasId);
 
       const response = await fetch(url);
       if (!response.ok) {
