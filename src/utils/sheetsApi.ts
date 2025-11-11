@@ -956,8 +956,14 @@ export class GoogleSheetsAPI {
       const normalizedFletero = fletero.trim().toUpperCase();
       const matchingHDRs = new Map<string, any>();
 
+      console.log('[SheetsAPI] Searching for fletero:', normalizedFletero);
+      let debuggedFirstRow = false;
+      let matchedCount = 0;
+      let totalRows = 0;
+
       // Filter rows by fletero (from column Q: Tipo_Transporte)
       rowsSistema.slice(1).forEach((row: string[]) => {
+        totalRows++;
         const rowFleteroRaw = row[tipoTransporteIndex]?.trim().toUpperCase();
         const rowHDR = row[hdrIndex]?.trim();
         const rowFecha = row[fechaIndex]?.trim();
@@ -965,11 +971,24 @@ export class GoogleSheetsAPI {
 
         if (!rowHDR) return;
 
-        // Si columna Q está vacía, es PROPIO
-        const rowFletero = rowFleteroRaw || 'PROPIO';
+        // Si columna Q está vacía, es CROSSLOG (transporte propio)
+        const rowFletero = rowFleteroRaw || 'CROSSLOG';
+
+        // Debug first row
+        if (!debuggedFirstRow) {
+          console.log('[SheetsAPI] First row analysis:');
+          console.log('  - HDR:', rowHDR);
+          console.log('  - Column Q (raw):', row[tipoTransporteIndex]);
+          console.log('  - Column Q (processed):', rowFletero);
+          console.log('  - Looking for:', normalizedFletero);
+          console.log('  - Match?', rowFletero === normalizedFletero || rowFletero.includes(normalizedFletero));
+          debuggedFirstRow = true;
+        }
 
         // Match fletero (exact or contains)
         if (rowFletero === normalizedFletero || rowFletero.includes(normalizedFletero)) {
+          matchedCount++;
+
           // Optional date filtering
           if (fechaDesde || fechaHasta) {
             // Basic date filtering (you may want to improve this)
@@ -989,6 +1008,8 @@ export class GoogleSheetsAPI {
         }
       });
 
+      console.log(`[SheetsAPI] Fletero filter results: ${matchedCount} matched rows out of ${totalRows} total rows`);
+
       // Build HDR data from Sistema_entregas rows (already filtered)
       const hdrsData = [];
 
@@ -997,7 +1018,7 @@ export class GoogleSheetsAPI {
         const hdrRows = rowsSistema.slice(1).filter((row: string[]) => {
           const rowHDR = row[hdrIndex]?.trim();
           const rowFleteroRaw = row[tipoTransporteIndex]?.trim().toUpperCase();
-          const rowFletero = rowFleteroRaw || 'PROPIO'; // Si está vacío, es PROPIO
+          const rowFletero = rowFleteroRaw || 'CROSSLOG'; // Si está vacío, es CROSSLOG (transporte propio)
           return rowHDR === hdr && (rowFletero === normalizedFletero || rowFletero.includes(normalizedFletero));
         });
 
@@ -1056,7 +1077,10 @@ export class GoogleSheetsAPI {
       // Group by HDR
       const hdrsMap = new Map<string, string[][]>();
 
+      let matchedRows = 0;
+      let totalRows = 0;
       rowsSistema.slice(1).forEach((row: string[]) => {
+        totalRows++;
         const rowHDR = row[hdrIndex]?.trim();
         if (!rowHDR) return;
 
@@ -1064,7 +1088,18 @@ export class GoogleSheetsAPI {
         if (filterBy?.clienteId) {
           const rowCliente = row[clienteIndex]?.trim().toUpperCase();
           const filterCliente = filterBy.clienteId.trim().toUpperCase();
+
+          // Debug first row
+          if (matchedRows === 0) {
+            console.log('[SheetsAPI] Filter comparison example:');
+            console.log('  - Row cliente (Dador_carga):', row[clienteIndex]);
+            console.log('  - Row cliente (uppercase):', rowCliente);
+            console.log('  - Filter cliente (uppercase):', filterCliente);
+            console.log('  - Match?', rowCliente === filterCliente);
+          }
+
           if (rowCliente !== filterCliente) return;
+          matchedRows++;
         }
 
         if (!hdrsMap.has(rowHDR)) {
@@ -1072,6 +1107,10 @@ export class GoogleSheetsAPI {
         }
         hdrsMap.get(rowHDR)!.push(row);
       });
+
+      if (filterBy?.clienteId) {
+        console.log(`[SheetsAPI] Filter results: ${matchedRows} matched rows out of ${totalRows} total rows`);
+      }
 
       // Build HDR data for each unique HDR
       const hdrsData = [];

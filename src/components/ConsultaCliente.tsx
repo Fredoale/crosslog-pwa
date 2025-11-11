@@ -21,7 +21,7 @@ const RESULTS_PER_PAGE = 20;
 
 const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
   const [authenticated, setAuthenticated] = useState(false);
-  const [, setClienteId] = useState<string | null>(null);
+  const [clienteId, setClienteId] = useState<string | null>(null);
   const [nombreCliente, setNombreCliente] = useState<string | null>(null);
   const [searchType, setSearchType] = useState<'hdr' | 'remito'>('hdr');
   const [searchValue, setSearchValue] = useState('');
@@ -89,21 +89,23 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
 
   // Load client's HDRs on authentication
   useEffect(() => {
-    if (authenticated && nombreCliente && !result && !loading) {
+    if (authenticated && clienteId && !result && !loading) {
       loadClientHDRs();
     }
-  }, [authenticated, nombreCliente]);
+  }, [authenticated, clienteId]);
 
   const loadClientHDRs = async () => {
-    if (!nombreCliente) return;
+    if (!clienteId) return;
 
     setLoading(true);
     try {
-      const clientHDRs = await sheetsApi.getAllHDRs({ clienteId: nombreCliente });
+      console.log('[ConsultaCliente] 🔍 Loading HDRs for client ID:', clienteId, '(Nombre:', nombreCliente, ')');
+      const clientHDRs = await sheetsApi.getAllHDRs({ clienteId: clienteId });
+      console.log('[ConsultaCliente] 📋 API Response:', clientHDRs);
+      console.log('[ConsultaCliente] 📋 Loaded', clientHDRs.hdrs?.length || 0, 'HDRs for client:', clienteId);
       setResult(clientHDRs);
-      console.log('[ConsultaCliente] 📋 Loaded', clientHDRs.hdrs?.length || 0, 'HDRs for client:', nombreCliente);
     } catch (error) {
-      console.error('[ConsultaCliente] Error loading HDRs:', error);
+      console.error('[ConsultaCliente] ❌ Error loading HDRs:', error);
       setResult({ found: false, message: 'Error al cargar sus entregas' });
     } finally {
       setLoading(false);
@@ -116,7 +118,7 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
       return;
     }
 
-    if (!nombreCliente) {
+    if (!clienteId) {
       alert('Error: No se pudo obtener su información de cliente');
       return;
     }
@@ -128,13 +130,13 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
     try {
       let searchResult;
 
-      // IMPORTANTE: Usar nombreCliente (que coincide con Dador_carga) en lugar de clienteId
-      console.log('[ConsultaCliente] Searching with clienteId:', nombreCliente);
+      // IMPORTANTE: Usar clienteId (ID corto como "ECO") que matchea con Dador_carga
+      console.log('[ConsultaCliente] Searching with clienteId:', clienteId);
 
       if (searchType === 'hdr') {
-        searchResult = await sheetsApi.searchHDRByNumber(searchValue.trim(), { clienteId: nombreCliente });
+        searchResult = await sheetsApi.searchHDRByNumber(searchValue.trim(), { clienteId: clienteId });
       } else {
-        searchResult = await sheetsApi.searchByRemito(searchValue.trim(), { clienteId: nombreCliente });
+        searchResult = await sheetsApi.searchByRemito(searchValue.trim(), { clienteId: clienteId });
       }
 
       setResult(searchResult);

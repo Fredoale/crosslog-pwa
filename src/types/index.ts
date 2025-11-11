@@ -114,7 +114,9 @@ export type FleteroEmpresa =
   | 'DON PEDRO'
   | 'CALLTRUCK'
   | 'FALZONE'
-  | 'ANDROSIUK';
+  | 'ANDROSIUK'
+  | 'VIMAAB'
+  | 'CROSSLOG';
 
 export interface HDRConsulta {
   hdr: string;

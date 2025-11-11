@@ -24,6 +24,7 @@ const FLETEROS: FleteroEmpresa[] = [
   'CALLTRUCK',
   'FALZONE',
   'ANDROSIUK',
+  'VIMAAB',
 ];
 
 const RESULTS_PER_PAGE = 20;

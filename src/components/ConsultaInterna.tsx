@@ -25,9 +25,10 @@ const FLETEROS: FleteroEmpresa[] = [
   'CALLTRUCK',
   'FALZONE',
   'ANDROSIUK',
+  'VIMAAB',
 ];
 
-const FLETEROS_CON_PROPIO = [...FLETEROS, 'Propio' as FleteroEmpresa];
+const FLETEROS_CON_CROSSLOG = [...FLETEROS, 'CROSSLOG' as FleteroEmpresa];
 const RESULTS_PER_PAGE = 20;
 
 const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
@@ -167,8 +168,9 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
   const handleLimpiar = () => {
     setSearchValue('');
     setSelectedFletero('');
-    setResult(null);
     setCurrentPage(1);
+    // Reload all HDRs instead of clearing results
+    loadAllHDRs();
   };
 
   // Filter by date if filter is active
@@ -371,19 +373,19 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
                 Seleccione el tipo de transporte
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
-                {FLETEROS_CON_PROPIO.map((fletero) => (
+                {FLETEROS_CON_CROSSLOG.map((fletero) => (
                   <button
                     key={fletero}
                     onClick={() => setSelectedFletero(fletero)}
                     className={`p-3 rounded-lg font-semibold transition-all border-2 text-sm ${
                       selectedFletero === fletero
                         ? 'bg-purple-600 text-white border-purple-600 shadow-lg'
-                        : fletero.toUpperCase() === 'PROPIO'
+                        : fletero.toUpperCase() === 'CROSSLOG'
                         ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
                         : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
                     }`}
                   >
-                    {fletero.toUpperCase() === 'PROPIO' ? '🚛 PROPIO' : fletero}
+                    {fletero.toUpperCase() === 'CROSSLOG' ? '🚛 CROSSLOG' : fletero}
                   </button>
                 ))}
               </div>
