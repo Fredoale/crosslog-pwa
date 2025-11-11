@@ -76,7 +76,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
   // Service Account authentication is automatic - no user interaction needed
 
-  const handleTomarFoto = async () => {
+  const handleCapturarFoto = async (source: CameraSource) => {
     if (fotos.length >= MAX_FOTOS) {
       setError(`Máximo ${MAX_FOTOS} remitos por entrega`);
       return;
@@ -97,32 +97,41 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
     setWarning(null);
 
     try {
-      // Request camera permissions explicitly before taking photo
-      console.log('[CapturaForm] Checking camera permissions...');
+      // Request permissions explicitly based on source
+      console.log('[CapturaForm] Checking permissions for source:', source === CameraSource.Camera ? 'CAMERA' : 'PHOTOS');
       const permissionStatus = await Camera.checkPermissions();
       console.log('[CapturaForm] Permission status:', permissionStatus);
 
-      // If permissions not granted, request them
-      if (permissionStatus.camera !== 'granted' || permissionStatus.photos !== 'granted') {
-        console.log('[CapturaForm] Requesting camera permissions...');
-        const requestResult = await Camera.requestPermissions();
-        console.log('[CapturaForm] Permission request result:', requestResult);
+      // Request specific permission based on source
+      if (source === CameraSource.Camera && permissionStatus.camera !== 'granted') {
+        console.log('[CapturaForm] Requesting camera permission...');
+        const requestResult = await Camera.requestPermissions({ permissions: ['camera'] });
+        console.log('[CapturaForm] Camera permission result:', requestResult);
 
-        // Check if still denied after request
-        if (requestResult.camera === 'denied' || requestResult.photos === 'denied') {
-          setError('Permisos de cámara denegados. Ve a Configuración de la aplicación y habilita los permisos de Cámara y Fotos.');
+        if (requestResult.camera === 'denied') {
+          setError('Permiso de cámara denegado. Ve a Configuración de la aplicación y habilita el permiso de Cámara.');
+          setCapturando(false);
+          return;
+        }
+      } else if (source === CameraSource.Photos && permissionStatus.photos !== 'granted') {
+        console.log('[CapturaForm] Requesting photos permission...');
+        const requestResult = await Camera.requestPermissions({ permissions: ['photos'] });
+        console.log('[CapturaForm] Photos permission result:', requestResult);
+
+        if (requestResult.photos === 'denied') {
+          setError('Permiso de galería denegado. Ve a Configuración de la aplicación y habilita el permiso de Fotos/Galería.');
           setCapturando(false);
           return;
         }
       }
 
-      console.log('[CapturaForm] ✓ Permissions granted, taking photo...');
+      console.log('[CapturaForm] ✓ Permissions granted, capturing photo...');
 
       const image = await Camera.getPhoto({
         quality: 95, // High quality (increased from 85)
         allowEditing: false,
         resultType: CameraResultType.DataUrl, // Use DataUrl instead of Base64 for better compatibility
-        source: CameraSource.Prompt, // Allow user to choose Camera or Gallery
+        source: source, // Use specific source (Camera or Photos)
         saveToGallery: false,
         correctOrientation: true,
       });
@@ -920,35 +929,64 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
             className="hidden"
           />
 
-          {/* Camera Button */}
-          <button
-            onClick={handleTomarFoto}
-            disabled={capturando || fotos.length >= MAX_FOTOS || processing}
-            className="btn-primary w-full"
-          >
-            {capturando ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Capturando...
-              </span>
-            ) : (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Agregar Foto {fotos.length > 0 && `(${fotos.length})`}
-              </span>
-            )}
-          </button>
+          {/* Camera and Gallery Buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Camera Button */}
+            <button
+              onClick={() => handleCapturarFoto(CameraSource.Camera)}
+              disabled={capturando || fotos.length >= MAX_FOTOS || processing}
+              className="btn-primary py-4"
+            >
+              {capturando ? (
+                <span className="flex flex-col items-center justify-center gap-2">
+                  <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span className="text-sm">Capturando...</span>
+                </span>
+              ) : (
+                <span className="flex flex-col items-center justify-center gap-2">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="text-base font-bold">📷 CÁMARA</span>
+                </span>
+              )}
+            </button>
 
-          {/* Hint text */}
-          <p className="text-xs text-gray-500 text-center mt-2">
-            📷 Toma una foto o 🖼️ carga desde la galería
-          </p>
+            {/* Gallery Button */}
+            <button
+              onClick={() => handleCapturarFoto(CameraSource.Photos)}
+              disabled={capturando || fotos.length >= MAX_FOTOS || processing}
+              className="btn-secondary py-4"
+            >
+              {capturando ? (
+                <span className="flex flex-col items-center justify-center gap-2">
+                  <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span className="text-sm">Cargando...</span>
+                </span>
+              ) : (
+                <span className="flex flex-col items-center justify-center gap-2">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-base font-bold">🖼️ GALERÍA</span>
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Photo count hint */}
+          {fotos.length > 0 && (
+            <p className="text-xs text-gray-600 text-center font-semibold">
+              {fotos.length} foto{fotos.length > 1 ? 's' : ''} agregada{fotos.length > 1 ? 's' : ''} de {MAX_FOTOS} máximo
+            </p>
+          )}
         </div>
 
         {/* Firma */}
