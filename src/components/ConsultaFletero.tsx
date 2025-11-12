@@ -27,7 +27,7 @@ const FLETEROS: FleteroEmpresa[] = [
   'VIMAAB',
 ];
 
-const RESULTS_PER_PAGE = 20;
+const RESULTS_PER_PAGE = 7;
 
 const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
   const [authenticated, setAuthenticated] = useState(false);

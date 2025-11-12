@@ -28,7 +28,7 @@ const FLETEROS: FleteroEmpresa[] = [
 ];
 
 const FLETEROS_CON_CROSSLOG = [...FLETEROS, 'CROSSLOG' as FleteroEmpresa];
-const RESULTS_PER_PAGE = 20;
+const RESULTS_PER_PAGE = 7;
 
 const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
   const [authenticated, setAuthenticated] = useState(false);

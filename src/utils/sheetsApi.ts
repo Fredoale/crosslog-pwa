@@ -978,7 +978,10 @@ export class GoogleSheetsAPI {
       // Filter rows by fletero (from column Q: Tipo_Transporte)
       rowsSistema.slice(1).forEach((row: string[]) => {
         totalRows++;
-        const rowFleteroRaw = row[tipoTransporteIndex]?.trim().toUpperCase();
+        // Clean JSON array format before processing (e.g., ["BARCO"] -> BARCO)
+        const rowFleteroRawDirty = row[tipoTransporteIndex] || '';
+        const rowFleteroRawClean = cleanJsonArrayValue(rowFleteroRawDirty);
+        const rowFleteroRaw = rowFleteroRawClean.trim().toUpperCase();
         const rowHDR = row[hdrIndex]?.trim();
         const rowFecha = row[fechaIndex]?.trim();
         const rowChofer = row[choferIndex]?.trim();
@@ -998,10 +1001,11 @@ export class GoogleSheetsAPI {
           rowFletero = 'CROSSLOG';
           crosslogCount++;
         } else {
-          // Verificar si es un fletero conocido
-          const isKnownFletero = KNOWN_FLETEROS.some(f => rowFleteroRaw.includes(f));
-          if (isKnownFletero) {
-            rowFletero = rowFleteroRaw;
+          // Verificar si es un fletero conocido (buscar coincidencia parcial)
+          const matchedFletero = KNOWN_FLETEROS.find(f => rowFleteroRaw.includes(f));
+          if (matchedFletero) {
+            // Normalizar al nombre estándar del fletero
+            rowFletero = matchedFletero;
           } else {
             // Es un nombre de chofer, entonces es CROSSLOG
             rowFletero = 'CROSSLOG';
@@ -1146,13 +1150,17 @@ export class GoogleSheetsAPI {
 
         // Apply cliente filter if provided
         if (filterBy?.clienteId) {
-          const rowCliente = row[clienteIndex]?.trim().toUpperCase();
+          // Clean JSON array format before comparing (e.g., ["TOY"] -> TOY)
+          const rowClienteRaw = row[clienteIndex] || '';
+          const rowClienteCleaned = cleanJsonArrayValue(rowClienteRaw);
+          const rowCliente = rowClienteCleaned.trim().toUpperCase();
           const filterCliente = filterBy.clienteId.trim().toUpperCase();
 
           // Debug first row
           if (matchedRows === 0) {
             console.log('[SheetsAPI] Filter comparison example:');
-            console.log('  - Row cliente (Dador_carga):', row[clienteIndex]);
+            console.log('  - Row cliente raw (Dador_carga):', rowClienteRaw);
+            console.log('  - Row cliente cleaned:', rowClienteCleaned);
             console.log('  - Row cliente (uppercase):', rowCliente);
             console.log('  - Filter cliente (uppercase):', filterCliente);
             console.log('  - Match?', rowCliente === filterCliente);

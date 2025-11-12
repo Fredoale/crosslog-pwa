@@ -17,7 +17,7 @@ interface SessionData {
   timestamp: number;
 }
 
-const RESULTS_PER_PAGE = 20;
+const RESULTS_PER_PAGE = 7;
 
 const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
   const [authenticated, setAuthenticated] = useState(false);
