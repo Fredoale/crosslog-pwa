@@ -1178,14 +1178,18 @@ export class GoogleSheetsAPI {
 
       if (filterBy?.clienteId) {
         console.log(`[SheetsAPI] Filter results: ${matchedRows} matched rows out of ${totalRows} total rows`);
+        console.log(`[SheetsAPI] Unique HDRs found: ${hdrsMap.size}`);
+        console.log(`[SheetsAPI] HDRs list:`, Array.from(hdrsMap.keys()));
       }
 
       // Build HDR data for each unique HDR
       const hdrsData = [];
-      for (const [_hdr, rows] of hdrsMap) { // hdr key not directly used
+      for (const [hdr, rows] of hdrsMap) {
         const hdrData = this.buildHDRDataFromSistema(rows);
         if (hdrData) {
           hdrsData.push(hdrData);
+        } else {
+          console.warn(`[SheetsAPI] Failed to build data for HDR: ${hdr} (${rows.length} rows)`);
         }
       }
 
@@ -1196,7 +1200,7 @@ export class GoogleSheetsAPI {
         return dateB.getTime() - dateA.getTime();
       });
 
-      console.log(`[SheetsAPI] Loaded ${hdrsData.length} unique HDRs`);
+      console.log(`[SheetsAPI] Successfully loaded ${hdrsData.length} unique HDRs (from ${hdrsMap.size} in map)`);
 
       return {
         found: hdrsData.length > 0,
