@@ -263,9 +263,12 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         setTimeout(() => handleScanDocument(fotoId), 100);
       }
 
-      // Reset input
+      // Reset both inputs
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+      if (cameraInputRef.current) {
+        cameraInputRef.current.value = '';
       }
     } catch (err) {
       console.error('[CapturaForm] File input error:', err);
@@ -703,13 +706,29 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       console.log('[CapturaForm] ✓ Data sent to N8N for Sheets processing');
 
       // Step 4: Update store
+      // Convert signature dataUrl to Blob properly
+      let signatureBlob: Blob;
+      try {
+        if (signature.dataUrl && signature.dataUrl.startsWith('data:')) {
+          // Convert data URL to Blob
+          const response = await fetch(signature.dataUrl);
+          signatureBlob = await response.blob();
+        } else {
+          // Create empty blob if no signature image (edit mode case)
+          signatureBlob = new Blob([''], { type: 'text/plain' });
+        }
+      } catch (blobError) {
+        console.warn('[CapturaForm] Error converting signature to blob, using empty blob:', blobError);
+        signatureBlob = new Blob([''], { type: 'text/plain' });
+      }
+
       updateCaptura({
         numeroRemito: numerosRemito[0] || '',
         cliente,
         estado,
         fotos,
         firma: {
-          blob: new Blob([signature.dataUrl]),
+          blob: signatureBlob,
           nombreReceptor: signature.nombreReceptor,
           timestamp: new Date().toISOString(),
         },
