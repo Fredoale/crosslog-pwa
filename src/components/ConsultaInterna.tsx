@@ -501,71 +501,6 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
                   </div>
                 </div>
 
-                {/* Pagination Controls - Top */}
-                {totalPages > 1 && (
-                  <div className="mb-4 bg-white rounded-xl shadow-lg p-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                      {/* Previous Button */}
-                      <button
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                        Anterior
-                      </button>
-
-                      {/* Page Numbers */}
-                      <div className="flex items-center gap-2 flex-wrap justify-center">
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                          // Show first page, last page, current page, and pages around current
-                          const showPage = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 2;
-                          const showEllipsis = (page === 2 && currentPage > 4) || (page === totalPages - 1 && currentPage < totalPages - 3);
-
-                          if (showEllipsis) {
-                            return <span key={page} className="px-2 text-gray-500">...</span>;
-                          }
-
-                          if (!showPage) return null;
-
-                          return (
-                            <button
-                              key={page}
-                              onClick={() => handlePageChange(page)}
-                              className={`w-10 h-10 rounded-lg font-semibold transition-all ${
-                                currentPage === page
-                                  ? 'bg-purple-600 text-white shadow-lg'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              }`}
-                            >
-                              {page}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Next Button */}
-                      <button
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-                      >
-                        Siguiente
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
-                    </div>
-
-                    {/* Results Info */}
-                    <div className="mt-4 text-center text-sm text-gray-600">
-                      Mostrando {startIndex + 1} - {Math.min(endIndex, totalResults)} de {totalResults} resultados
-                    </div>
-                  </div>
-                )}
-
                 {/* Date Filter */}
                 <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -692,8 +627,8 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <span className="text-sm">
                           {hdr.entregasCompletadas === hdr.totalEntregas ? (
                             <span className="text-green-600 font-semibold flex items-center gap-1">
@@ -733,22 +668,10 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
 
                 {/* Pagination Controls */}
                 {totalPages > 1 && (
-                  <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                      {/* Previous Button */}
-                      <button
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                        Anterior
-                      </button>
-
-                      {/* Page Numbers */}
-                      <div className="flex items-center gap-2 flex-wrap justify-center">
+                  <div className="mt-6 bg-white rounded-xl shadow-lg p-4 sm:p-6">
+                    <div className="flex flex-col gap-4">
+                      {/* Page Numbers - Centered on mobile */}
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
                         {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
                           // Show first page, last page, current page, and pages around current
                           const showPage = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 2;
@@ -776,22 +699,35 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
                         })}
                       </div>
 
-                      {/* Next Button */}
-                      <button
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-                      >
-                        Siguiente
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
-                    </div>
+                      {/* Navigation Buttons */}
+                      <div className="flex items-center justify-between gap-3">
+                        <button
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          <span className="hidden sm:inline">Anterior</span>
+                        </button>
 
-                    {/* Results Info */}
-                    <div className="mt-4 text-center text-sm text-gray-600">
-                      Mostrando {startIndex + 1} - {Math.min(endIndex, totalResults)} de {totalResults} resultados
+                        {/* Results Info */}
+                        <div className="text-center text-xs sm:text-sm text-gray-600">
+                          {startIndex + 1}-{Math.min(endIndex, totalResults)} de {totalResults}
+                        </div>
+
+                        <button
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                        >
+                          <span className="hidden sm:inline">Siguiente</span>
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
