@@ -404,7 +404,13 @@ export class GoogleSheetsAPI {
 
         // Create one Entrega per destino
         // If numeroEntrega > detalles, create extra with same last detail
-        const numEntregas = Math.max(numeroEntregaTotal, detallesSeparados.length);
+        // SAFETY LIMIT: Maximum 50 entregas per row to prevent localStorage overflow
+        const maxEntregasPerRow = 50;
+        const numEntregas = Math.min(Math.max(numeroEntregaTotal, detallesSeparados.length), maxEntregasPerRow);
+
+        if (numeroEntregaTotal > maxEntregasPerRow) {
+          console.warn(`[SheetsAPI] ⚠️ numeroEntrega (${numeroEntregaTotal}) exceeds safety limit (${maxEntregasPerRow}), capping at ${maxEntregasPerRow}`);
+        }
 
         for (let i = 0; i < numEntregas; i++) {
           const detalleEntrega = detallesSeparados[i] || detallesSeparados[detallesSeparados.length - 1] || clienteNombreCompleto;
