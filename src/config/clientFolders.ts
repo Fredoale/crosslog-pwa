@@ -45,10 +45,16 @@ export const CLIENT_FOLDERS: Record<string, ClientFolderConfig> = {
     folderId: '1NhcBSDrmZI6f8COxVcZwBXpv7O1DZkm5', // ID de la carpeta "REMITOS INQUIMEX"
     folderName: 'REMITOS INQUIMEX',
   },
+  'HALL': {
+    id: 'HALL',
+    nombre: 'HALLIBURTON',
+    folderId: '1b8w1oEf9DdRpUbb-8tiX7FNB8Skr10xI', // ID de la carpeta "REMITOS HALLIBURTON"
+    folderName: 'REMITOS HALLIBURTON',
+  },
   'HAL': {
     id: 'HAL',
     nombre: 'HALLIBURTON',
-    folderId: '1b8w1oEf9DdRpUbb-8tiX7FNB8Skr10xI', // ID de la carpeta "REMITOS HALLIBURTON"
+    folderId: '1b8w1oEf9DdRpUbb-8tiX7FNB8Skr10xI', // ID de la carpeta "REMITOS HALLIBURTON" (alias)
     folderName: 'REMITOS HALLIBURTON',
   },
   'APN': {
