@@ -400,16 +400,18 @@ export class GoogleSheetsAPI {
             .filter(d => d.length > 0 && !d.toUpperCase().startsWith('CARGA'));
         }
 
-        console.log(`[SheetsAPI] HDR ${hdr} has ${numeroEntregaTotal} entregas, ${detallesSeparados.length} destinos found`);
+        console.log(`[SheetsAPI] HDR ${hdr} - Column A value: ${numeroEntregaTotal}, Destinos found: ${detallesSeparados.length}`);
 
-        // Create one Entrega per destino
-        // If numeroEntrega > detalles, create extra with same last detail
-        // SAFETY LIMIT: Maximum 50 entregas per row to prevent localStorage overflow
-        const maxEntregasPerRow = 50;
-        const numEntregas = Math.min(Math.max(numeroEntregaTotal, detallesSeparados.length), maxEntregasPerRow);
+        // Create one Entrega per destino found in DETALLE column
+        // Use detallesSeparados.length as the source of truth (real number of destinations)
+        // Ignore numeroEntregaTotal from column A (often incorrect or refers to something else)
+        const numEntregas = detallesSeparados.length || 1; // At least 1 entrega
 
-        if (numeroEntregaTotal > maxEntregasPerRow) {
-          console.warn(`[SheetsAPI] ⚠️ numeroEntrega (${numeroEntregaTotal}) exceeds safety limit (${maxEntregasPerRow}), capping at ${maxEntregasPerRow}`);
+        console.log(`[SheetsAPI] Creating ${numEntregas} entrega(s) based on DETALLE destinations`);
+
+        // Safety check: warn if seems too many
+        if (numEntregas > 20) {
+          console.warn(`[SheetsAPI] ⚠️ High number of destinations (${numEntregas}) - verify DETALLE format is correct`);
         }
 
         for (let i = 0; i < numEntregas; i++) {
