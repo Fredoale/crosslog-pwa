@@ -156,10 +156,11 @@ export const useEntregasStore = create<EntregasState>()(
     }),
     {
       name: 'crosslog-storage',
-      version: 2, // Increment version due to clientInfo addition
+      version: 3, // Increment version to add tipoTransporte persistence
       partialize: (state) => ({
         currentHDR: state.currentHDR,
         chofer: state.chofer,
+        tipoTransporte: state.tipoTransporte, // ✅ Persist transport type
         clientInfo: state.clientInfo,
         entregas: state.entregas,
         currentEntrega: state.currentEntrega,

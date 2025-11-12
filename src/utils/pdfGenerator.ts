@@ -79,27 +79,40 @@ export async function generateIndividualPDF(
       color: rgb(0.659, 0.878, 0.388), // #a8e063 (Crosslog green)
     });
 
-    // Convert signature dataUrl to bytes
-    const signatureBase64 = signature.dataUrl.split(',')[1];
-    const signatureBytes = Uint8Array.from(atob(signatureBase64), c => c.charCodeAt(0));
-    const signatureImage = await pdfDoc.embedPng(signatureBytes);
+    // Convert signature dataUrl to bytes (only if we have a valid signature image)
+    let signatureImage = null;
+    let sigWidth = 0;
+    let sigHeight = 0;
 
-    // Calculate signature dimensions
-    const maxWidth = 280;
-    const maxHeight = 140;
-    let sigWidth = signatureImage.width;
-    let sigHeight = signatureImage.height;
+    if (signature.dataUrl && signature.dataUrl.startsWith('data:image')) {
+      try {
+        const signatureBase64 = signature.dataUrl.split(',')[1];
+        if (signatureBase64) {
+          const signatureBytes = Uint8Array.from(atob(signatureBase64), c => c.charCodeAt(0));
+          signatureImage = await pdfDoc.embedPng(signatureBytes);
 
-    if (sigWidth > maxWidth) {
-      const ratio = maxWidth / sigWidth;
-      sigWidth = maxWidth;
-      sigHeight = sigHeight * ratio;
-    }
+          // Calculate signature dimensions
+          const maxWidth = 280;
+          const maxHeight = 140;
+          sigWidth = signatureImage.width;
+          sigHeight = signatureImage.height;
 
-    if (sigHeight > maxHeight) {
-      const ratio = maxHeight / sigHeight;
-      sigHeight = maxHeight;
-      sigWidth = sigWidth * ratio;
+          if (sigWidth > maxWidth) {
+            const ratio = maxWidth / sigWidth;
+            sigWidth = maxWidth;
+            sigHeight = sigHeight * ratio;
+          }
+
+          if (sigHeight > maxHeight) {
+            const ratio = maxHeight / sigHeight;
+            sigHeight = maxHeight;
+            sigWidth = sigWidth * ratio;
+          }
+        }
+      } catch (signatureError) {
+        console.warn('[pdfGenerator] Error loading signature image, will continue without it:', signatureError);
+        signatureImage = null;
+      }
     }
 
     // Signature box with Crosslog green border
@@ -120,16 +133,26 @@ export async function generateIndividualPDF(
       color: rgb(0.176, 0.243, 0.314), // #2d3e50 (Crosslog secondary dark)
     });
 
-    // Draw signature centered in box
-    const sigX = 50 + (pageWidth - 100 - sigWidth) / 2;
-    const sigY = boxY + (200 - sigHeight) / 2;
+    // Draw signature centered in box (only if we have a signature image)
+    if (signatureImage && sigWidth > 0 && sigHeight > 0) {
+      const sigX = 50 + (pageWidth - 100 - sigWidth) / 2;
+      const sigY = boxY + (200 - sigHeight) / 2;
 
-    signaturePage.drawImage(signatureImage, {
-      x: sigX,
-      y: sigY,
-      width: sigWidth,
-      height: sigHeight,
-    });
+      signaturePage.drawImage(signatureImage, {
+        x: sigX,
+        y: sigY,
+        width: sigWidth,
+        height: sigHeight,
+      });
+    } else {
+      // Draw placeholder text if no signature image
+      signaturePage.drawText('(Firma digital no disponible)', {
+        x: 150,
+        y: boxY + 90,
+        size: 10,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+    }
 
     // Information section
     let infoY = boxY - 40;
