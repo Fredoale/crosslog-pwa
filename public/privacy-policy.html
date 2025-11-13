@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Política de Privacidad - CROSSLOG PWA</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1a2332;
+            border-bottom: 3px solid #a8e063;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #1a2332;
+            margin-top: 30px;
+            border-left: 4px solid #a8e063;
+            padding-left: 15px;
+        }
+        h3 {
+            color: #2c3e50;
+            margin-top: 20px;
+        }
+        ul {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+        li {
+            margin: 8px 0;
+        }
+        .highlight {
+            background: #f0f9ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+        }
+        a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .section {
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Política de Privacidad de CROSSLOG PWA</h1>
+
+        <p><strong>Última actualización:</strong> 13 de noviembre de 2024</p>
+
+        <div class="highlight">
+            <p><strong>CROSSLOG PWA</strong> es una aplicación web progresiva diseñada para la gestión de entregas logísticas. Esta política describe cómo accedemos, usamos, almacenamos y protegemos los datos de usuario cuando interactúa con Google Drive y Google Sheets.</p>
+        </div>
+
+        <div class="section">
+            <h2>1. Información del Desarrollador</h2>
+            <p><strong>Nombre de la aplicación:</strong> CROSSLOG PWA</p>
+            <p><strong>URL de la aplicación:</strong> <a href="https://appcrosslog.netlify.app">https://appcrosslog.netlify.app</a></p>
+            <p><strong>Contacto:</strong> Para consultas sobre privacidad, contacte a través de WhatsApp: +54 11 7360-3954</p>
+        </div>
+
+        <div class="section">
+            <h2>2. Datos a los que Accedemos</h2>
+            <p>CROSSLOG PWA solicita acceso a los siguientes datos de Google:</p>
+
+            <h3>2.1 Google Sheets API</h3>
+            <ul>
+                <li><strong>Alcance (Scope):</strong> <code>https://www.googleapis.com/auth/spreadsheets</code></li>
+                <li><strong>Datos accedidos:</strong>
+                    <ul>
+                        <li>Lectura de hojas de cálculo que contienen información de entregas (números de HDR, remitos, clientes, direcciones, fechas)</li>
+                        <li>Escritura de actualizaciones de estado de entregas (completado, pendiente)</li>
+                        <li>Escritura de URLs de PDFs generados</li>
+                        <li>Escritura de nombres de receptores y marcas de tiempo</li>
+                    </ul>
+                </li>
+                <li><strong>Razón del acceso:</strong> La aplicación necesita leer las entregas asignadas y actualizar su estado en tiempo real para coordinar la logística de entregas.</li>
+            </ul>
+
+            <h3>2.2 Google Drive API</h3>
+            <ul>
+                <li><strong>Alcance (Scope):</strong> <code>https://www.googleapis.com/auth/drive.file</code></li>
+                <li><strong>Datos accedidos:</strong>
+                    <ul>
+                        <li>Subida de archivos PDF (comprobantes de entrega con fotos y firmas digitales)</li>
+                        <li>Acceso solo a archivos creados por la aplicación</li>
+                        <li>Organización de PDFs en carpetas específicas por cliente</li>
+                    </ul>
+                </li>
+                <li><strong>Razón del acceso:</strong> Los comprobantes de entrega (PDFs) deben almacenarse en Google Drive para acceso posterior y respaldo.</li>
+            </ul>
+
+            <h3>2.3 Información de Autenticación</h3>
+            <ul>
+                <li>Email de la cuenta de Google (solo para autenticación)</li>
+                <li>Nombre de perfil (solo para identificación)</li>
+                <li>Token de acceso OAuth 2.0 (temporal, almacenado localmente)</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>3. Cómo Usamos los Datos</h2>
+
+            <h3>3.1 Uso Principal</h3>
+            <ul>
+                <li><strong>Gestión de entregas:</strong> Leer y actualizar el estado de entregas logísticas en Google Sheets</li>
+                <li><strong>Generación de comprobantes:</strong> Crear PDFs con fotos de entregas y firmas digitales de receptores</li>
+                <li><strong>Almacenamiento de evidencia:</strong> Subir PDFs a carpetas específicas en Google Drive organizadas por cliente</li>
+                <li><strong>Sincronización:</strong> Mantener sincronizado el estado de entregas entre la aplicación móvil y Google Sheets</li>
+            </ul>
+
+            <h3>3.2 Procesamiento de Datos</h3>
+            <ul>
+                <li>Los datos se procesan exclusivamente en el navegador del usuario (client-side)</li>
+                <li>No mantenemos servidores backend que procesen o almacenen sus datos</li>
+                <li>Las imágenes capturadas se convierten a PDF localmente antes de subirse a Google Drive</li>
+                <li>Los tokens de autenticación se almacenan localmente en el navegador del usuario</li>
+            </ul>
+
+            <div class="highlight">
+                <p><strong>Importante:</strong> CROSSLOG PWA es una aplicación 100% client-side. Todos los datos permanecen en su control: en su Google Drive y Google Sheets. No tenemos acceso a sus datos sin su autenticación explícita.</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>4. Compartir Datos con Terceros</h2>
+
+            <h3>4.1 No Compartimos Datos</h3>
+            <p><strong>CROSSLOG PWA NO comparte sus datos de Google con terceros.</strong> Los datos permanecen exclusivamente en:</p>
+            <ul>
+                <li>Su cuenta de Google Drive (PDFs)</li>
+                <li>Sus hojas de Google Sheets (datos de entregas)</li>
+                <li>El almacenamiento local de su navegador (tokens de autenticación, caché temporal)</li>
+            </ul>
+
+            <h3>4.2 Servicios de Google Utilizados</h3>
+            <p>La aplicación utiliza directamente las APIs de Google:</p>
+            <ul>
+                <li><strong>Google Drive API:</strong> Para almacenar PDFs de comprobantes</li>
+                <li><strong>Google Sheets API:</strong> Para gestionar datos de entregas</li>
+                <li><strong>Google OAuth 2.0:</strong> Para autenticación segura</li>
+            </ul>
+            <p>Estos servicios están sujetos a la <a href="https://policies.google.com/privacy" target="_blank">Política de Privacidad de Google</a>.</p>
+        </div>
+
+        <div class="section">
+            <h2>5. Almacenamiento y Protección de Datos</h2>
+
+            <h3>5.1 Dónde se Almacenan sus Datos</h3>
+            <ul>
+                <li><strong>Google Drive:</strong> PDFs de comprobantes de entrega (con fotos y firmas)</li>
+                <li><strong>Google Sheets:</strong> Información de entregas, estados, fechas, clientes</li>
+                <li><strong>LocalStorage del navegador:</strong>
+                    <ul>
+                        <li>Tokens OAuth 2.0 (cifrados por el navegador)</li>
+                        <li>Información de sesión temporal</li>
+                        <li>Caché de entregas para modo offline</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h3>5.2 Medidas de Seguridad</h3>
+            <ul>
+                <li><strong>Autenticación OAuth 2.0:</strong> Protocolo seguro de Google para autorización</li>
+                <li><strong>HTTPS obligatorio:</strong> Toda comunicación está cifrada con TLS</li>
+                <li><strong>Tokens de acceso temporal:</strong> Los tokens expiran y deben renovarse</li>
+                <li><strong>Permisos granulares:</strong> Solo accedemos a los archivos que la aplicación crea</li>
+                <li><strong>Sin backend:</strong> No hay servidores intermedios que puedan ser comprometidos</li>
+                <li><strong>Código abierto:</strong> El código puede ser auditado (disponible en GitHub)</li>
+            </ul>
+
+            <h3>5.3 LocalStorage y Seguridad</h3>
+            <ul>
+                <li>Los datos en LocalStorage están aislados por dominio (solo accesibles por CROSSLOG PWA)</li>
+                <li>Los tokens se eliminan automáticamente al cerrar sesión</li>
+                <li>No almacenamos contraseñas ni credenciales sensibles</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>6. Retención y Eliminación de Datos</h2>
+
+            <h3>6.1 Período de Retención</h3>
+            <ul>
+                <li><strong>Google Drive:</strong> Los PDFs permanecen en su Drive indefinidamente hasta que usted los elimine</li>
+                <li><strong>Google Sheets:</strong> Los datos permanecen en sus hojas hasta que usted los modifique o elimine</li>
+                <li><strong>LocalStorage:</strong> Los datos se mantienen hasta que:
+                    <ul>
+                        <li>Cierre sesión manualmente</li>
+                        <li>Limpie el caché del navegador</li>
+                        <li>Desinstale la PWA</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h3>6.2 Cómo Eliminar sus Datos</h3>
+
+            <h4>Eliminar datos de Google Drive:</h4>
+            <ol>
+                <li>Vaya a <a href="https://drive.google.com" target="_blank">Google Drive</a></li>
+                <li>Busque las carpetas: "REMITOS ECOLAB", "REMITOS TOYOTA", etc.</li>
+                <li>Elimine los PDFs que desee</li>
+            </ol>
+
+            <h4>Eliminar datos de Google Sheets:</h4>
+            <ol>
+                <li>Abra su hoja "BASE" en Google Sheets</li>
+                <li>Elimine las filas con datos de entregas que desee borrar</li>
+            </ol>
+
+            <h4>Eliminar datos locales (LocalStorage):</h4>
+            <ol>
+                <li>En CROSSLOG PWA, haga clic en "Cerrar Sesión"</li>
+                <li>O limpie el caché del navegador:
+                    <ul>
+                        <li><strong>Chrome:</strong> Configuración → Privacidad → Borrar datos de navegación</li>
+                        <li><strong>Firefox:</strong> Opciones → Privacidad → Borrar historial</li>
+                        <li><strong>Safari:</strong> Preferencias → Privacidad → Administrar datos del sitio web</li>
+                    </ul>
+                </li>
+            </ol>
+
+            <h4>Revocar acceso de la aplicación:</h4>
+            <ol>
+                <li>Vaya a <a href="https://myaccount.google.com/permissions" target="_blank">Permisos de aplicaciones de Google</a></li>
+                <li>Busque "CROSSLOG PWA"</li>
+                <li>Haga clic en "Eliminar acceso"</li>
+            </ol>
+
+            <div class="highlight">
+                <p><strong>Garantía:</strong> Al revocar el acceso, CROSSLOG PWA ya no podrá acceder a su Google Drive ni Google Sheets. Todos sus datos permanecerán intactos en su cuenta de Google.</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>7. Derechos del Usuario</h2>
+            <p>Como usuario de CROSSLOG PWA, usted tiene derecho a:</p>
+            <ul>
+                <li><strong>Acceso:</strong> Acceder a todos sus datos en Google Drive y Sheets en cualquier momento</li>
+                <li><strong>Rectificación:</strong> Modificar sus datos directamente en Google Sheets</li>
+                <li><strong>Eliminación:</strong> Eliminar cualquier dato siguiendo los pasos de la sección 6.2</li>
+                <li><strong>Portabilidad:</strong> Exportar sus datos desde Google Drive y Sheets</li>
+                <li><strong>Revocación:</strong> Revocar el acceso de la aplicación en cualquier momento</li>
+                <li><strong>Transparencia:</strong> Revisar el código fuente de la aplicación en GitHub</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>8. Cumplimiento con Políticas de Google</h2>
+            <p>CROSSLOG PWA cumple con:</p>
+            <ul>
+                <li><a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank">Política de Datos de Usuario de los Servicios de la API de Google</a></li>
+                <li><a href="https://developers.google.com/terms" target="_blank">Términos de Servicio de las APIs de Google</a></li>
+                <li>Principio de uso limitado: Solo usamos los datos para la funcionalidad descrita</li>
+                <li>No vendemos datos de usuario</li>
+                <li>No usamos datos para publicidad o remarketing</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>9. Cookies y Tecnologías de Seguimiento</h2>
+            <p><strong>CROSSLOG PWA NO utiliza cookies de seguimiento ni herramientas de analítica.</strong></p>
+            <ul>
+                <li>No usamos Google Analytics</li>
+                <li>No usamos cookies publicitarias</li>
+                <li>Solo usamos LocalStorage para funcionalidad esencial (tokens OAuth, sesión, caché offline)</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>10. Cambios a esta Política</h2>
+            <p>Podemos actualizar esta política ocasionalmente. Los cambios se publicarán en esta página con una nueva fecha de "Última actualización". Le recomendamos revisar esta política periódicamente.</p>
+            <p>Si realizamos cambios significativos que afecten cómo manejamos sus datos, le notificaremos mediante:</p>
+            <ul>
+                <li>Un aviso destacado en la aplicación</li>
+                <li>Requiriendo nueva aceptación de términos al iniciar sesión</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>11. Contacto</h2>
+            <p>Si tiene preguntas sobre esta política de privacidad o sobre cómo manejamos sus datos:</p>
+            <ul>
+                <li><strong>WhatsApp:</strong> +54 11 7360-3954</li>
+                <li><strong>Mensaje:</strong> Envíe "Consulta sobre privacidad CROSSLOG"</li>
+            </ul>
+            <p>Responderemos a su consulta en un plazo máximo de 72 horas hábiles.</p>
+        </div>
+
+        <div class="section">
+            <h2>12. Transparencia y Código Abierto</h2>
+            <p>CROSSLOG PWA se compromete con la transparencia:</p>
+            <ul>
+                <li>El código fuente está disponible para auditoría</li>
+                <li>No hay procesos ocultos ni recopilación de datos no declarada</li>
+                <li>Todos los permisos solicitados están justificados y documentados</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2024 CROSSLOG PWA. Todos los derechos reservados.</p>
+            <p><a href="/">Volver a la aplicación</a></p>
+        </div>
+    </div>
+</body>
+</html>

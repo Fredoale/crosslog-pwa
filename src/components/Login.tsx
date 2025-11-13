@@ -601,11 +601,24 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
             <p className="text-xs font-medium mb-2" style={{ color: '#9ca3af' }}>
               Versión 1.0.0 • CROSSLOG PWA
             </p>
-            <div className="flex justify-center">
-              <ShareQRButton
-                url={`${window.location.origin}/#/login`}
-                title="CROSSLOG - Iniciar Entregas"
-              />
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex justify-center">
+                <ShareQRButton
+                  url={`${window.location.origin}/#/login`}
+                  title="CROSSLOG - Iniciar Entregas"
+                />
+              </div>
+              <a
+                href="/privacy-policy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium hover:underline transition-colors"
+                style={{ color: '#6b7280' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#a8e063'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+              >
+                🔒 Política de Privacidad
+              </a>
             </div>
           </div>
         </div>
