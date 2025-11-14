@@ -26,7 +26,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument: _
   const [baseImageUrl, setBaseImageUrl] = useState<string>(''); // Original or cropped base
   const [processing, setProcessing] = useState(false);
   const [applyingFilter, setApplyingFilter] = useState(false);
-  const [cropMode, setCropMode] = useState(true); // Start with crop mode ENABLED by default
+  const [cropMode, setCropMode] = useState(false);
   const [cropArea, setCropArea] = useState<CropArea | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
@@ -429,7 +429,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument: _
 
     // Draw border around crop area with thicker, more visible line
     ctx.strokeStyle = '#a8e063';
-    ctx.lineWidth = 16; // Increased to 16 for better visibility
+    ctx.lineWidth = 20; // Increased to 20 for better visibility
     ctx.strokeRect(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
 
     // Draw handles - larger and more visible for easier touch interaction
