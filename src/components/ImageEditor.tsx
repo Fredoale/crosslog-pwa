@@ -5,6 +5,7 @@ interface ImageEditorProps {
   imageBlob: Blob;
   onSave: (editedBlob: Blob) => void;
   onCancel: () => void;
+  autoDetectDocument?: boolean; // Auto-detect document and show crop on mount
 }
 
 interface CropArea {
@@ -19,7 +20,7 @@ type HandleType =
   | 'top' | 'bottom' | 'left' | 'right'
   | null;
 
-export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
+export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument = false }: ImageEditorProps) {
   const [rotation, setRotation] = useState(0);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [baseImageUrl, setBaseImageUrl] = useState<string>(''); // Original or cropped base
