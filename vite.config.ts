@@ -28,6 +28,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      disable: true, // TEMPORARILY DISABLED - Service Worker causing issues with Google Sheets API
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icon-192x192.svg', 'vite.svg'],
       manifest: {
