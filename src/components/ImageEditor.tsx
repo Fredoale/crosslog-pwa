@@ -429,7 +429,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument: _
 
     // Draw border around crop area with thicker, more visible line
     ctx.strokeStyle = '#a8e063';
-    ctx.lineWidth = 22; // Increased to 22 for better visibility
+    ctx.lineWidth = 24; // Increased to 24 for better visibility
     ctx.strokeRect(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
 
     // Draw handles - larger and more visible for easier touch interaction
@@ -437,6 +437,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument: _
     const cornerLength = 35; // Length of each arm of the L
     const edgeHandleLength = 60; // Increased from 40 to 60
     const edgeHandleThickness = 10; // Increased from 6 to 10
+    const circleRadius = 16; // Circle radius for handles
     ctx.fillStyle = '#a8e063';
 
     // Corner handles - L-shaped for better visibility and grip
@@ -455,9 +456,22 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument: _
     // Bottom-right corner (L shape)
     ctx.fillRect(cropArea.x + cropArea.width - cornerLength + cornerThickness / 2, cropArea.y + cropArea.height - cornerThickness / 2, cornerLength, cornerThickness); // Horizontal
     ctx.fillRect(cropArea.x + cropArea.width - cornerThickness / 2, cropArea.y + cropArea.height - cornerLength + cornerThickness / 2, cornerThickness, cornerLength); // Vertical
+    
+    // Corner circles for precise adjustment
+    ctx.beginPath();
+    ctx.arc(cropArea.x, cropArea.y, circleRadius, 0, 2 * Math.PI); // Top-left
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cropArea.x + cropArea.width, cropArea.y, circleRadius, 0, 2 * Math.PI); // Top-right
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cropArea.x, cropArea.y + cropArea.height, circleRadius, 0, 2 * Math.PI); // Bottom-left
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cropArea.x + cropArea.width, cropArea.y + cropArea.height, circleRadius, 0, 2 * Math.PI); // Bottom-right
+    ctx.fill();
 
     // Edge handles (linear adjustment indicators) - bars with circular grips
-    const circleRadius = 12; // Circle in the middle for better grip visualization
 
     // Top edge handle (centered)
     ctx.fillRect(
