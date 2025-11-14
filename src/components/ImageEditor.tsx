@@ -428,7 +428,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
 
     // Draw border around crop area with thicker, more visible line
     ctx.strokeStyle = '#a8e063';
-    ctx.lineWidth = 12; // Increased to 12 for better visibility
+    ctx.lineWidth = 16; // Increased to 16 for better visibility
     ctx.strokeRect(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
 
     // Draw handles - larger and more visible for easier touch interaction
