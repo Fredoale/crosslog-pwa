@@ -90,6 +90,168 @@ export class OCRScanner {
   }
 
   /**
+   * Reinitialize the worker completely (for cleanup between uses)
+   */
+  private async reinitializeWorker(): Promise<void> {
+    console.log('[OCR] Reinitializing worker for next use...');
+    try {
+      if (this.worker) {
+        await this.worker.terminate();
+        console.log('[OCR] Previous worker terminated');
+      }
+    } catch (error) {
+      console.error('[OCR] Error terminating previous worker:', error);
+    }
+
+    this.worker = null;
+    this.initialized = false;
+
+    // Initialize fresh worker
+    await this.init();
+    console.log('[OCR] Worker reinitialized successfully');
+  }
+
+  /**
+   * Scan only a specific region of the image (MUCH FASTER!)
+   * @param imageBlob - The full image
+   * @param region - The region to scan (x, y, width, height)
+   */
+  async scanRegion(imageBlob: Blob, region: { x: number; y: number; width: number; height: number }): Promise<OCRResult> {
+    try {
+      console.log('[OCR] ========================================');
+      console.log('[OCR] Starting NEW scan region');
+      console.log('[OCR] Region:', region);
+      console.log('[OCR] Worker status:', { initialized: this.initialized, hasWorker: !!this.worker });
+
+      // ALWAYS reinitialize worker before each scan for reliability
+      await this.reinitializeWorker();
+
+      if (!this.worker) {
+        throw new Error('OCR worker failed to initialize');
+      }
+
+      // Create canvas to extract region
+      console.log('[OCR] Creating canvas for region extraction...');
+      const imageBitmap = await createImageBitmap(imageBlob);
+      const canvas = document.createElement('canvas');
+      canvas.width = region.width;
+      canvas.height = region.height;
+      const ctx = canvas.getContext('2d')!;
+
+      // Draw only the selected region
+      ctx.drawImage(
+        imageBitmap,
+        region.x, region.y, region.width, region.height,
+        0, 0, region.width, region.height
+      );
+
+      // Convert canvas to blob
+      console.log('[OCR] Converting region to blob...');
+      const regionBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error('Failed to create blob')),
+          'image/jpeg',
+          0.95
+        );
+      });
+
+      console.log('[OCR] Region extracted successfully, size:', region.width, 'x', region.height);
+
+      // Configure Tesseract for numbers only (MUCH FASTER)
+      console.log('[OCR] Configuring Tesseract for digits-only mode...');
+      await this.worker.setParameters({
+        tessedit_char_whitelist: '0123456789',  // Only digits
+        tessedit_pageseg_mode: 7 as any,  // PSM.SINGLE_LINE - Single line mode (faster)
+      });
+
+      // Run OCR on region
+      console.log('[OCR] Running OCR recognition...');
+      const { data } = await this.worker.recognize(regionBlob);
+
+      console.log('[OCR] Recognition complete, raw text:', data.text);
+      console.log('[OCR] Confidence:', data.confidence);
+
+      const text = data.text.trim();
+      const confidence = data.confidence;
+
+      // Clean the number (remove spaces, non-digits)
+      const numeroRemito = this.cleanNumeroFromRegion(text);
+
+      console.log('[OCR] ✅ Scan completed successfully');
+      console.log('[OCR] Detected number:', numeroRemito);
+      console.log('[OCR] ========================================');
+
+      return {
+        text,
+        confidence,
+        numeroRemito,
+      };
+    } catch (error) {
+      console.error('[OCR] ❌ ERROR during scan:', error);
+      console.error('[OCR] Error details:', error instanceof Error ? error.message : String(error));
+      console.error('[OCR] ========================================');
+
+      // Clean up worker on error
+      try {
+        if (this.worker) {
+          await this.worker.terminate();
+        }
+      } catch (terminateError) {
+        console.error('[OCR] Error terminating worker after failure:', terminateError);
+      }
+
+      this.worker = null;
+      this.initialized = false;
+
+      throw error;
+    }
+  }
+
+  /**
+   * Clean numero from region scan (extract 4-5 digit number)
+   */
+  private cleanNumeroFromRegion(text: string): string | undefined {
+    // Remove all non-digit characters and spaces
+    const digitsOnly = text.replace(/\D/g, '');
+
+    if (!digitsOnly) {
+      console.log('[OCR] No digits found in region');
+      return undefined;
+    }
+
+    console.log('[OCR] Raw digits:', digitsOnly);
+
+    // Strategy: Extract the LAST 4-5 meaningful digits
+    // Examples:
+    // - "0800038952" -> "38952" (last 5 non-zero)
+    // - "00001205" -> "1205" (last 4 non-zero)
+    // - "200008" -> "8" -> too short, try "00036952" -> "36952"
+
+    // Remove ALL leading zeros first
+    let cleaned = digitsOnly.replace(/^0+/, '');
+
+    if (!cleaned) {
+      console.log('[OCR] Only zeros detected, invalid');
+      return undefined;
+    }
+
+    // If cleaned number is too long (>6 digits), take last 5 digits
+    if (cleaned.length > 6) {
+      console.log(`[OCR] Number too long (${cleaned.length} digits), taking last 5`);
+      cleaned = cleaned.slice(-5);
+    }
+
+    // Validate: must be 3-6 digits
+    if (cleaned.length < 3 || cleaned.length > 6) {
+      console.log(`[OCR] Invalid length: ${cleaned.length} digits`);
+      return undefined;
+    }
+
+    console.log('[OCR] Cleaned number from region:', cleaned);
+    return cleaned;
+  }
+
+  /**
    * Extract numero remito from text
    * Detecta automáticamente el formato según el cliente y extrae el número correcto
    * Estrategia: Busca en la parte superior del documento (primeros 500 caracteres) donde suele estar el número de remito

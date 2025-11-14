@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { applyCustomFilter } from '../utils/customFilter';
+import { scanDocument } from '../utils/documentScanner';
 
 interface ImageEditorProps {
   imageBlob: Blob;
   onSave: (editedBlob: Blob) => void;
   onCancel: () => void;
+  autoDetectDocument?: boolean; // Auto-detect document and show crop on mount
 }
 
 interface CropArea {
@@ -19,18 +21,19 @@ type HandleType =
   | 'top' | 'bottom' | 'left' | 'right'
   | null;
 
-export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
+export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument = false }: ImageEditorProps) {
   const [rotation, setRotation] = useState(0);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [baseImageUrl, setBaseImageUrl] = useState<string>(''); // Original or cropped base
   const [processing, setProcessing] = useState(false);
   const [applyingFilter, setApplyingFilter] = useState(false);
-  const [cropMode, setCropMode] = useState(false);
+  const [cropMode, setCropMode] = useState(true); // Start with crop mode ENABLED by default
   const [cropArea, setCropArea] = useState<CropArea | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragHandle, setDragHandle] = useState<HandleType>(null);
   const [initialCropArea, setInitialCropArea] = useState<CropArea | null>(null);
+  const [detectingDocument, setDetectingDocument] = useState(false);
   // Reserved for future use: canvasRef
   // const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -53,6 +56,72 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
       updatePreview();
     }
   }, [baseImageUrl, rotation]);
+
+  // Auto-detect document on mount if requested
+  useEffect(() => {
+    if (autoDetectDocument && baseImageUrl && !cropArea && !detectingDocument) {
+      // Add delay to ensure canvas is ready
+      const timer = setTimeout(() => {
+        handleAutoDetectDocument();
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [autoDetectDocument, baseImageUrl]);
+
+  // Auto-detect document contour and set as initial crop area
+  const handleAutoDetectDocument = async () => {
+    if (detectingDocument) return;
+
+    setDetectingDocument(true);
+    console.log('[ImageEditor] Auto-detecting document...');
+
+    try {
+      // Use scanDocument to detect corners
+      const result = await scanDocument(imageBlob, { autoEnhance: false, quality: 95 });
+
+      if (result.success && result.corners && result.corners.length === 4) {
+        console.log('[ImageEditor] ✓ Document detected, corners:', result.corners);
+
+        // Wait for preview canvas to be ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const canvas = previewCanvasRef.current;
+        if (!canvas) {
+          console.warn('[ImageEditor] Preview canvas not ready');
+          setDetectingDocument(false);
+          return;
+        }
+
+        // Convert corners to crop area (bounding box)
+        const xs = result.corners.map(c => c.x);
+        const ys = result.corners.map(c => c.y);
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        const maxX = Math.max(...xs);
+        const maxY = Math.max(...ys);
+
+        // Set crop area based on detected corners
+        const detectedCropArea: CropArea = {
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+        };
+
+        console.log('[ImageEditor] Setting initial crop area:', detectedCropArea);
+        setCropArea(detectedCropArea);
+      } else {
+        console.warn('[ImageEditor] Could not detect document automatically');
+        // Still show crop mode, user can draw manually
+      }
+    } catch (error) {
+      console.error('[ImageEditor] Error auto-detecting document:', error);
+      // Continue anyway, user can draw crop area manually
+    } finally {
+      setDetectingDocument(false);
+    }
+  };
 
   const updatePreview = () => {
     const img = new Image();
@@ -428,7 +497,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
 
     // Draw border around crop area with thicker, more visible line
     ctx.strokeStyle = '#a8e063';
-    ctx.lineWidth = 12; // Increased to 12 for better visibility
+    ctx.lineWidth = 20; // Increased to 20 for better visibility and precision
     ctx.strokeRect(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
 
     // Draw handles - larger and more visible for easier touch interaction
@@ -512,39 +581,49 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
 
     if (!previewCanvas || !cropCanvas) return;
 
-    // Wait for next frame to ensure preview canvas is rendered
+    // Use double requestAnimationFrame for better reliability
     requestAnimationFrame(() => {
-      const rect = previewCanvas.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        const rect = previewCanvas.getBoundingClientRect();
 
-      // Set crop canvas internal dimensions to match preview canvas
-      cropCanvas.width = previewCanvas.width;
-      cropCanvas.height = previewCanvas.height;
+        // Set crop canvas internal dimensions to match preview canvas
+        cropCanvas.width = previewCanvas.width;
+        cropCanvas.height = previewCanvas.height;
 
-      // Position crop canvas exactly over preview canvas
-      const previewParent = previewCanvas.parentElement;
-      if (previewParent) {
-        const parentRect = previewParent.getBoundingClientRect();
-        const offsetX = rect.left - parentRect.left;
-        const offsetY = rect.top - parentRect.top;
+        // Position crop canvas exactly over preview canvas
+        const previewParent = previewCanvas.parentElement;
+        if (previewParent) {
+          const parentRect = previewParent.getBoundingClientRect();
+          const offsetX = rect.left - parentRect.left;
+          const offsetY = rect.top - parentRect.top;
 
-        cropCanvas.style.left = `${offsetX}px`;
-        cropCanvas.style.top = `${offsetY}px`;
-        cropCanvas.style.width = `${rect.width}px`;
-        cropCanvas.style.height = `${rect.height}px`;
-      }
+          cropCanvas.style.left = `${offsetX}px`;
+          cropCanvas.style.top = `${offsetY}px`;
+          cropCanvas.style.width = `${rect.width}px`;
+          cropCanvas.style.height = `${rect.height}px`;
+        }
 
-      console.log('[ImageEditor] Crop canvas synced:', {
-        internal: { width: cropCanvas.width, height: cropCanvas.height },
-        visual: { width: rect.width, height: rect.height },
-        position: { left: cropCanvas.style.left, top: cropCanvas.style.top }
+        console.log('[ImageEditor] Crop canvas synced:', {
+          internal: { width: cropCanvas.width, height: cropCanvas.height },
+          visual: { width: rect.width, height: rect.height },
+          position: { left: cropCanvas.style.left, top: cropCanvas.style.top }
+        });
       });
     });
-  }, [cropMode, baseImageUrl, rotation]); // Changed from imageUrl to baseImageUrl
+  }, [cropMode, baseImageUrl, rotation, imageUrl]); // Added imageUrl to ensure resync on new image
 
   const handleSave = async () => {
     setProcessing(true);
 
     try {
+      // Si hay un área de recorte activa, aplicarlo automáticamente antes de guardar
+      if (cropMode && cropArea && cropArea.width > 10 && cropArea.height > 10) {
+        console.log('[ImageEditor] Auto-aplicando recorte antes de guardar...');
+        await handleApplyCrop();
+        // Esperar un momento para que el recorte se aplique
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
       const canvas = previewCanvasRef.current;
       if (!canvas) throw new Error('Canvas not found');
 
@@ -623,7 +702,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
               onTouchStart={(e) => {
-                e.preventDefault();
+                // No preventDefault needed with touchAction: 'none'
                 const touch = e.touches[0];
                 const previewCanvas = previewCanvasRef.current;
                 if (!previewCanvas) return;
@@ -637,6 +716,8 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
 
                 const x = visualX * scaleX;
                 const y = visualY * scaleY;
+
+                console.log('[ImageEditor] Touch start:', { visualX, visualY, x, y, scaleX, scaleY });
 
                 // Check if touching existing crop area handle
                 if (cropArea && cropArea.width > 0 && cropArea.height > 0) {
@@ -652,6 +733,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
                 }
 
                 // Start new crop area
+                console.log('[ImageEditor] Starting new crop area');
                 setIsDragging(true);
                 setDragStart({ x, y });
                 setDragHandle(null);
@@ -659,7 +741,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
                 setCropArea({ x, y, width: 0, height: 0 });
               }}
               onTouchMove={(e) => {
-                e.preventDefault();
+                // No preventDefault needed with touchAction: 'none'
                 if (!isDragging || !dragStart) return;
 
                 const touch = e.touches[0];
@@ -753,7 +835,8 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
                 width: '100%',
                 height: '100%',
                 cursor: 'crosshair',
-                touchAction: 'none'
+                touchAction: 'none',
+                zIndex: 10
               }}
             />
           )}
@@ -851,12 +934,23 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
         {/* Reset Button */}
         <button
           onClick={() => {
+            // Restablecer TODOS los cambios a la imagen original
+            console.log('[ImageEditor] Restableciendo todos los cambios...');
             setRotation(0);
+            setCropMode(false);
+            setCropArea(null);
+            // Revoke the modified URL if it's different from original
+            if (baseImageUrl && baseImageUrl !== imageUrl) {
+              URL.revokeObjectURL(baseImageUrl);
+            }
+            // Restore to original image
+            setBaseImageUrl(imageUrl);
+            console.log('[ImageEditor] ✓ Todos los cambios restablecidos');
           }}
           disabled={applyingFilter}
           className="w-full py-3 rounded-lg text-white text-sm font-semibold border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-50"
         >
-          Restablecer rotación
+          Restablecer Todo
         </button>
       </div>
     </div>
