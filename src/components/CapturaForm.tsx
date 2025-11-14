@@ -916,7 +916,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
                     </div>
 
                     {/* Input and Actions */}
-                    <div className="flex-1 space-y-2">
+                    <div className="flex-1 space-y-3">
                       <label className="block text-xs font-semibold text-gray-700">
                         Número de Remito #{index + 1} *
                       </label>
@@ -938,7 +938,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
                         <button
                           onClick={() => handleOpenEditor(foto.id)}
                           disabled={processing}
-                          className="py-2 px-3 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                          className="py-2.5 px-4 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                           style={{ backgroundColor: '#2d3e50' }}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -951,7 +951,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
                         <button
                           onClick={() => handleOpenOCRSelector(foto.id)}
                           disabled={processing || foto.ocrDetecting}
-                          className="py-2 px-3 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                          className="py-2.5 px-4 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                           style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
                         >
                           {foto.ocrDetecting ? (
