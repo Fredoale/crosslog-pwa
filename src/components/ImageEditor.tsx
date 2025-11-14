@@ -20,7 +20,7 @@ type HandleType =
   | 'top' | 'bottom' | 'left' | 'right'
   | null;
 
-export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument = false }: ImageEditorProps) {
+export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument: _autoDetectDocument = false }: ImageEditorProps) {
   const [rotation, setRotation] = useState(0);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [baseImageUrl, setBaseImageUrl] = useState<string>(''); // Original or cropped base
