@@ -25,7 +25,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
   const [baseImageUrl, setBaseImageUrl] = useState<string>(''); // Original or cropped base
   const [processing, setProcessing] = useState(false);
   const [applyingFilter, setApplyingFilter] = useState(false);
-  const [cropMode, setCropMode] = useState(false);
+  const [cropMode, setCropMode] = useState(true); // Start with crop mode ENABLED by default
   const [cropArea, setCropArea] = useState<CropArea | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);

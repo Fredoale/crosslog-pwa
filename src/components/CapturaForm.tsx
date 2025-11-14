@@ -6,6 +6,7 @@ import { useGeolocation } from '../hooks/useGeolocation';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { SignatureCanvas } from './SignatureCanvas';
 import { ImageEditor } from './ImageEditor';
+import { OCRRegionSelector } from './OCRRegionSelector';
 import { generateIndividualPDF, type SignatureData } from '../utils/pdfGenerator';
 import { uploadToGoogleDrive } from '../utils/googleDriveService';
 import { ocrScanner } from '../utils/ocrScanner';
@@ -40,6 +41,10 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   // Editor de imágenes
   const [showImageEditor, setShowImageEditor] = useState(false);
   const [editingFotoId, setEditingFotoId] = useState<string | null>(null);
+
+  // OCR Region Selector
+  const [showOCRSelector, setShowOCRSelector] = useState(false);
+  const [ocrFotoId, setOcrFotoId] = useState<string | null>(null);
 
   // Procesamiento
   const [processing, setProcessing] = useState(false);
@@ -188,6 +193,13 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
       setFotos((prev) => [...prev, nuevaFoto]);
 
+      // Auto-open editor after photo is taken
+      console.log('[CapturaForm] Auto-opening editor for new photo...');
+      setTimeout(() => {
+        setEditingFotoId(fotoId);
+        setShowImageEditor(true);
+      }, 100);
+
       // Auto-scan if enabled
       if (autoScan) {
         console.log('[CapturaForm] Auto-scanning document...');
@@ -257,6 +269,13 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
       setFotos((prev) => [...prev, nuevaFoto]);
 
+      // Auto-open editor after photo is loaded
+      console.log('[CapturaForm] Auto-opening editor for new photo...');
+      setTimeout(() => {
+        setEditingFotoId(fotoId);
+        setShowImageEditor(true);
+      }, 100);
+
       // Auto-scan if enabled
       if (autoScan) {
         console.log('[CapturaForm] Auto-scanning document...');
@@ -291,45 +310,75 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
     );
   };
 
-  const handleScanearOCR = async (fotoId: string) => {
-    const foto = fotos.find((f) => f.id === fotoId);
+  const handleOpenOCRSelector = (fotoId: string) => {
+    setOcrFotoId(fotoId);
+    setShowOCRSelector(true);
+  };
+
+  const handleOCRRegionSelected = async (x: number, y: number, width: number, height: number) => {
+    if (!ocrFotoId) return;
+
+    const foto = fotos.find((f) => f.id === ocrFotoId);
     if (!foto) return;
 
-    // Mark as detecting
+    // Close selector and mark as detecting
+    setShowOCRSelector(false);
+    setError(null);
+    setWarning(null);
+
     setFotos((prev) =>
-      prev.map((f) => (f.id === fotoId ? { ...f, ocrDetecting: true } : f))
+      prev.map((f) => (f.id === ocrFotoId ? { ...f, ocrDetecting: true } : f))
     );
 
     try {
-      console.log('[CapturaForm] Scanning OCR for foto:', fotoId);
-      const ocrResult = await ocrScanner.scanRemito(foto.blob);
+      console.log('[CapturaForm] ===== STARTING OCR DETECTION =====');
+      console.log('[CapturaForm] Foto ID:', ocrFotoId);
+      console.log('[CapturaForm] Region:', { x, y, width, height });
 
-      if (ocrResult.numeroRemito) {
+      const ocrResult = await ocrScanner.scanRegion(foto.blob, { x, y, width, height });
+
+      console.log('[CapturaForm] OCR Result:', ocrResult);
+
+      if (ocrResult.numeroRemito && ocrResult.numeroRemito.trim()) {
         const detectedNumber = ocrResult.numeroRemito.trim();
-        console.log('[CapturaForm] OCR detected:', detectedNumber);
+        console.log('[CapturaForm] ✓ OCR detected from region:', detectedNumber);
 
         setFotos((prev) =>
           prev.map((f) =>
-            f.id === fotoId
+            f.id === ocrFotoId
               ? { ...f, numeroRemito: detectedNumber, ocrDetecting: false }
               : f
           )
         );
         setWarning(null);
+        setError(null);
       } else {
-        console.warn('[CapturaForm] No remito detected');
+        console.warn('[CapturaForm] ⚠️ No remito detected in region');
+        console.warn('[CapturaForm] OCR text was:', ocrResult.text);
+
         setFotos((prev) =>
-          prev.map((f) => (f.id === fotoId ? { ...f, ocrDetecting: false } : f))
+          prev.map((f) => (f.id === ocrFotoId ? { ...f, ocrDetecting: false } : f))
         );
-        setWarning('No se pudo detectar el número de remito. Ingrésalo manualmente.');
+        setWarning('No se detectaron números en esa área. Intenta seleccionar solo el número del remito o ingrésalo manualmente.');
       }
-    } catch (ocrError) {
-      console.error('[CapturaForm] OCR error:', ocrError);
+    } catch (ocrError: any) {
+      console.error('[CapturaForm] ❌ OCR region error:', ocrError);
+      console.error('[CapturaForm] Error message:', ocrError?.message);
+      console.error('[CapturaForm] Error stack:', ocrError?.stack);
+
       setFotos((prev) =>
-        prev.map((f) => (f.id === fotoId ? { ...f, ocrDetecting: false } : f))
+        prev.map((f) => (f.id === ocrFotoId ? { ...f, ocrDetecting: false } : f))
       );
-      setError('Error al escanear. Intenta de nuevo o ingrésalo manualmente.');
+      setError(`Error al detectar número: ${ocrError?.message || 'Error desconocido'}. Intenta de nuevo o ingrésalo manualmente.`);
+    } finally {
+      setOcrFotoId(null);
+      console.log('[CapturaForm] ===== OCR DETECTION FINISHED =====');
     }
+  };
+
+  const handleCancelOCRSelector = () => {
+    setShowOCRSelector(false);
+    setOcrFotoId(null);
   };
 
   const handleScanDocument = async (fotoId: string) => {
@@ -898,11 +947,12 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
                           Editar
                         </button>
 
-                        {/* OCR Scan Button */}
+                        {/* Detect Number Button - Region-based OCR */}
                         <button
-                          onClick={() => handleScanearOCR(foto.id)}
+                          onClick={() => handleOpenOCRSelector(foto.id)}
                           disabled={processing || foto.ocrDetecting}
-                          className="py-2 px-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-sm font-semibold rounded-lg shadow-sm hover:from-blue-600 hover:to-blue-700 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                          className="py-2 px-3 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                          style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
                         >
                           {foto.ocrDetecting ? (
                             <>
@@ -910,14 +960,14 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                               </svg>
-                              Escaneando...
+                              Detectando...
                             </>
                           ) : (
                             <>
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                               </svg>
-                              OCR
+                              🔍 Detectar N°
                             </>
                           )}
                         </button>
@@ -1235,9 +1285,21 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       {/* Image Editor Modal */}
       {showImageEditor && editingFotoId && (
         <ImageEditor
+          key={editingFotoId}
           imageBlob={fotos.find(f => f.id === editingFotoId)!.blob}
           onSave={handleSaveEdit}
           onCancel={handleCancelEdit}
+          autoDetectDocument={false}
+        />
+      )}
+
+      {/* OCR Region Selector Modal */}
+      {showOCRSelector && ocrFotoId && (
+        <OCRRegionSelector
+          key={ocrFotoId}
+          imageBlob={fotos.find(f => f.id === ocrFotoId)!.blob}
+          onRegionSelected={handleOCRRegionSelected}
+          onCancel={handleCancelOCRSelector}
         />
       )}
     </div>
