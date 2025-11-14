@@ -541,10 +541,33 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
     });
   }, [cropMode, baseImageUrl, rotation]); // Changed from imageUrl to baseImageUrl
 
+  const handleUndoCrop = () => {
+    // Revoke old base URL if it's not the original
+    if (baseImageUrl && baseImageUrl !== imageUrl) {
+      URL.revokeObjectURL(baseImageUrl);
+    }
+
+    // Reset to original image
+    setBaseImageUrl(imageUrl);
+    setRotation(0);
+    setCropMode(false);
+    setCropArea(null);
+    console.log('[ImageEditor] Crop undone, image reset to original');
+  };
+
   const handleSave = async () => {
     setProcessing(true);
 
     try {
+      // If in crop mode with a pending crop, apply it first
+      if (cropMode && cropArea && cropArea.width >= 10 && cropArea.height >= 10) {
+        console.log('[ImageEditor] Auto-applying pending crop before save...');
+        await handleApplyCrop();
+
+        // Wait a bit for the crop to be applied
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       const canvas = previewCanvasRef.current;
       if (!canvas) throw new Error('Canvas not found');
 
@@ -848,16 +871,19 @@ export function ImageEditor({ imageBlob, onSave, onCancel }: ImageEditorProps) {
           </>
         )}
 
-        {/* Reset Button */}
-        <button
-          onClick={() => {
-            setRotation(0);
-          }}
-          disabled={applyingFilter}
-          className="w-full py-3 rounded-lg text-white text-sm font-semibold border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-50"
-        >
-          Restablecer rotación
-        </button>
+        {/* Undo Crop Button - Only show if image has been modified */}
+        {baseImageUrl !== imageUrl && (
+          <button
+            onClick={handleUndoCrop}
+            disabled={applyingFilter || cropMode}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-white text-sm font-semibold border border-red-400/50 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+            </svg>
+            Deshacer Cambios (Restaurar Original)
+          </button>
+        )}
       </div>
     </div>
   );
