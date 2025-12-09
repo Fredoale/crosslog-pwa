@@ -10,6 +10,12 @@ import { NotificacionesToast } from './NotificacionesToast';
 import { useNotificacionesStore } from '../stores/notificacionesStore';
 import { FEATURES } from '../config/features';
 
+// Función para verificar si marketplace está habilitado para fleteros
+const isMarketplaceHabilitadoParaFleteros = (): boolean => {
+  const stored = localStorage.getItem('crosslog_marketplace_fleteros_enabled');
+  return stored === 'true';
+};
+
 interface ConsultaFleteroProps {
   onBack: () => void;
 }
@@ -324,17 +330,17 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
               {/* Marketplace Module */}
               <button
                 onClick={() => {
-                  if (!FEATURES.MARKETPLACE_FIRESTORE) {
+                  if (!isMarketplaceHabilitadoParaFleteros()) {
                     alert('🚧 MÓDULO EN DESARROLLO\n\nEstamos trabajando en una nueva versión del marketplace de viaje - Crosslog.');
                     return;
                   }
                   setSelectedModule('marketplace');
                 }}
-                className={`bg-white rounded-2xl shadow-xl p-8 hover:shadow-2xl transition-all border-2 border-transparent text-left group animate-slide-up ${FEATURES.MARKETPLACE_FIRESTORE ? 'animate-pulse-subtle' : 'opacity-70 cursor-not-allowed'}`}
+                className={`bg-white rounded-2xl shadow-xl p-8 hover:shadow-2xl transition-all border-2 border-transparent text-left group animate-slide-up ${isMarketplaceHabilitadoParaFleteros() ? 'animate-pulse-subtle' : 'opacity-70 cursor-not-allowed'}`}
                 style={{
                   animationDelay: '0.1s',
                 }}
-                onMouseEnter={(e) => FEATURES.MARKETPLACE_FIRESTORE && (e.currentTarget.style.borderColor = '#a8e063')}
+                onMouseEnter={(e) => isMarketplaceHabilitadoParaFleteros() && (e.currentTarget.style.borderColor = '#a8e063')}
                 onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
               >
                 <div className="flex items-center gap-4 mb-4">
@@ -342,7 +348,7 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
                     className="rounded-full p-4 transition-all"
                     style={{ backgroundColor: '#f0f9e8', color: '#7ab547' }}
                     onMouseEnter={(e) => {
-                      if (FEATURES.MARKETPLACE_FIRESTORE) {
+                      if (isMarketplaceHabilitadoParaFleteros()) {
                         e.currentTarget.style.backgroundColor = '#a8e063';
                         e.currentTarget.style.color = '#ffffff';
                       }
@@ -361,12 +367,12 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
                       <h3
                         className="text-2xl font-bold text-gray-800 transition-colors"
                         style={{ color: '#374151' }}
-                        onMouseEnter={(e) => FEATURES.MARKETPLACE_FIRESTORE && (e.currentTarget.style.color = '#a8e063')}
+                        onMouseEnter={(e) => isMarketplaceHabilitadoParaFleteros() && (e.currentTarget.style.color = '#a8e063')}
                         onMouseLeave={(e) => e.currentTarget.style.color = '#374151'}
                       >
                         Marketplace de Viajes
                       </h3>
-                      {!FEATURES.MARKETPLACE_FIRESTORE && (
+                      {!isMarketplaceHabilitadoParaFleteros() && (
                         <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full border border-amber-300">
                           🚧 EN DESARROLLO
                         </span>
@@ -375,7 +381,7 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
                   </div>
                 </div>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  {FEATURES.MARKETPLACE_FIRESTORE
+                  {isMarketplaceHabilitadoParaFleteros()
                     ? 'Vea viajes disponibles, envíe solicitudes de servicio y haga seguimiento de sus propuestas en el marketplace de Crosslog.'
                     : 'Pronto: actualizaciones en tiempo real, respuesta instantánea y mejor visualización de viajes.'}
                 </p>
@@ -389,7 +395,7 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
 
   // Show Marketplace module (only if feature is enabled)
   if (selectedModule === 'marketplace') {
-    if (!FEATURES.MARKETPLACE_FIRESTORE) {
+    if (!isMarketplaceHabilitadoParaFleteros()) {
       // Double-check: should not reach here, but handle gracefully
       alert('🚧 Esta funcionalidad está temporalmente deshabilitada.\n\nEstamos mejorando el Marketplace. ¡Pronto estará disponible!');
       setSelectedModule(null);
