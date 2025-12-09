@@ -86,6 +86,7 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
       setSignature({
         dataUrl: '', // No image needed for edit mode
         nombreReceptor: entrega.nombreReceptor,
+        timestamp: Date.now(),
       });
       console.log('[CapturaForm] Loaded existing signature:', entrega.nombreReceptor);
     }

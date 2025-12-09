@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 
 interface SignatureCanvasProps {
-  onSave: (signature: { dataUrl: string; nombreReceptor: string }) => void;
+  onSave: (signature: { dataUrl: string; nombreReceptor: string; timestamp: number }) => void;
   onCancel: () => void;
 }
 
@@ -109,7 +109,7 @@ export function SignatureCanvas({ onSave, onCancel }: SignatureCanvasProps) {
     if (!canvas) return;
 
     const dataUrl = canvas.toDataURL('image/png');
-    onSave({ dataUrl, nombreReceptor: nombreReceptor.trim() });
+    onSave({ dataUrl, nombreReceptor: nombreReceptor.trim(), timestamp: Date.now() });
   };
 
   return (

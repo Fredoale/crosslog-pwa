@@ -599,6 +599,8 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
     puntos_carga: Array<{ nombre: string; link_maps: string; horario_desde: string }>;
     destinos: Array<{ nombre: string; link_maps: string; horario_desde: string }>;
     alertas: Array<any>;
+    estado?: string;
+    fletero_asignado?: string;
   } | null>(null);
 
   // Estado temporal para el nuevo punto de carga
