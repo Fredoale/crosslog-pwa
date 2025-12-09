@@ -318,7 +318,7 @@ export function DashboardDocumentos() {
 
         {/* Filtros */}
         <div className="bg-white rounded-lg shadow-sm p-3 md:p-4 mb-4 md:mb-6">
-          <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-3 md:mb-0">Alertas Activas</h2>
+          <h2 className="text-lg md:text-xl font-bold text-gray-800 mb-3">Alertas Activas</h2>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setFiltro('TODOS')}
@@ -395,31 +395,31 @@ export function DashboardDocumentos() {
               return (
                 <div
                   key={alerta.id}
-                  className={`${colors.bg} rounded-lg p-6 border-l-4 ${colors.border} shadow-sm hover:shadow-md transition-shadow`}
+                  className={`${colors.bg} rounded-lg p-4 sm:p-6 border-l-4 ${colors.border} shadow-sm hover:shadow-md transition-shadow`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="text-2xl">{getTipoIcon(alerta.tipo)}</span>
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-lg font-bold text-gray-900">{alerta.identificador}</h3>
-                            <span className={`px-2 py-1 ${colors.badge} text-white text-xs font-bold rounded-full`}>
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-3 mb-3">
+                        <span className="text-2xl flex-shrink-0">{getTipoIcon(alerta.tipo)}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <h3 className="text-base sm:text-lg font-bold text-gray-900 truncate">{alerta.identificador}</h3>
+                            <span className={`px-2 py-1 ${colors.badge} text-white text-xs font-bold rounded-full whitespace-nowrap`}>
                               {alerta.criticidad}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-700 font-medium">{alerta.nombreDocumento}</p>
+                          <p className="text-sm text-gray-700 font-medium break-words">{alerta.nombreDocumento}</p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm">
                         <div>
                           <span className="font-semibold text-gray-900">Tipo:</span>
                           <p className={colors.text}>{alerta.tipo}</p>
                         </div>
                         <div>
                           <span className="font-semibold text-gray-900">Vencimiento:</span>
-                          <p className={colors.text}>{formatearFecha(alerta.fechaVencimiento)}</p>
+                          <p className={`${colors.text} break-words`}>{formatearFecha(alerta.fechaVencimiento)}</p>
                         </div>
                         <div>
                           <span className="font-semibold text-gray-900">
@@ -443,7 +443,7 @@ export function DashboardDocumentos() {
                         href={alerta.urlArchivo}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="ml-6 px-4 py-2 text-sm font-medium text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
+                        className="self-start sm:ml-4 px-4 py-2 text-sm font-medium text-white rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 whitespace-nowrap"
                         style={{ background: 'linear-gradient(135deg, #1a2332 0%, #2d3e50 100%)' }}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

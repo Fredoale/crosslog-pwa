@@ -599,12 +599,12 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="text-white p-6" style={{ background: 'linear-gradient(135deg, #1a2332 0%, #2d3e50 100%)' }}>
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
+      <div className="text-white p-4 sm:p-6" style={{ background: 'linear-gradient(135deg, #1a2332 0%, #2d3e50 100%)' }}>
+        <div className="max-w-7xl mx-auto px-2 sm:px-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-3xl font-bold mb-2">📁 Gestión de Documentos</h1>
-              <p className="text-sm" style={{ color: '#a8e063' }}>Panel Administrativo - Crosslog</p>
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">📁 Gestión de Documentos</h1>
+              <p className="text-xs sm:text-sm" style={{ color: '#a8e063' }}>Panel Administrativo - Crosslog</p>
             </div>
             <button
               onClick={onBack}
@@ -617,11 +617,11 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             </button>
           </div>
 
-          {/* Tabs */}
-          <div className="grid grid-cols-4 gap-2">
+          {/* Tabs - Responsive: 2 columns on mobile, 4 on desktop */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <button
               onClick={() => setSeccionActiva('dashboard')}
-              className={`px-6 py-3 text-sm font-semibold rounded-lg transition-all ${
+              className={`px-3 sm:px-6 py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                 seccionActiva === 'dashboard' ? 'text-gray-900' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
               }`}
               style={seccionActiva === 'dashboard' ? { backgroundColor: '#a8e063' } : {}}
@@ -630,7 +630,7 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             </button>
             <button
               onClick={() => setSeccionActiva('chofer')}
-              className={`px-6 py-3 text-sm font-semibold rounded-lg transition-all ${
+              className={`px-3 sm:px-6 py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                 seccionActiva === 'chofer' ? 'text-gray-900' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
               }`}
               style={seccionActiva === 'chofer' ? { backgroundColor: '#a8e063' } : {}}
@@ -639,7 +639,7 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             </button>
             <button
               onClick={() => setSeccionActiva('unidad')}
-              className={`px-6 py-3 text-sm font-semibold rounded-lg transition-all ${
+              className={`px-3 sm:px-6 py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                 seccionActiva === 'unidad' ? 'text-gray-900' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
               }`}
               style={seccionActiva === 'unidad' ? { backgroundColor: '#a8e063' } : {}}
@@ -648,7 +648,7 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             </button>
             <button
               onClick={() => setSeccionActiva('cuadernillo')}
-              className={`px-6 py-3 text-sm font-semibold rounded-lg transition-all ${
+              className={`px-3 sm:px-6 py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                 seccionActiva === 'cuadernillo' ? 'text-gray-900' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
               }`}
               style={seccionActiva === 'cuadernillo' ? { backgroundColor: '#a8e063' } : {}}
@@ -663,36 +663,41 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
       {seccionActiva === 'dashboard' ? (
         <DashboardDocumentos />
       ) : (
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Toolbar */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-800">
-            {seccionActiva === 'chofer' ? 'Lista de Choferes' :
-             seccionActiva === 'unidad' ? 'Lista de Unidades' :
-             'Documentación Crosslog'}
-          </h2>
-          <div className="flex gap-3">
-            <button
-              onClick={cargarDatos}
-              disabled={cargando}
-              className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
-            >
-              {cargando ? '🔄 Cargando...' : '🔄 Actualizar'}
-            </button>
-            {(seccionActiva === 'chofer' || seccionActiva === 'unidad' || seccionActiva === 'cuadernillo') && (
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        {/* Toolbar - Responsive */}
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+              {seccionActiva === 'chofer' ? 'Lista de Choferes' :
+               seccionActiva === 'unidad' ? 'Lista de Unidades' :
+               'Documentación Crosslog'}
+            </h2>
+            <div className="flex gap-2 sm:gap-3 flex-wrap">
               <button
-                onClick={() => setShowModal(true)}
-                className="px-4 py-2 text-sm font-semibold text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
-                style={{ backgroundColor: '#a8e063', color: '#1a2332' }}
+                onClick={cargarDatos}
+                disabled={cargando}
+                className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                {seccionActiva === 'chofer' ? 'Agregar Chofer' :
-                 seccionActiva === 'unidad' ? 'Agregar Unidad' :
-                 'Agregar Nuevo'}
+                {cargando ? '🔄 Cargando...' : '🔄 Actualizar'}
               </button>
-            )}
+              {(seccionActiva === 'chofer' || seccionActiva === 'unidad' || seccionActiva === 'cuadernillo') && (
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2 whitespace-nowrap"
+                  style={{ backgroundColor: '#a8e063', color: '#1a2332' }}
+                >
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span className="hidden sm:inline">
+                    {seccionActiva === 'chofer' ? 'Agregar Chofer' :
+                     seccionActiva === 'unidad' ? 'Agregar Unidad' :
+                     'Agregar Nuevo'}
+                  </span>
+                  <span className="sm:hidden">Agregar</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -715,19 +720,19 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             )}
 
             {seccionActiva === 'chofer' && listaChoferes.map((chofer, idx) => (
-              <div key={idx} className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 hover:shadow-md transition-all cursor-pointer"
+              <div key={idx} className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-200 hover:shadow-md transition-all cursor-pointer"
                    onClick={() => setChoferSeleccionado(chofer.nombre)}>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">👤 {chofer.nombre}</h3>
+                <div className="flex items-start sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">👤 {chofer.nombre}</h3>
                       {chofer.alertas > 0 && (
-                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full">
+                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full whitespace-nowrap">
                           {chofer.alertas} alerta{chofer.alertas > 1 ? 's' : ''}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-6 text-sm text-gray-600">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-sm text-gray-600">
                       <div>
                         <span className="font-medium">Unidad:</span> {chofer.unidad}
                       </div>
@@ -736,7 +741,7 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
                       </div>
                     </div>
                   </div>
-                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </div>
@@ -754,14 +759,14 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             )}
 
             {seccionActiva === 'unidad' && listaUnidades.map((unidad, idx) => (
-              <div key={idx} className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 hover:shadow-md transition-all cursor-pointer"
+              <div key={idx} className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-200 hover:shadow-md transition-all cursor-pointer"
                    onClick={() => setUnidadSeleccionada(unidad.numero)}>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">🚛 Unidad {unidad.numero}</h3>
+                <div className="flex items-start sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <h3 className="text-base sm:text-lg font-semibold text-gray-900">🚛 Unidad {unidad.numero}</h3>
                       {unidad.alertas > 0 && (
-                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full">
+                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full whitespace-nowrap">
                           {unidad.alertas} alerta{unidad.alertas > 1 ? 's' : ''}
                         </span>
                       )}
@@ -770,7 +775,7 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
                       <span className="font-medium">Documentos:</span> {unidad.documentos.length}
                     </div>
                   </div>
-                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </div>
