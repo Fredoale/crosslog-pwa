@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useEntregasStore } from '../stores/entregasStore';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import type { Entrega } from '../types';
+import { useDocumentosStore } from '../stores/documentosStore';
+import { DocumentosModal } from './documentos/DocumentosModal';
 
 interface EntregasListProps {
   onSelectEntrega: (entrega: Entrega) => void;
@@ -13,6 +15,10 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
   const { savePending, syncAll } = useOfflineSync();
   const [completionSent, setCompletionSent] = useState(false);
   const previousCompletionRef = useRef(false);
+
+  // Documentos store
+  const [mostrarDocumentos, setMostrarDocumentos] = useState(false);
+  const { infoChofer, cargarDocumentosChofer, limpiar } = useDocumentosStore();
 
   console.log('[EntregasList] Total entregas:', entregas.length);
   console.log('[EntregasList] Entregas data:', entregas);
@@ -36,6 +42,17 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
     }
     return sum;
   }, 0);
+
+  // Cargar documentos del chofer
+  useEffect(() => {
+    if (chofer) {
+      cargarDocumentosChofer(chofer);
+    }
+
+    return () => {
+      limpiar();
+    };
+  }, [chofer, cargarDocumentosChofer, limpiar]);
 
   // Send HDR completion notification to N8N when all deliveries are done
   useEffect(() => {
@@ -162,6 +179,25 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
                 style={{ width: `${progreso}%`, backgroundColor: '#a8e063' }}
               />
             </div>
+
+            {/* Botón Ver Documentación - Solo para choferes propios */}
+            {infoChofer?.esPropio && (
+              <button
+                onClick={() => setMostrarDocumentos(true)}
+                className="relative w-full px-3 py-1 text-gray-900 font-medium rounded-md shadow-sm hover:shadow-md active:shadow transition-all flex items-center justify-center gap-2 text-xs mt-2"
+                style={{ backgroundColor: '#a8e063' }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Ver Mi Documentación
+                {infoChofer.alertas.length > 0 && (
+                  <span className="absolute -top-1 -right-1 text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center animate-pulse shadow-lg" style={{ backgroundColor: '#ff4444' }}>
+                    {infoChofer.alertas.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -420,6 +456,14 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
           ))
         )}
         </main>
+      )}
+
+      {/* Modal de Documentación */}
+      {mostrarDocumentos && infoChofer && (
+        <DocumentosModal
+          info={infoChofer}
+          onClose={() => setMostrarDocumentos(false)}
+        />
       )}
     </div>
   );

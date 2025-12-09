@@ -306,9 +306,18 @@ export class GoogleSheetsAPI {
       const hdrIndex = 10;
       const detalleIndex = 11;
 
-      // Skip header row and filter by HDR
+      // Check if first row is header (contains non-numeric text in HDR column)
+      const firstRowHDR = rows[0]?.[hdrIndex];
+      const hasHeaderRow = firstRowHDR && isNaN(Number(firstRowHDR));
+
+      console.log('[SheetsAPI] First row HDR value:', firstRowHDR, '- Is header?', hasHeaderRow);
+
+      // Skip header row if exists, otherwise start from first row
+      const dataRows = hasHeaderRow ? rows.slice(1) : rows;
+
+      // Filter by HDR
       // IMPORTANT: Compare as strings, removing any extra spaces/formatting
-      const matchingRows = rows.slice(1).filter((row: string[]) => {
+      const matchingRows = dataRows.filter((row: string[]) => {
         const rowHDR = row[hdrIndex];
         if (!rowHDR) return false;
 
@@ -1540,8 +1549,10 @@ export class GoogleSheetsAPI {
     // N=13: pdf_urls (ej: ["https://drive.google.com/file/d/..."])
     // Q=16: tipo_transporte (ej: FALZONE, BARCO, o vacío=PROPIO)
 
-    const firstRow = rows[0];
-    const fechaViajeRaw = firstRow[0]?.trim() || '';
+    // IMPORTANTE: Usar la ÚLTIMA fila porque contiene el progreso total acumulado
+    // Cada entrega se registra como una fila separada, la última tiene el estado final
+    const lastRow = rows[rows.length - 1];
+    const fechaViajeRaw = lastRow[0]?.trim() || '';
 
     // Convertir fecha de YYYY/MM/DD a DD/MM/YYYY
     let fechaViaje = fechaViajeRaw;
@@ -1560,11 +1571,11 @@ export class GoogleSheetsAPI {
       }
     }
 
-    const hdr = firstRow[1]?.trim() || '';
-    const chofer = firstRow[7]?.trim() || ''; // H (Chofer)
+    const hdr = lastRow[1]?.trim() || '';
+    const chofer = lastRow[7]?.trim() || ''; // H (Chofer)
 
     // Q (Tipo_Transporte) - Determinar tipo de transporte
-    const tipoTransporteRaw = firstRow[16]?.trim().toUpperCase() || '';
+    const tipoTransporteRaw = lastRow[16]?.trim().toUpperCase() || '';
     const KNOWN_FLETEROS = ['VIMAAB', 'BARCO', 'PRODAN', 'LOGZO', 'DON PEDRO', 'CALLTRUCK', 'ANDROSIUK', 'FALZONE'];
 
     let fletero: string;
@@ -1577,23 +1588,37 @@ export class GoogleSheetsAPI {
       fletero = isKnownFletero ? tipoTransporteRaw : 'CROSSLOG';
     }
 
+    // LEER VALORES REALES de las columnas J, K, L de la ÚLTIMA fila
+    // La última fila contiene el progreso TOTAL acumulado del viaje completo
+    const entregasCompletadasReal = parseInt(lastRow[9]?.trim() || '0', 10);  // J (entregas_completadas)
+    const entregasPendientesReal = parseInt(lastRow[10]?.trim() || '0', 10);  // K (entregas_pendientes)
+    const progresoReal = parseInt(lastRow[11]?.trim() || '0', 10);            // L (progreso_porcentaje)
+
     const entregas = rows.map((row, idx) => {
       const numeroEntrega = row[2]?.trim() || `${idx + 1}`;  // C
 
-      // D (numero_remitos) - Parse JSON array ["38269"]
+      // D (numero_remitos) - Parse JSON array ["38269", "38270"]
       let numeroRemito = '';
+      let numerosRemito: string[] = [];
       const rawRemitoValue = row[3]?.trim() || '';
+
       if (rawRemitoValue.startsWith('[') && rawRemitoValue.endsWith(']')) {
         try {
           const parsed = JSON.parse(rawRemitoValue);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            numeroRemito = String(parsed[0]).trim();
+          if (Array.isArray(parsed)) {
+            // Guardar TODOS los remitos en el array
+            numerosRemito = parsed.map(r => String(r).trim()).filter(Boolean);
+            // Mantener el primero para compatibilidad
+            numeroRemito = numerosRemito[0] || '';
           }
         } catch {
-          numeroRemito = rawRemitoValue.replace(/[\[\]"]/g, '').trim();
+          const single = rawRemitoValue.replace(/[\[\]"]/g, '').trim();
+          numeroRemito = single;
+          numerosRemito = [single];
         }
-      } else {
+      } else if (rawRemitoValue) {
         numeroRemito = rawRemitoValue;
+        numerosRemito = [rawRemitoValue];
       }
 
       const clienteId = row[4]?.trim() || '';                 // E (Dador_carga)
@@ -1632,6 +1657,7 @@ export class GoogleSheetsAPI {
         hdr,
         numeroEntrega,
         numeroRemito,
+        numerosRemito, // Array completo de números de remito
         cliente: clienteId,
         clienteNombreCompleto: clienteNombre,
         detalleEntregas,
@@ -1645,15 +1671,25 @@ export class GoogleSheetsAPI {
       };
     });
 
-    const entregasCompletadas = entregas.filter(e => e.estado === 'COMPLETADO').length;
+    // Calcular total de entregas: completadas + pendientes
+    const totalEntregasReal = entregasCompletadasReal + entregasPendientesReal;
+
+    console.log(`[SheetsAPI] HDR ${hdr} - Real values from DB:`, {
+      entregasCompletadas: entregasCompletadasReal,
+      entregasPendientes: entregasPendientesReal,
+      total: totalEntregasReal,
+      progreso: progresoReal
+    });
 
     return {
       hdr,
       fechaViaje,
       chofer,
       fletero,
-      totalEntregas: entregas.length,
-      entregasCompletadas,
+      totalEntregas: totalEntregasReal,
+      entregasCompletadas: entregasCompletadasReal,
+      entregasPendientes: entregasPendientesReal,
+      progresoReal,
       entregas,
     };
   }
@@ -1742,6 +1778,683 @@ export class GoogleSheetsAPI {
       console.error('[SheetsAPI] Error fetching unidades:', error);
       return ['63', '64', '46', '813', '54', '816', '45', '41']; // Default fallback
     }
+  }
+
+  /**
+   * Get statistical indicators from BASE sheet
+   * Columns: A=Fecha, G=Tipo Unidad, H=INT(Internos/Fleteros), I=CHOFER, K=HR(HDR), M=LOC/INT, F=CLIENTE
+   * @param mesAnio - Optional filter in format "YYYY-MM" (e.g., "2025-01")
+   */
+  async getIndicadores(mesAnio?: string): Promise<any> {
+    try {
+      console.log('[SheetsAPI] Fetching indicadores from BASE sheet...', mesAnio ? `Filtered by: ${mesAnio}` : 'All data');
+
+      const range = 'BASE!A8637:R'; // Leer desde fila 8637 hasta columna R (incluye año)
+      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        return { error: 'Error al obtener datos de BASE' };
+      }
+
+      const data = await response.json();
+      const rows = data.values || [];
+
+      console.log('[SheetsAPI] Rows received for indicators:', rows.length);
+      if (rows.length > 0) {
+        console.log('[SheetsAPI] First 3 data rows:', rows.slice(0, 3));
+      }
+
+      if (rows.length === 0) {
+        console.warn('[SheetsAPI] No rows found in range BASE!A8637:Q');
+        return { error: 'No hay datos disponibles' };
+      }
+
+      // No need to skip header since we start from row 8637
+      let dataRows = rows;
+
+      // Filter by month/year if specified
+      if (mesAnio) {
+        const COL_MES = 4;  // E (mes como número 1-12)
+        const COL_ANIO = 17; // R (año como texto)
+        const isYearOnly = mesAnio.length === 4; // Check if filtering by year only (e.g., "2024")
+        const isMonthOnly = mesAnio.startsWith('M'); // Check if filtering by month only (e.g., "M1", "M12")
+
+        let matchCount = 0;
+        dataRows = dataRows.filter((row: string[], index: number) => {
+          const anioValue = row[COL_ANIO]?.trim() || '';
+          const mesValue = row[COL_MES]?.trim() || '';
+
+          // Debug first 3 rows
+          if (index < 3) {
+            console.log(`[SheetsAPI] Row ${index} - Año: "${anioValue}", Mes: "${mesValue}"`);
+          }
+
+          let matches = false;
+
+          if (isYearOnly) {
+            // Filter by year only (column R)
+            matches = anioValue === mesAnio;
+          } else if (isMonthOnly) {
+            // Filter by month only (all years)
+            const monthNum = mesAnio.substring(1); // Remove "M" prefix
+            matches = mesValue === monthNum;
+          } else {
+            // Filter by specific month (YYYY-MM format)
+            // mesAnio viene en formato "2024-01", necesitamos extraer año y mes
+            const [filterYear, filterMonth] = mesAnio.split('-');
+            const filterMonthNum = parseInt(filterMonth, 10); // "01" -> 1
+
+            if (index < 3) {
+              console.log(`[SheetsAPI] Filtering - Looking for Year: "${filterYear}", Month: "${filterMonthNum}"`);
+              console.log(`[SheetsAPI] Row has - Year: "${anioValue}", Month: "${mesValue}"`);
+            }
+
+            // Column R = año, Column E = mes (1-12)
+            matches = anioValue === filterYear && mesValue === String(filterMonthNum);
+          }
+
+          if (matches) matchCount++;
+          return matches;
+        });
+
+        console.log(`[SheetsAPI] Filter applied: "${mesAnio}" - Matched ${matchCount} rows out of ${rows.length} total`);
+      }
+
+      console.log('[SheetsAPI] Processing rows to count valid trips (only with valid Interno/Fletero in column H)...');
+
+      if (dataRows.length === 0) {
+        return { error: 'No hay datos para el mes seleccionado' };
+      }
+
+      // Indices de columnas (0-indexed)
+      const COL_TIPO_UNIDAD = 6; // G
+      const COL_INT = 7;         // H (Internos/Fleteros)
+      const COL_CHOFER = 8;      // I
+      const COL_HDR = 10;        // K
+      const COL_LOC_INT = 12;    // M
+      const COL_CLIENTE = 5;     // F
+
+      // IMPORTANT: Lista de valores válidos en columna H
+      // CROSSLOG (flota propia): números
+      const CROSSLOG_IDS = ['41', '45', '46', '62', '63', '64', '813', '816', '817'];
+      // FLETEROS (tercerizados): nombres
+      const FLETEROS_CONOCIDOS = ['BARCO', 'DON PEDRO', 'VIMAAB', 'LOGZO', 'PRODAN', 'CALLTRUCK', 'MODESTRUCK', 'ANDROSIUK'];
+
+      // Contadores y agrupadores
+      const choferes = new Map<string, number>();
+      const clientes = new Map<string, number>();
+      const internos = new Map<string, number>();
+      const tiposUnidad = new Map<string, number>();
+      const locInt = new Map<string, number>();
+      const fleteros = new Map<string, number>();
+      let crosslogCount = 0;
+      let fleterosCount = 0;
+      let totalViajes = 0; // Will count only valid trips
+
+      // Procesar cada fila
+      dataRows.forEach((row: string[]) => {
+        const chofer = row[COL_CHOFER]?.trim() || '';
+        const cliente = row[COL_CLIENTE]?.trim() || '';
+        const interno = row[COL_INT]?.trim() || '';
+        const tipoUnidad = row[COL_TIPO_UNIDAD]?.trim() || '';
+        const locIntValue = row[COL_LOC_INT]?.trim() || '';
+
+        // CRITICAL: Solo contar como viaje válido si columna H tiene valor válido
+        // Determinar si esta fila es un viaje válido
+        let isValidTrip = false;
+        let isCrosslog = false;
+        let isFletero = false;
+
+        if (interno) {
+          const internoUpper = interno.toUpperCase();
+          const internoTrimmed = interno.trim();
+
+          // Verificar si es un ID de CROSSLOG específico
+          if (CROSSLOG_IDS.includes(internoTrimmed)) {
+            isValidTrip = true;
+            isCrosslog = true;
+            crosslogCount++;
+            internos.set(interno, (internos.get(interno) || 0) + 1);
+          }
+          // Verificar si es cualquier otro número (CROSSLOG genérico)
+          else if (/^\d+$/.test(internoTrimmed)) {
+            isValidTrip = true;
+            isCrosslog = true;
+            crosslogCount++;
+            internos.set(interno, (internos.get(interno) || 0) + 1);
+          }
+          // Verificar si es un fletero conocido
+          else if (FLETEROS_CONOCIDOS.some(f => internoUpper.includes(f))) {
+            isValidTrip = true;
+            isFletero = true;
+            fleterosCount++;
+            fleteros.set(interno, (fleteros.get(interno) || 0) + 1);
+          }
+        }
+
+        // Solo continuar procesando si es un viaje válido
+        if (!isValidTrip) {
+          return; // Skip this row
+        }
+
+        // Increment total valid trips
+        totalViajes++;
+
+        // Contar choferes (solo viajes válidos)
+        if (chofer) {
+          choferes.set(chofer, (choferes.get(chofer) || 0) + 1);
+        }
+
+        // Contar clientes (solo viajes válidos, excluir códigos especiales)
+        const CLIENTES_EXCLUIDOS = ['OT', 'PEON', 'AIR', 'AUS', 'VAC', 'MANT', 'VRAC'];
+        if (cliente && !CLIENTES_EXCLUIDOS.includes(cliente.toUpperCase())) {
+          clientes.set(cliente, (clientes.get(cliente) || 0) + 1);
+        }
+
+        // Contar tipos de unidad (Columna G)
+        if (tipoUnidad) {
+          tiposUnidad.set(tipoUnidad, (tiposUnidad.get(tipoUnidad) || 0) + 1);
+        }
+
+        // Contar LOC/INT (Columna M)
+        if (locIntValue) {
+          locInt.set(locIntValue, (locInt.get(locIntValue) || 0) + 1);
+        }
+      });
+
+      // Ordenar y obtener tops
+      const topChoferes = Array.from(choferes.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([nombre, viajes]) => ({ nombre, viajes }));
+
+      const topClientes = Array.from(clientes.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([nombre, viajes]) => ({ nombre, viajes, porcentaje: ((viajes / totalViajes) * 100).toFixed(1) }));
+
+      const topInternos = Array.from(internos.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([nombre, viajes]) => ({ nombre, viajes, porcentaje: ((viajes / totalViajes) * 100).toFixed(1) }));
+
+      const topTiposUnidad = Array.from(tiposUnidad.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([tipo, cantidad]) => ({ tipo, cantidad, porcentaje: ((cantidad / totalViajes) * 100).toFixed(1) }));
+
+      // Calculate LOC/INT percentages based on LOC+INT total only
+      const locIntTotal = Array.from(locInt.values()).reduce((sum, count) => sum + count, 0);
+      const distribLocInt = Array.from(locInt.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([tipo, cantidad]) => ({ tipo, cantidad, porcentaje: locIntTotal > 0 ? ((cantidad / locIntTotal) * 100).toFixed(1) : '0.0' }));
+
+      const topFleteros = Array.from(fleteros.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([nombre, viajes]) => ({ nombre, viajes, porcentaje: ((viajes / totalViajes) * 100).toFixed(1) }));
+
+      console.log('[SheetsAPI] ✅ Indicadores calculated:', {
+        totalViajes,
+        crosslogCount,
+        fleterosCount,
+        sum: crosslogCount + fleterosCount,
+        note: 'totalViajes ahora solo cuenta filas con Interno/Fletero válido en columna H',
+        topChoferes: topChoferes.length,
+        topClientes: topClientes.length,
+        topInternos: topInternos.length
+      });
+
+      // Calculate percentages based on CROSSLOG + FLETEROS total (not all trips)
+      const crosslogFleterosTotal = crosslogCount + fleterosCount;
+
+      return {
+        totalViajes,
+        crosslogVsFleteros: [
+          { tipo: 'CROSSLOG', cantidad: crosslogCount, porcentaje: crosslogFleterosTotal > 0 ? ((crosslogCount / crosslogFleterosTotal) * 100).toFixed(1) : '0.0' },
+          { tipo: 'FLETEROS', cantidad: fleterosCount, porcentaje: crosslogFleterosTotal > 0 ? ((fleterosCount / crosslogFleterosTotal) * 100).toFixed(1) : '0.0' }
+        ],
+        topChoferes,
+        topClientes,
+        topInternos,
+        topTiposUnidad,
+        distribLocInt,
+        topFleteros
+      };
+
+    } catch (error) {
+      console.error('[SheetsAPI] Error fetching indicadores:', error);
+      return { error: 'Error al calcular indicadores' };
+    }
+  }
+
+  /**
+   * Get available months from BASE sheet for filtering
+   * Returns array of {value: "YYYY-MM", label: "Mes YYYY"} objects
+   */
+  async getMesesDisponibles(): Promise<{ value: string; label: string }[]> {
+    try {
+      console.log('[SheetsAPI] Fetching available months from BASE sheet...');
+
+      const range = 'BASE!E8637:R'; // Columna E (mes) y columna R (año) desde fila 8637
+      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        return [];
+      }
+
+      const data = await response.json();
+      const rows = data.values || [];
+
+      console.log('[SheetsAPI] Rows received for months:', rows.length);
+      if (rows.length > 0) {
+        console.log('[SheetsAPI] First 5 month/year rows:', rows.slice(0, 5));
+      }
+
+      if (rows.length === 0) {
+        console.warn('[SheetsAPI] No rows found in range BASE!E8637:R');
+        return [];
+      }
+
+      // Extract unique months (no need to skip header since we start from row 8637)
+      const mesesSet = new Set<string>();
+      const dataRows = rows;
+
+      dataRows.forEach((row: string[], index: number) => {
+        // Column E is index 0 (mes 1-12), Column R is index 13 (año)
+        const mesValue = row[0]?.trim() || '';
+        const anioValue = row[13]?.trim() || '';
+
+        if (!mesValue || !anioValue) {
+          if (index < 10) console.log(`[SheetsAPI] Empty month or year at row ${index}:`, { mes: mesValue, anio: anioValue });
+          return;
+        }
+
+        // Create YYYY-MM format (mes needs to be padded to 2 digits)
+        const mesPadded = mesValue.padStart(2, '0');
+        const mesAnio = `${anioValue}-${mesPadded}`;
+        mesesSet.add(mesAnio);
+      });
+
+      // Convert to array and sort (newest first)
+      const meses = Array.from(mesesSet)
+        .sort((a, b) => b.localeCompare(a))
+        .map(mesAnio => {
+          const [year, month] = mesAnio.split('-');
+          const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+          const monthName = monthNames[parseInt(month, 10) - 1];
+          return {
+            value: mesAnio,
+            label: `${monthName} ${year}`
+          };
+        });
+
+      console.log('[SheetsAPI] ✅ Found months:', meses.length);
+      return meses;
+
+    } catch (error) {
+      console.error('[SheetsAPI] Error fetching available months:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get monthly trip data with filters
+   */
+  async getViajePorMes(filters: {
+    anio?: string;
+    tipoTransporte?: string;
+    cliente?: string;
+    tipoUnidad?: string;
+  } = {}) {
+    try {
+      console.log('[SheetsAPI] Fetching monthly trip data with filters:', filters);
+
+      const range = 'BASE!A8637:R';
+      const url = `${this.baseUrl}/${this.config.spreadsheetId}/values/${range}?key=${this.config.apiKey}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error('[SheetsAPI] Error fetching monthly data:', response.status, response.statusText);
+        return [];
+      }
+
+      const data = await response.json();
+      const rows = data.values || [];
+      if (rows.length === 0) {
+        return [];
+      }
+
+      const COL_MES = 4;       // E (mes como número 1-12)
+      const COL_CLIENTE = 5;   // F (cliente)
+      const COL_TIPO_UNIDAD = 6; // G (tipo de unidad)
+      const COL_INT = 7;       // H (interno/fletero)
+      const COL_ANIO = 17;     // R (año)
+
+      const FLETEROS_CONOCIDOS = ['BARCO', 'PRODAN', 'VIMAAB', 'LOGZO', 'DON PEDRO', 'CALLTRUCK', 'ANDROSIUK', 'FALZONE'];
+
+      // Agrupar por mes
+      const mesesMap = new Map<string, number>();
+
+      rows.forEach((row: string[]) => {
+        const mesValue = row[COL_MES]?.trim() || '';
+        const anioValue = row[COL_ANIO]?.trim() || '';
+        const clienteValue = row[COL_CLIENTE]?.trim() || '';
+        const tipoUnidadValue = row[COL_TIPO_UNIDAD]?.trim() || '';
+        const internoValue = row[COL_INT]?.trim() || '';
+
+        if (!mesValue || !anioValue) return;
+
+        // Aplicar filtros
+        if (filters.anio && filters.anio !== 'todos' && anioValue !== filters.anio) return;
+
+        if (filters.tipoTransporte && filters.tipoTransporte !== 'todos') {
+          const isNumeric = /^\d+$/.test(internoValue);
+          const isFletero = FLETEROS_CONOCIDOS.some(f => internoValue.toUpperCase().includes(f));
+
+          if (filters.tipoTransporte === 'CROSSLOG' && !isNumeric) return;
+          if (filters.tipoTransporte === 'FLETEROS' && !isFletero) return;
+        }
+
+        if (filters.cliente && filters.cliente !== 'todos' && clienteValue !== filters.cliente) return;
+        if (filters.tipoUnidad && filters.tipoUnidad !== 'todos' && tipoUnidadValue !== filters.tipoUnidad) return;
+
+        // Crear key mes-año
+        const mesNum = parseInt(mesValue, 10);
+        const key = `${anioValue}-${mesValue.padStart(2, '0')}`;
+
+        mesesMap.set(key, (mesesMap.get(key) || 0) + 1);
+      });
+
+      // Convertir a array y ordenar
+      const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      const result = Array.from(mesesMap.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, viajes]) => {
+          const [year, month] = key.split('-');
+          const monthNum = parseInt(month, 10);
+          return {
+            mes: `${monthNames[monthNum - 1]} ${year}`,
+            viajes,
+            key
+          };
+        });
+
+      console.log('[SheetsAPI] ✅ Monthly data calculated:', result.length, 'months');
+      return result;
+
+    } catch (error) {
+      console.error('[SheetsAPI] Error fetching monthly trip data:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch chofer documents from Choferes_Documentos sheet
+   * Returns: { nombre, unidad, tipo, nombreDoc, fechaVenc, url, esPropio }
+   */
+  async fetchChoferDocumentos(nombreChofer?: string): Promise<any[]> {
+    try {
+      console.log('[SheetsAPI] Fetching chofer documents for:', nombreChofer || 'ALL');
+      const range = 'Choferes_Documentos!A:J';
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error('[SheetsAPI] Failed to fetch chofer documents');
+        return [];
+      }
+
+      const data = await response.json();
+      const rows = data.values || [];
+
+      // Skip header row and optionally filter by chofer name
+      // Columnas: Nombre_Chofer | DNI | Unidad | Tipo_Unidad | Habilidad | Tipo_Doc | Nombre_Documento | Fecha_Vencimiento | URL_Archivo | Es_Propio
+      let documents = rows.slice(1)
+        .map((row: string[]) => ({
+          nombreChofer: row[0]?.trim() || '',
+          dni: row[1]?.trim() || '',
+          unidad: row[2]?.trim() || '',
+          tipoUnidad: row[3]?.trim() || '',
+          habilidad: row[4]?.trim() || '',
+          tipo: row[5]?.trim() || '',
+          nombreDocumento: row[6]?.trim() || '',
+          fechaVencimiento: row[7]?.trim() || null,
+          urlArchivo: row[8]?.trim() || '',
+          esPropio: row[9]?.trim().toUpperCase() === 'TRUE'
+        }));
+
+      // Filter by chofer name if provided
+      if (nombreChofer) {
+        documents = documents.filter((doc: any) => doc.nombreChofer === nombreChofer);
+      }
+
+      console.log('[SheetsAPI] Found', documents.length, 'chofer documents');
+      return documents;
+    } catch (error) {
+      console.error('[SheetsAPI] Error fetching chofer documents:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch unit documents from Unidades_Documentos sheet
+   * Returns: { numeroUnidad, tipo, nombreDoc, fechaVenc, url }
+   */
+  async fetchUnidadDocumentos(numeroUnidad?: string): Promise<any[]> {
+    try {
+      console.log('[SheetsAPI] Fetching unit documents for:', numeroUnidad || 'ALL');
+      const range = 'Unidades_Documentos!A:F';
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error('[SheetsAPI] Failed to fetch unit documents');
+        return [];
+      }
+
+      const data = await response.json();
+      const rows = data.values || [];
+
+      // Skip header row and optionally filter by unit number
+      // Columnas: Numero_Unidad | Tipo_Unidad | Tipo_Doc | Nombre_Documento | Fecha_Vencimiento | URL_Documento
+      let documents = rows.slice(1)
+        .map((row: string[]) => ({
+          numeroUnidad: row[0]?.trim() || '',
+          tipoUnidad: row[1]?.trim() || '',
+          tipo: row[2]?.trim() || '',
+          nombreDocumento: row[3]?.trim() || '',
+          fechaVencimiento: row[4]?.trim() || '',
+          urlArchivo: row[5]?.trim() || ''
+        }));
+
+      // Filter by unit number if provided
+      if (numeroUnidad) {
+        documents = documents.filter((doc: any) => doc.numeroUnidad === numeroUnidad);
+      }
+
+      console.log('[SheetsAPI] Found', documents.length, 'unit documents');
+      return documents;
+    } catch (error) {
+      console.error('[SheetsAPI] Error fetching unit documents:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch cuadernillo from Cuadernillos sheet
+   * Returns: { nombreChofer, mes, fechaEmision, fechaVenc, url }
+   */
+  async fetchCuadernillo(nombreChofer?: string, mes?: string): Promise<any | any[]> {
+    try {
+      console.log('[SheetsAPI] Fetching cuadernillo for:', nombreChofer || 'ALL', mes || 'latest');
+      const range = 'Cuadernillos!A:E';
+      const url = `${this.baseUrl}/${this.config.spreadsheetEntregasId}/values/${range}?key=${this.config.apiKey}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error('[SheetsAPI] Failed to fetch cuadernillo');
+        return nombreChofer ? null : [];
+      }
+
+      const data = await response.json();
+      const rows = data.values || [];
+
+      // Skip header row and map all cuadernillos
+      let cuadernillos = rows.slice(1)
+        .map((row: string[]) => ({
+          nombreChofer: row[0]?.trim() || '',
+          mes: row[1]?.trim() || '',
+          fechaEmision: row[2]?.trim() || '',
+          fechaVencimiento: row[3]?.trim() || '',
+          urlCuadernillo: row[4]?.trim() || ''
+        }));
+
+      // If nombreChofer provided, filter by it
+      if (nombreChofer) {
+        cuadernillos = cuadernillos.filter((c: any) => c.nombreChofer === nombreChofer);
+      }
+
+      // If mes specified, filter by it
+      if (mes) {
+        cuadernillos = cuadernillos.filter((c: any) => c.mes === mes);
+      }
+
+      // Sort by mes descending
+      cuadernillos.sort((a: any, b: any) => b.mes.localeCompare(a.mes));
+
+      // If nombreChofer was provided, return single cuadernillo (for chofer view)
+      if (nombreChofer) {
+        const cuadernillo = cuadernillos[0] || null;
+        console.log('[SheetsAPI] Found cuadernillo:', cuadernillo ? 'Yes' : 'No');
+        return cuadernillo;
+      }
+
+      // Otherwise return all (for admin view)
+      console.log('[SheetsAPI] Found', cuadernillos.length, 'cuadernillos');
+      return cuadernillos;
+    } catch (error) {
+      console.error('[SheetsAPI] Error fetching cuadernillo:', error);
+      return nombreChofer ? null : [];
+    }
+  }
+
+  /**
+   * Fetch all cuadernillos (alias for fetchCuadernillo without parameters)
+   */
+  async fetchCuadernillos(): Promise<any[]> {
+    const result = await this.fetchCuadernillo();
+    return Array.isArray(result) ? result : [];
+  }
+
+  /**
+   * WRITE OPERATIONS - Require Google Apps Script Web App
+   * These functions call the deployed Google Apps Script to write data
+   */
+
+  private async callAppsScript(action: string, data: any): Promise<{ success: boolean; message: string; data?: any }> {
+    const appsScriptUrl = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL;
+
+    if (!appsScriptUrl) {
+      console.error('[SheetsAPI] VITE_GOOGLE_APPS_SCRIPT_URL not configured');
+      return {
+        success: false,
+        message: 'Google Apps Script URL no configurada. Contacte al administrador.'
+      };
+    }
+
+    try {
+      const response = await fetch(appsScriptUrl, {
+        method: 'POST',
+        mode: 'no-cors', // Apps Script requires no-cors
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action,
+          ...data
+        })
+      });
+
+      // Note: no-cors means we can't read the response
+      // We assume success if no error was thrown
+      console.log('[SheetsAPI] Apps Script call completed for action:', action);
+      return {
+        success: true,
+        message: 'Datos guardados exitosamente'
+      };
+    } catch (error) {
+      console.error('[SheetsAPI] Error calling Apps Script:', error);
+      return {
+        success: false,
+        message: 'Error al guardar datos: ' + (error as Error).message
+      };
+    }
+  }
+
+  /**
+   * Add chofer document
+   */
+  async addChoferDocumento(data: {
+    nombreChofer: string;
+    dni: string;
+    unidad: string;
+    tipoUnidad: string;
+    habilidad: string;
+    tipoDoc: string;
+    nombreDocumento: string;
+    fechaVencimiento?: string;
+    urlArchivo: string;
+    esPropio: boolean;
+  }): Promise<{ success: boolean; message: string }> {
+    console.log('[SheetsAPI] Adding chofer documento:', data);
+    return this.callAppsScript('addChoferDocumento', data);
+  }
+
+  /**
+   * Add unidad document
+   */
+  async addUnidadDocumento(data: {
+    numeroUnidad: string;
+    tipoUnidad: string;
+    tipoDoc: string;
+    nombreDocumento: string;
+    fechaVencimiento: string;
+    urlDocumento: string;
+  }): Promise<{ success: boolean; message: string }> {
+    console.log('[SheetsAPI] Adding unidad documento:', data);
+    return this.callAppsScript('addUnidadDocumento', data);
+  }
+
+  /**
+   * Add cuadernillo
+   */
+  async addCuadernillo(data: {
+    nombreDocumento: string;
+    mes: string;
+    fechaEmision?: string;
+    fechaVencimiento?: string;
+    urlDocumento: string;
+  }): Promise<{ success: boolean; message: string }> {
+    console.log('[SheetsAPI] Adding cuadernillo:', data);
+    return this.callAppsScript('addCuadernillo', data);
+  }
+
+  /**
+   * Update chofer document
+   */
+  async updateChoferDocumento(data: any): Promise<{ success: boolean; message: string }> {
+    console.log('[SheetsAPI] Updating chofer documento:', data);
+    return this.callAppsScript('updateChoferDocumento', data);
+  }
+
+  /**
+   * Update unidad document
+   */
+  async updateUnidadDocumento(data: any): Promise<{ success: boolean; message: string }> {
+    console.log('[SheetsAPI] Updating unidad documento:', data);
+    return this.callAppsScript('updateUnidadDocumento', data);
   }
 
 }

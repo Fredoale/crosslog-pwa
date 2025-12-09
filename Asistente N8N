@@ -1,3 +1,6 @@
+# 3. Iniciar en puerto específico
+  npm run dev -- --port 3004
+
 ## 🤖 NUEVO: ASISTENTE WHATSAPP PARA CONSULTAS
 
 ### Objetivo

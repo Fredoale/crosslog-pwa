@@ -4,7 +4,8 @@ export interface Entrega {
   id: string;
   hdr: string;
   numeroEntrega: string;
-  numeroRemito?: string;
+  numeroRemito?: string; // Primer remito (para compatibilidad)
+  numerosRemito?: string[]; // Todos los números de remito (JSON array de columna D)
   cliente: string; // ID corto (ej: ECO)
   clienteNombreCompleto?: string; // Nombre completo (ej: ECOLAB)
   detalleEntregas?: string; // Detalle de puntos de carga/descarga
@@ -125,6 +126,8 @@ export interface HDRConsulta {
   fletero?: string; // Columna H (INT) de BASE
   totalEntregas: number;
   entregasCompletadas: number;
+  entregasPendientes?: number; // Columna K de Sistema_entregas
+  progresoReal?: number; // Columna L de Sistema_entregas (porcentaje)
   entregas: Entrega[];
 }
 

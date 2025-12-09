@@ -655,8 +655,46 @@ localStorage.removeItem('interno_auth');
 
 ---
 
+#### 📦 Fase 7: Marketplace de Viajes
+
+**Gestión de Viajes**
+- ✅ Creación de viajes con validación de HDR duplicados
+- ✅ Auto-carga de ubicaciones guardadas (puntos de carga/descarga)
+- ✅ Sincronización automática de horarios desde ubicaciones
+- ✅ Validación de requisitos de clientes (BALL, NESTLE, TERNIUM, etc.)
+- ✅ Estados de viaje: BORRADOR, PUBLICADO, EVALUANDO, ASIGNADO, EN_CURSO, COMPLETADO, CANCELADO
+- ✅ Eliminar viajes (solo BORRADOR o sin ofertas)
+- ✅ Integración con Google Apps Script para persistencia
+
+**Interfaz Optimizada**
+- ✅ Diseño responsive para Android/iOS
+- ✅ Animación tipo Uber (pulso verde Crosslog)
+- ✅ Tarjetas con efectos visuales profesionales
+- ✅ Botones táctiles optimizados (48px mínimo)
+- ✅ Layout adaptativo: vertical móvil, horizontal desktop
+- ✅ Información clara: HDR, Tarifa, Cliente, Fecha, Unidad, Peso
+- ✅ Rutas detalladas con enlaces a Google Maps
+- ✅ Alertas de requisitos de cliente visibles
+
+**Sistema de Ubicaciones**
+- ✅ Guardar ubicaciones con Google Maps links
+- ✅ Clasificación: CARGA, DESTINO, AMBOS
+- ✅ Auto-completado de direcciones guardadas
+- ✅ Horarios personalizados por ubicación
+- ✅ Búsqueda rápida por nombre
+
+**Próximamente: Sistema de Ofertas**
+- [ ] Fleteros pueden ofertar en viajes publicados
+- [ ] Sistema de scoring/recomendación
+- [ ] Gestión de ofertas (aceptar/rechazar)
+- [ ] Asignación automática de fleteros
+- [ ] Ratings y feedback
+
+---
+
 ## 🎯 Roadmap Futuro
 
+- [ ] Sistema completo de ofertas y asignación de fleteros
 - [ ] Notificaciones push para alertas en tiempo real
 - [ ] Dashboard web administrativo
 - [ ] Reportes y analytics avanzados

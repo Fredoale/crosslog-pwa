@@ -4,6 +4,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    port: 3000,
+    strictPort: false, // Si 3000 está ocupado, usa el siguiente disponible
+    open: true, // Abre el navegador automáticamente
+  },
   build: {
     target: 'esnext',
     minify: 'terser',

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { HDRConsulta } from '../types';
+import { getClientFullName } from '../utils/clienteMapping';
 
 interface DetalleViajeProps {
   hdrData: HDRConsulta;
@@ -33,9 +34,13 @@ const DetalleViaje: React.FC<DetalleViajeProps> = ({ hdrData, onBack }) => {
     }
   };
 
+  // Usar valores REALES de la base de datos (columnas J, K, L)
+  const entregasPendientesReal = hdrData.entregasPendientes ?? (hdrData.totalEntregas - hdrData.entregasCompletadas);
+  const progresoPorcentaje = hdrData.progresoReal ?? ((hdrData.entregasCompletadas / hdrData.totalEntregas) * 100);
+
+  // Para mostrar listas filtradas de entregas individuales
   const entregasCompletadas = hdrData.entregas.filter(e => e.estado === 'COMPLETADO');
   const entregasPendientes = hdrData.entregas.filter(e => e.estado === 'PENDIENTE');
-  const progresoPorcentaje = (hdrData.entregasCompletadas / hdrData.totalEntregas) * 100;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -123,60 +128,64 @@ const DetalleViaje: React.FC<DetalleViajeProps> = ({ hdrData, onBack }) => {
             Resumen del Viaje
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
             {/* Total Entregas */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border-2 border-blue-200">
-              <div className="flex items-center justify-between mb-2">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border-2 border-blue-200">
+              <div className="flex items-center justify-between mb-1">
+                <svg className="w-6 h-6 md:w-8 md:h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                 </svg>
               </div>
-              <div className="text-3xl font-bold text-blue-900">{hdrData.totalEntregas}</div>
-              <div className="text-sm text-blue-700 font-medium mt-1">Total Entregas</div>
+              <div className="text-2xl md:text-3xl font-bold text-blue-900">{hdrData.totalEntregas}</div>
+              <div className="text-xs md:text-sm text-blue-700 font-medium mt-1">Total Entregas</div>
+              <div className="text-xs text-blue-600 mt-1">Programadas</div>
             </div>
 
             {/* Completadas */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-5 border-2 border-green-200">
-              <div className="flex items-center justify-between mb-2">
-                <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border-2 border-green-200">
+              <div className="flex items-center justify-between mb-1">
+                <svg className="w-6 h-6 md:w-8 md:h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
               </div>
-              <div className="text-3xl font-bold text-green-900">{hdrData.entregasCompletadas}</div>
-              <div className="text-sm text-green-700 font-medium mt-1">Completadas</div>
+              <div className="text-2xl md:text-3xl font-bold text-green-900">{hdrData.entregasCompletadas}</div>
+              <div className="text-xs md:text-sm text-green-700 font-medium mt-1">Completadas</div>
+              <div className="text-xs text-green-600 mt-1">Finalizadas</div>
             </div>
 
             {/* Pendientes */}
-            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-5 border-2 border-yellow-200">
-              <div className="flex items-center justify-between mb-2">
-                <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-4 border-2 border-yellow-200">
+              <div className="flex items-center justify-between mb-1">
+                <svg className="w-6 h-6 md:w-8 md:h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <div className="text-3xl font-bold text-yellow-900">{hdrData.totalEntregas - hdrData.entregasCompletadas}</div>
-              <div className="text-sm text-yellow-700 font-medium mt-1">Pendientes</div>
+              <div className="text-2xl md:text-3xl font-bold text-yellow-900">{entregasPendientesReal}</div>
+              <div className="text-xs md:text-sm text-yellow-700 font-medium mt-1">Pendientes</div>
+              <div className="text-xs text-yellow-600 mt-1">{entregasPendientesReal === 0 ? 'Ninguna' : 'Por completar'}</div>
             </div>
 
             {/* Progreso */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border-2 border-purple-200">
-              <div className="flex items-center justify-between mb-2">
-                <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border-2 border-purple-200">
+              <div className="flex items-center justify-between mb-1">
+                <svg className="w-6 h-6 md:w-8 md:h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
               </div>
-              <div className="text-3xl font-bold text-purple-900">{progresoPorcentaje.toFixed(0)}%</div>
-              <div className="text-sm text-purple-700 font-medium mt-1">Progreso</div>
+              <div className="text-2xl md:text-3xl font-bold text-purple-900">{progresoPorcentaje.toFixed(0)}%</div>
+              <div className="text-xs md:text-sm text-purple-700 font-medium mt-1">Progreso</div>
+              <div className="text-xs text-purple-600 mt-1">{progresoPorcentaje === 100 ? 'HDR Completada' : 'En curso'}</div>
             </div>
           </div>
 
           {/* Status Badge */}
           <div className="mt-6 flex items-center justify-center">
-            {hdrData.entregasCompletadas === hdrData.totalEntregas ? (
+            {entregasPendientesReal === 0 ? (
               <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-100 text-green-800 rounded-full font-bold text-lg border-2 border-green-300">
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
-                ✅ Viaje Completado
+                Completado
               </div>
             ) : (
               <div className="inline-flex items-center gap-2 px-6 py-3 bg-yellow-100 text-yellow-800 rounded-full font-bold text-lg border-2 border-yellow-300">
@@ -211,7 +220,7 @@ const DetalleViaje: React.FC<DetalleViajeProps> = ({ hdrData, onBack }) => {
                         Entrega #{entrega.numeroEntrega}
                       </h3>
                       <p className="text-sm text-gray-600 mt-1">
-                        Cliente: {entrega.clienteNombreCompleto || entrega.cliente}
+                        Cliente: {getClientFullName(entrega.cliente)}
                       </p>
                     </div>
                     <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
@@ -229,12 +238,21 @@ const DetalleViaje: React.FC<DetalleViajeProps> = ({ hdrData, onBack }) => {
                     </p>
                   )}
 
-                  {entrega.numeroRemito && (
+                  {(entrega.numerosRemito && entrega.numerosRemito.length > 0) && (
+                    <p className="text-sm text-gray-600 mb-3 flex items-center gap-2">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                      </svg>
+                      Cantidad de remitos: <span className="font-semibold">{entrega.numerosRemito.length}</span>
+                    </p>
+                  )}
+
+                  {(entrega.numerosRemito && entrega.numerosRemito.length > 0) && (
                     <p className="text-sm text-gray-600 mb-3 flex items-center gap-2">
                       <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      Remito: <span className="font-semibold">{entrega.numeroRemito}</span>
+                      {entrega.numerosRemito.length === 1 ? 'Remito' : 'Remitos'}: <span className="font-semibold">{entrega.numerosRemito.join(', ')}</span>
                     </p>
                   )}
 
@@ -253,24 +271,29 @@ const DetalleViaje: React.FC<DetalleViajeProps> = ({ hdrData, onBack }) => {
                         Remitos digitales ({entrega.pdfUrls.length})
                       </p>
                       <div className="space-y-2">
-                        {entrega.pdfUrls.map((url, index) => (
-                          <button
-                            key={index}
-                            onClick={() => handleDownloadPdf(url, entrega.numeroEntrega)}
-                            disabled={downloadingPdf === entrega.numeroEntrega}
-                            className="w-full flex items-center justify-between px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <span className="flex items-center gap-2">
+                        {entrega.pdfUrls.map((url, index) => {
+                          // Obtener el número de remito real del array (si existe)
+                          const numeroRemitoReal = entrega.numerosRemito?.[index] || `${index + 1}`;
+
+                          return (
+                            <button
+                              key={index}
+                              onClick={() => handleDownloadPdf(url, entrega.numeroEntrega)}
+                              disabled={downloadingPdf === entrega.numeroEntrega}
+                              className="w-full flex items-center justify-between px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <span className="flex items-center gap-2">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                </svg>
+                                <span className="font-medium">{numeroRemitoReal}.pdf</span>
+                              </span>
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                               </svg>
-                              <span className="font-medium">Remito {index + 1}.pdf</span>
-                            </span>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                          </button>
-                        ))}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -302,7 +325,7 @@ const DetalleViaje: React.FC<DetalleViajeProps> = ({ hdrData, onBack }) => {
                         Entrega #{entrega.numeroEntrega}
                       </h3>
                       <p className="text-sm text-gray-600 mt-1">
-                        Cliente: {entrega.clienteNombreCompleto || entrega.cliente}
+                        Cliente: {getClientFullName(entrega.cliente)}
                       </p>
                     </div>
                     <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-semibold">

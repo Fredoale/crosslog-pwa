@@ -3,7 +3,11 @@ import { sheetsApi } from '../utils/sheetsApi';
 import type { HDRConsulta, FleteroEmpresa } from '../types';
 import DetalleViaje from './DetalleViaje';
 import AuthInterno from './AuthInterno';
-import QRCodesSection from './QRCodesSection';
+import Indicadores from './Indicadores';
+import { GestionDocumentosPage } from './admin/GestionDocumentosPage';
+import { QRCodesPage } from './QRCodesPage';
+import { MarketplaceSection } from './marketplace/MarketplaceSection';
+import { getClientFullName } from '../utils/clienteMapping';
 
 interface ConsultaInternaProps {
   onBack: () => void;
@@ -32,7 +36,7 @@ const RESULTS_PER_PAGE = 7;
 
 const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
   const [authenticated, setAuthenticated] = useState(false);
-  const [viewMode, setViewMode] = useState<'search' | 'qr'>('search');
+  const [viewMode, setViewMode] = useState<'menu' | 'search' | 'indicadores' | 'recursos' | 'documentos' | 'marketplace' | 'qrcodes'>('menu');
   const [searchType, setSearchType] = useState<'hdr' | 'remito' | 'fletero'>('hdr');
   const [searchValue, setSearchValue] = useState('');
   const [selectedFletero, setSelectedFletero] = useState<FleteroEmpresa | ''>('');
@@ -236,6 +240,123 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
     return <AuthInterno onAuthenticated={handleAuthenticated} onBack={onBack} />;
   }
 
+  // Show module selection menu after login
+  if (viewMode === 'menu') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 animate-fade-in">
+        {/* Header */}
+        <div className="bg-[#1a2332] text-white p-6 shadow-lg">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-between items-center mb-4">
+              <button
+                onClick={onBack}
+                className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Volver
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 text-gray-300 hover:text-red-400 transition-colors text-sm"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Cerrar sesión
+              </button>
+            </div>
+            <h1 className="text-3xl font-bold flex items-center gap-3">
+              <span className="text-[#a8e063]">CROSSLOG</span>
+              <span className="text-xl font-normal">- Consultas Internas</span>
+            </h1>
+            <p className="text-gray-300 mt-2">
+              🔐 Selecciona el módulo que deseas utilizar
+            </p>
+          </div>
+        </div>
+
+        {/* Module Selection Grid */}
+        <div className="max-w-6xl mx-auto p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Búsqueda HDR */}
+            <button
+              onClick={() => setViewMode('search')}
+              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl animate-scale-in group"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800">Búsqueda HDR</h2>
+                <p className="text-gray-600">
+                  Busca viajes por HDR, Remito o Fletero con filtros avanzados
+                </p>
+              </div>
+            </button>
+
+            {/* Indicadores Crosslog */}
+            <button
+              onClick={() => setViewMode('indicadores')}
+              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl animate-scale-in group"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800">Indicadores Crosslog</h2>
+                <p className="text-gray-600">
+                  Estadísticas y métricas de rendimiento de la operación
+                </p>
+              </div>
+            </button>
+
+            {/* Recursos */}
+            <button
+              onClick={() => setViewMode('recursos')}
+              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl animate-scale-in group"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800">Recursos</h2>
+                <p className="text-gray-600">
+                  Documentación, QR Codes y herramientas de apoyo
+                </p>
+              </div>
+            </button>
+
+            {/* Marketplace */}
+            <button
+              onClick={() => setViewMode('marketplace')}
+              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl animate-scale-in group"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800">Marketplace</h2>
+                <p className="text-gray-600">
+                  Gestiona viajes, ofertas y asignaciones de fleteros
+                </p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (selectedHDR) {
     return (
       <DetalleViaje
@@ -245,6 +366,16 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
     );
   }
 
+  // Show GestionDocumentosPage if in documentos mode
+  if (viewMode === 'documentos') {
+    return <GestionDocumentosPage onBack={() => setViewMode('recursos')} />;
+  }
+
+  // Show QRCodesPage if in qrcodes mode
+  if (viewMode === 'qrcodes') {
+    return <QRCodesPage onBack={() => setViewMode('recursos')} />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
       {/* Header */}
@@ -252,13 +383,13 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-4">
             <button
-              onClick={onBack}
+              onClick={() => setViewMode('menu')}
               className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Volver
+              Volver al Menú
             </button>
             <button
               onClick={handleLogout}
@@ -278,11 +409,11 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
             🔐 Acceso Interno Crosslog | Búsqueda avanzada con múltiples filtros
           </p>
 
-          {/* View Mode Toggle */}
-          <div className="mt-4 flex gap-3">
+          {/* View Mode Toggle - 4 Buttons */}
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
             <button
               onClick={() => setViewMode('search')}
-              className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${
+              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
                 viewMode === 'search'
                   ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
                   : 'bg-white/10 text-gray-300 hover:bg-white/20'
@@ -291,20 +422,46 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              Búsqueda HDR
+              <span className="hidden sm:inline">Búsqueda</span>
             </button>
             <button
-              onClick={() => setViewMode('qr')}
-              className={`px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 ${
-                viewMode === 'qr'
+              onClick={() => setViewMode('indicadores')}
+              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+                viewMode === 'indicadores'
                   ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
                   : 'bg-white/10 text-gray-300 hover:bg-white/20'
               }`}
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
-              Códigos QR
+              <span className="hidden sm:inline">Indicadores</span>
+            </button>
+            <button
+              onClick={() => setViewMode('recursos')}
+              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+                viewMode === 'recursos'
+                  ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
+                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <span className="hidden sm:inline">Recursos</span>
+            </button>
+            <button
+              onClick={() => setViewMode('marketplace')}
+              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+                viewMode === 'marketplace'
+                  ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
+                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <span className="hidden sm:inline">Marketplace</span>
             </button>
           </div>
         </div>
@@ -312,9 +469,193 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
 
       {/* Content Area */}
       <div className="max-w-6xl mx-auto p-6">
-        {viewMode === 'qr' ? (
-          /* QR Codes Section */
-          <QRCodesSection />
+        {viewMode === 'marketplace' ? (
+          /* Marketplace Section */
+          <MarketplaceSection />
+        ) : viewMode === 'indicadores' ? (
+          /* Indicadores Section */
+          <Indicadores onClose={() => setViewMode('search')} />
+        ) : viewMode === 'recursos' ? (
+          /* Recursos Section - Improved Professional Interface */
+          <div className="space-y-6">
+            {/* Header Card */}
+            <div className="bg-white rounded-2xl shadow-xl p-6 border-l-4" style={{ borderColor: '#a8e063' }}>
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1a2332 0%, #2d3e50 100%)' }}>
+                  <svg className="w-7 h-7 text-[#a8e063]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Recursos y Documentación</h2>
+                  <p className="text-sm text-gray-600 mt-1">Centro de recursos administrativos de Crosslog</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Manual de Choferes - Card Mejorada */}
+              <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all p-6 border border-gray-100 group">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-gray-900">Manual de Aplicación PWA</h3>
+                    <p className="text-xs text-gray-500">Guía para choferes</p>
+                  </div>
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">PDF</span>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+                  Guía completa paso a paso sobre el uso seguro de la aplicación PWA y el proceso de gestión de entregas.
+                </p>
+
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 mb-4">
+                  <div className="flex items-center gap-2 text-xs text-gray-700">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Incluye instrucciones de instalación y uso diario</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <a
+                    href="/CROSSLOG - Manual Choferes.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg shadow-md hover:from-blue-700 hover:to-indigo-700 active:scale-95 transition-all text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Ver
+                  </a>
+                  <a
+                    href="/CROSSLOG - Manual Choferes.pdf"
+                    download="CROSSLOG - Manual Choferes.pdf"
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-blue-700 font-semibold rounded-lg shadow-md border-2 border-blue-200 hover:bg-blue-50 active:scale-95 transition-all text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Descargar
+                  </a>
+                </div>
+              </div>
+
+              {/* Panel Administrativo - Card Mejorada */}
+              <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all p-6 border border-gray-100 group">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-gray-900">Gestión de Documentos</h3>
+                    <p className="text-xs text-gray-500">Panel administrativo</p>
+                  </div>
+                  <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full">Admin</span>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+                  Sistema centralizado de gestión de documentación de choferes, unidades y cuadernillos mensuales con control de vencimientos.
+                </p>
+
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-3 mb-4">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs text-gray-700">
+                      <svg className="w-3.5 h-3.5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Documentos de choferes y unidades</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-700">
+                      <svg className="w-3.5 h-3.5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Control automático de vencimientos</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setViewMode('documentos')}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold rounded-lg shadow-md hover:from-purple-600 hover:to-pink-700 active:scale-95 transition-all text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                  Abrir Panel Administrativo
+                </button>
+              </div>
+
+              {/* Códigos QR - Card Mejorada con Estado */}
+              <div className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all p-6 border border-gray-100 group">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-gray-900">Códigos QR</h3>
+                    <p className="text-xs text-gray-500">Generador de accesos</p>
+                  </div>
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">QR</span>
+                </div>
+
+                <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+                  Genera códigos QR para acceso rápido a consultas de clientes y fleteros. Facilita el acceso sin necesidad de recordar códigos.
+                </p>
+
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3 mb-4">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs text-gray-700">
+                      <svg className="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>QR para clientes y fleteros</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-gray-700">
+                      <svg className="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      <span>Descarga e impresión</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setViewMode('qrcodes')}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-lg shadow-md hover:from-green-700 hover:to-emerald-700 active:scale-95 transition-all text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                  Ingresar al Generador
+                </button>
+              </div>
+            </div>
+
+            {/* Info Footer */}
+            <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-[#a8e063] flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900 mb-1">Centro de Recursos Crosslog</p>
+                  <p className="text-xs text-gray-600">Todos los documentos y herramientas administrativas en un solo lugar. Para soporte adicional, contacte al equipo de Crosslog.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           /* Search Section */
           <>
@@ -388,38 +729,38 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
                   </button>
                 ))}
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <button
                   onClick={handleSearch}
                   disabled={!selectedFletero || loading}
-                  className="flex-1 py-4 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 text-lg"
+                  className="flex-1 py-3 md:py-4 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 md:gap-3 text-base md:text-lg"
                 >
                   {loading ? (
                     <>
-                      <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
+                      <svg className="animate-spin h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Buscando...
+                      <span className="hidden sm:inline">Buscando...</span>
                     </>
                   ) : (
                     <>
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
-                      Buscar
+                      <span className="whitespace-nowrap">Buscar</span>
                     </>
                   )}
                 </button>
                 {(result || selectedFletero) && (
                   <button
                     onClick={handleLimpiar}
-                    className="px-6 py-4 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all flex items-center justify-center gap-2"
+                    className="px-4 md:px-6 py-3 md:py-4 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                    Limpiar
+                    <span className="text-sm md:text-base">Limpiar</span>
                   </button>
                 )}
               </div>
@@ -429,47 +770,47 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
               <label className="block text-sm font-medium text-gray-700">
                 {searchType === 'hdr' ? 'Número de HDR' : 'Número de Remito'}
               </label>
-              <div className="flex gap-3">
+              <div className="flex gap-2">
                 <input
                   type="text"
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder={searchType === 'hdr' ? 'Ej: 15417' : 'Ej: 00012345'}
-                  className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all text-lg"
+                  className="flex-1 px-3 md:px-4 py-2 md:py-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all text-base md:text-lg"
                   disabled={loading}
                 />
                 <button
                   onClick={handleSearch}
                   disabled={loading}
-                  className="px-8 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
+                  className="px-4 md:px-8 py-2 md:py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center gap-2 whitespace-nowrap"
                 >
                   {loading ? (
                     <>
-                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <svg className="animate-spin h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Buscando...
+                      <span className="hidden sm:inline">Buscando...</span>
                     </>
                   ) : (
                     <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
-                      Buscar
+                      <span>Buscar</span>
                     </>
                   )}
                 </button>
                 {(result || searchValue) && (
                   <button
                     onClick={handleLimpiar}
-                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all flex items-center gap-2"
+                    className="px-4 md:px-6 py-2 md:py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all flex items-center gap-2 whitespace-nowrap"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                    Limpiar
+                    <span className="text-sm md:text-base">Limpiar</span>
                   </button>
                 )}
               </div>
@@ -537,7 +878,7 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
 
                 {paginatedHDRs.map((hdr) => {
                   // Get unique clients from entregas
-                  const clientes = Array.from(new Set(hdr.entregas.map((e: any) => e.cliente).filter(Boolean)));
+                  const clientes = Array.from(new Set(hdr.entregas.map((e: any) => getClientFullName(e.cliente)).filter(Boolean)));
                   // Count PDFs available
                   const totalPdfs = hdr.entregas.reduce((acc: number, e: any) => acc + (e.pdfUrls?.length || 0), 0);
 
