@@ -22,7 +22,9 @@ export function calcularEstadoDocumento(fechaVenc?: string): EstadoDocumento {
 /**
  * Calcula días hasta el vencimiento
  */
-export function diasHastaVencimiento(fechaVenc: string): number {
+export function diasHastaVencimiento(fechaVenc: string | undefined): number {
+  if (!fechaVenc) return 999; // Valor alto para documentos sin fecha
+
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
@@ -35,7 +37,9 @@ export function diasHastaVencimiento(fechaVenc: string): number {
 /**
  * Formatea una fecha YYYY-MM-DD a formato legible
  */
-export function formatearFecha(fecha: string): string {
+export function formatearFecha(fecha: string | undefined): string {
+  if (!fecha) return 'Sin fecha';
+
   const [year, month, day] = fecha.split('-');
   const meses = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
