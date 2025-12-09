@@ -263,36 +263,54 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
       const unidadDocsRaw = unidad ? await sheetsApi.fetchUnidadDocumentos(unidad) : [];
 
       // Transform chofer documents
-      const documentos: DocumentoChofer[] = choferDocsRaw.map((doc: any) => ({
-        id: `${doc.tipo}-${nombreChofer}`.toLowerCase().replace(/\s+/g, '-'),
-        tipo: doc.tipo as any,
-        nombre: doc.nombreDocumento,
-        choferNombre: doc.nombreChofer,
-        urlArchivo: doc.urlArchivo,
-        fechaVencimiento: doc.fechaVencimiento || undefined,
-        estado: doc.fechaVencimiento ? calcularEstadoDocumento(doc.fechaVencimiento) : 'VIGENTE'
-      }));
+      const documentos: DocumentoChofer[] = choferDocsRaw
+        .map((doc: any) => ({
+          id: `${doc.tipo}-${nombreChofer}`.toLowerCase().replace(/\s+/g, '-'),
+          tipo: doc.tipo as any,
+          nombre: doc.nombreDocumento,
+          choferNombre: doc.nombreChofer,
+          urlArchivo: doc.urlArchivo,
+          fechaVencimiento: doc.fechaVencimiento || undefined,
+          estado: doc.fechaVencimiento ? calcularEstadoDocumento(doc.fechaVencimiento) : 'VIGENTE'
+        }))
+        .sort((a, b) => {
+          // Sort by fecha vencimiento (most recent first)
+          // Documents without vencimiento go to the end
+          if (!a.fechaVencimiento) return 1;
+          if (!b.fechaVencimiento) return -1;
+          return new Date(b.fechaVencimiento).getTime() - new Date(a.fechaVencimiento).getTime();
+        });
 
       // Transform unit documents
-      const documentosUnidad: DocumentoUnidad[] = unidadDocsRaw.map((doc: any) => ({
-        id: `${doc.tipo}-${doc.numeroUnidad}`.toLowerCase().replace(/\s+/g, '-'),
-        tipo: doc.tipo as any,
-        nombre: doc.nombreDocumento,
-        numeroUnidad: doc.numeroUnidad,
-        urlArchivo: doc.urlArchivo,
-        fechaVencimiento: doc.fechaVencimiento,
-        estado: calcularEstadoDocumento(doc.fechaVencimiento)
-      }));
+      const documentosUnidad: DocumentoUnidad[] = unidadDocsRaw
+        .map((doc: any) => ({
+          id: `${doc.tipo}-${doc.numeroUnidad}`.toLowerCase().replace(/\s+/g, '-'),
+          tipo: doc.tipo as any,
+          nombre: doc.nombreDocumento,
+          numeroUnidad: doc.numeroUnidad,
+          urlArchivo: doc.urlArchivo,
+          fechaVencimiento: doc.fechaVencimiento,
+          estado: calcularEstadoDocumento(doc.fechaVencimiento)
+        }))
+        .sort((a, b) => {
+          // Sort by fecha vencimiento (most recent first)
+          return new Date(b.fechaVencimiento).getTime() - new Date(a.fechaVencimiento).getTime();
+        });
 
       // Transform cuadernillos (ALL, not just for this chofer)
-      const cuadernillos: Cuadernillo[] = cuadernillosRaw.map((cuad: any) => ({
-        mes: cuad.mes,
-        cuadernilloCompleto: cuad.urlCuadernillo,
-        fechaEmision: cuad.fechaEmision,
-        fechaVencimiento: cuad.fechaVencimiento,
-        estado: calcularEstadoDocumento(cuad.fechaVencimiento),
-        nombreChofer: cuad.nombreChofer // Keep track of which chofer if any
-      }));
+      const cuadernillos: Cuadernillo[] = cuadernillosRaw
+        .map((cuad: any) => ({
+          mes: cuad.mes,
+          cuadernilloCompleto: cuad.urlCuadernillo,
+          fechaEmision: cuad.fechaEmision,
+          fechaVencimiento: cuad.fechaVencimiento,
+          estado: calcularEstadoDocumento(cuad.fechaVencimiento),
+          nombreChofer: cuad.nombreChofer // Keep track of which chofer if any
+        }))
+        .sort((a, b) => {
+          // Sort by fecha emisión (most recent first)
+          return new Date(b.fechaEmision).getTime() - new Date(a.fechaEmision).getTime();
+        });
 
       // Generate alerts
       const alertas: Alerta[] = [];

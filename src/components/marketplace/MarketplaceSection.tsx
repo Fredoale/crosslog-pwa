@@ -120,19 +120,19 @@ export function MarketplaceSection() {
   );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-6 max-w-7xl mx-auto">
       {/* Sistema de Notificaciones */}
       <NotificacionesToast />
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
         <div>
-          <h2 className="text-3xl font-bold text-gray-800">🚛 Marketplace de Viajes</h2>
-          <p className="text-gray-600 mt-1">Gestiona viajes y ofertas de fleteros</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">🚛 Marketplace de Viajes</h2>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">Gestiona viajes y ofertas de fleteros</p>
         </div>
         <button
           onClick={() => setMostrarFormulario(!mostrarFormulario)}
-          className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl font-semibold"
+          className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl font-semibold text-sm sm:text-base whitespace-nowrap"
         >
           {mostrarFormulario ? '❌ Cancelar' : '➕ Publicar Viaje'}
         </button>
@@ -1016,17 +1016,17 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
   };
 
   return (
-    <div className="mb-6 bg-white border-2 border-green-200 rounded-xl p-6 shadow-lg">
+    <div className="mb-6 bg-white border-2 border-green-200 rounded-xl p-3 sm:p-6 shadow-lg">
       {/* Header con branding */}
-      <div className="bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-lg p-4 mb-6">
-        <h3 className="text-2xl font-bold flex items-center gap-2">
-          <span className="text-3xl">🚛</span>
+      <div className="bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+        <h3 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+          <span className="text-2xl sm:text-3xl">🚛</span>
           Crosslog - Nuevo Viaje
         </h3>
-        <p className="text-sm text-green-100 mt-1">Complete los datos del viaje para publicar en el marketplace</p>
+        <p className="text-xs sm:text-sm text-green-100 mt-1">Complete los datos del viaje para publicar en el marketplace</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Numero HDR */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">Número HDR</label>
@@ -1179,9 +1179,9 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
 
 
         {/* SECCIÓN: LUGAR DE CARGA */}
-        <div className="col-span-2 mt-4 border-t-2 border-gray-200 pt-4">
+        <div className="col-span-1 md:col-span-2 mt-4 border-t-2 border-gray-200 pt-4">
           <h4 className="text-lg font-bold text-gray-800 mb-3">📦 Lugar de Carga</h4>
-          <div className="grid grid-cols-3 gap-4 mb-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Nombre del lugar</label>
               <input
@@ -1239,7 +1239,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
               />
             </div>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-col sm:flex-row gap-2">
             <button
               type="button"
               onClick={abrirGoogleMaps}
@@ -1250,7 +1250,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
             <button
               type="button"
               onClick={agregarPuntoCarga}
-              className="px-6 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-bold shadow-lg text-sm"
+              className="flex-1 sm:flex-none px-6 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-bold shadow-lg text-sm"
             >
               ➕ AGREGAR PUNTO DE CARGA
             </button>
@@ -1337,12 +1337,12 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
         </div>
 
         {/* SECCIÓN: DESTINOS/ENTREGAS */}
-        <div className="col-span-2 mt-4">
+        <div className="col-span-1 md:col-span-2 mt-4">
           <h4 className="text-lg font-bold text-gray-800 mb-3">🚚 Destinos de Entrega</h4>
 
           {/* Agregar Nuevo Destino */}
           <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <div className="grid grid-cols-3 gap-4 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Nombre Planta</label>
                 <input
@@ -1407,7 +1407,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
                 />
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <button
                 type="button"
                 onClick={abrirGoogleMaps}
@@ -1418,7 +1418,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
               <button
                 type="button"
                 onClick={agregarDestino}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-bold shadow-lg text-lg"
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-bold shadow-lg text-sm sm:text-base"
                 disabled={formData.destinos.length >= 7}
               >
                 💾 Guardar y Agregar Destino a Lista
@@ -1525,7 +1525,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
         </div>
 
         {/* Tiempo Límite Oferta */}
-        <div className="col-span-2 mt-4">
+        <div className="col-span-1 md:col-span-2 mt-4">
           <label className="block text-sm font-semibold text-gray-700 mb-2">Tiempo límite para ofertas (horas)</label>
           <input
             type="number"
@@ -1542,7 +1542,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
         </div>
 
         {/* Notas */}
-        <div className="col-span-2">
+        <div className="col-span-1 md:col-span-2">
           <label className="block text-sm font-semibold text-gray-700 mb-2">Notas internas (opcional)</label>
           <textarea
             value={formData.notas_internas}
@@ -1554,7 +1554,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
         </div>
 
         {/* SECCIÓN: MODO DE ASIGNACIÓN */}
-        <div className="col-span-2 mt-6">
+        <div className="col-span-1 md:col-span-2 mt-6">
           <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-6 border-2 border-gray-300">
             <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
               <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1641,7 +1641,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
         </div>
 
         {/* Botones */}
-        <div className="col-span-2 flex gap-3 justify-end mt-4">
+        <div className="col-span-1 md:col-span-2 flex flex-col sm:flex-row gap-3 sm:justify-end mt-4">
           <button
             type="button"
             onClick={onClose}
@@ -1694,7 +1694,7 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
             {/* Contenido - Estilo card marketplace */}
             <div className="p-5 space-y-4">
               {/* HDR, Cliente y Tarifa */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-3">
                   <p className="text-xs text-gray-600 font-bold mb-1">HDR</p>
                   <p className="text-base font-bold text-gray-900">{datosViajeCreado.hdr}</p>
