@@ -1280,11 +1280,13 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
               <div className="space-y-2">
                 {formData.puntos_carga.map((punto, index) => (
                   <div key={index} className="bg-white border border-gray-200 rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-gray-500">{index + 1}.</span>
-                      <span className="font-semibold text-gray-800">{punto.nombre}</span>
-                      <span className="text-sm text-gray-600">- {punto.horario_desde}</span>
-                      <div className="ml-auto flex gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="font-bold text-gray-500 flex-shrink-0">{index + 1}.</span>
+                        <span className="font-semibold text-gray-800 truncate">{punto.nombre}</span>
+                        <span className="text-sm text-gray-600 whitespace-nowrap">- {punto.horario_desde}</span>
+                      </div>
+                      <div className="flex gap-2 flex-wrap sm:flex-nowrap">
                         <a
                           href={punto.link_maps}
                           target="_blank"
@@ -1434,10 +1436,12 @@ function FormularioCrearViaje({ onClose, onCreado }: { onClose: () => void; onCr
             <div className="space-y-2 mb-4">
               {formData.destinos.map((destino, index) => (
                 <div key={index} className="bg-white border border-gray-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-gray-800">{destino.nombre}</span>
-                    <span className="text-sm text-gray-600">- Horario de recepción hasta ⏰ {destino.horario_desde}</span>
-                    <div className="ml-auto flex gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="font-semibold text-gray-800 truncate">{destino.nombre}</span>
+                      <span className="text-sm text-gray-600 whitespace-nowrap">- ⏰ {destino.horario_desde}</span>
+                    </div>
+                    <div className="flex gap-2 flex-wrap sm:flex-nowrap">
                       {destino.link_maps && (
                         <>
                           <a

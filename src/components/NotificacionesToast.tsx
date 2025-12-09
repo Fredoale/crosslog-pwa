@@ -36,14 +36,14 @@ export function NotificacionesToast() {
   const getColorClasses = (tipo: string) => {
     switch (tipo) {
       case 'exito':
-        return 'bg-gradient-to-r from-[#a8e063]/10 to-[#56ab2f]/10 border-[#56ab2f]';
+        return 'bg-gradient-to-r from-green-50 to-emerald-50 border-[#56ab2f] backdrop-blur-sm';
       case 'error':
-        return 'bg-red-50 border-red-500';
+        return 'bg-red-50 border-red-500 backdrop-blur-sm';
       case 'advertencia':
-        return 'bg-yellow-50 border-yellow-500';
+        return 'bg-yellow-50 border-yellow-500 backdrop-blur-sm';
       case 'info':
       default:
-        return 'bg-gray-50 border-gray-400';
+        return 'bg-blue-50 border-blue-400 backdrop-blur-sm';
     }
   };
 
