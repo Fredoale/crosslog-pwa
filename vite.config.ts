@@ -33,6 +33,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      disable: true, // TEMPORARILY DISABLED - Service Worker causing issues with Google Sheets API
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icon-192x192.svg', 'vite.svg'],
       manifest: {
@@ -64,35 +65,20 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15 MB (for large bundles with OCR/PDF libs)
         runtimeCaching: [
-          // Google Sheets API - Network First
+          // Google Sheets API - Network Only (CRITICAL: avoid cache issues)
           {
             urlPattern: /^https:\/\/sheets\.googleapis\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'google-sheets-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 // 1 hour
-              },
-              networkTimeoutSeconds: 10
-            }
+            handler: 'NetworkOnly'
           },
           // Google Drive API - Network Only (uploads)
           {
             urlPattern: /^https:\/\/www\.googleapis\.com\/upload\/drive\/.*/i,
             handler: 'NetworkOnly'
           },
-          // Google Drive API - Network First (read)
+          // Google Drive API - Network Only (all Drive API calls)
           {
             urlPattern: /^https:\/\/www\.googleapis\.com\/drive\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'google-drive-cache',
-              expiration: {
-                maxEntries: 30,
-                maxAgeSeconds: 60 * 30 // 30 minutes
-              }
-            }
+            handler: 'NetworkOnly'
           },
           // N8N Webhook - Network Only
           {
