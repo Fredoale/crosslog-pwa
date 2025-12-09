@@ -8,6 +8,7 @@ import { useMarketplaceStore } from '../stores/marketplaceStore';
 import { buscarRequisitosCliente } from '../utils/clientesRequisitos';
 import { NotificacionesToast } from './NotificacionesToast';
 import { useNotificacionesStore } from '../stores/notificacionesStore';
+import { FEATURES } from '../config/features';
 
 interface ConsultaFleteroProps {
   onBack: () => void;
@@ -322,12 +323,18 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
 
               {/* Marketplace Module */}
               <button
-                onClick={() => setSelectedModule('marketplace')}
-                className="bg-white rounded-2xl shadow-xl p-8 hover:shadow-2xl transition-all border-2 border-transparent text-left group animate-slide-up animate-pulse-subtle"
+                onClick={() => {
+                  if (!FEATURES.MARKETPLACE_FIRESTORE) {
+                    alert('🚧 MÓDULO EN DESARROLLO\n\nEstamos trabajando en una nueva versión del Marketplace con mejoras significativas:\n\n✨ Actualizaciones en tiempo real\n⚡ Respuesta instantánea (<1 segundo)\n🔄 Sincronización automática\n📊 Mejor visualización de ofertas\n\n¡Pronto estará disponible!');
+                    return;
+                  }
+                  setSelectedModule('marketplace');
+                }}
+                className={`bg-white rounded-2xl shadow-xl p-8 hover:shadow-2xl transition-all border-2 border-transparent text-left group animate-slide-up ${FEATURES.MARKETPLACE_FIRESTORE ? 'animate-pulse-subtle' : 'opacity-70 cursor-not-allowed'}`}
                 style={{
                   animationDelay: '0.1s',
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = '#a8e063'}
+                onMouseEnter={(e) => FEATURES.MARKETPLACE_FIRESTORE && (e.currentTarget.style.borderColor = '#a8e063')}
                 onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
               >
                 <div className="flex items-center gap-4 mb-4">
@@ -335,8 +342,10 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
                     className="rounded-full p-4 transition-all"
                     style={{ backgroundColor: '#f0f9e8', color: '#7ab547' }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#a8e063';
-                      e.currentTarget.style.color = '#ffffff';
+                      if (FEATURES.MARKETPLACE_FIRESTORE) {
+                        e.currentTarget.style.backgroundColor = '#a8e063';
+                        e.currentTarget.style.color = '#ffffff';
+                      }
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = '#f0f9e8';
@@ -347,17 +356,28 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                   </div>
-                  <h3
-                    className="text-2xl font-bold text-gray-800 transition-colors"
-                    style={{ color: '#374151' }}
-                    onMouseEnter={(e) => e.currentTarget.style.color = '#a8e063'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = '#374151'}
-                  >
-                    Marketplace de Viajes
-                  </h3>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <h3
+                        className="text-2xl font-bold text-gray-800 transition-colors"
+                        style={{ color: '#374151' }}
+                        onMouseEnter={(e) => FEATURES.MARKETPLACE_FIRESTORE && (e.currentTarget.style.color = '#a8e063')}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#374151'}
+                      >
+                        Marketplace de Viajes
+                      </h3>
+                      {!FEATURES.MARKETPLACE_FIRESTORE && (
+                        <span className="px-3 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full border border-amber-300">
+                          🚧 EN DESARROLLO
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <p className="text-gray-600 text-sm leading-relaxed">
-                  Vea viajes disponibles, envíe ofertas y haga seguimiento de sus propuestas en el marketplace de Crosslog.
+                  {FEATURES.MARKETPLACE_FIRESTORE
+                    ? 'Vea viajes disponibles, envíe ofertas y haga seguimiento de sus propuestas en el marketplace de Crosslog.'
+                    : 'Pronto: actualizaciones en tiempo real, respuesta instantánea y mejor visualización de ofertas.'}
                 </p>
               </button>
             </div>
@@ -367,8 +387,14 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
     );
   }
 
-  // Show Marketplace module
+  // Show Marketplace module (only if feature is enabled)
   if (selectedModule === 'marketplace') {
+    if (!FEATURES.MARKETPLACE_FIRESTORE) {
+      // Double-check: should not reach here, but handle gracefully
+      alert('🚧 Esta funcionalidad está temporalmente deshabilitada.\n\nEstamos mejorando el Marketplace. ¡Pronto estará disponible!');
+      setSelectedModule(null);
+      return null;
+    }
     return <MarketplaceFleteroView fleteroName={fleteroName!} onBack={() => setSelectedModule(null)} onLogout={handleLogout} />;
   }
 

@@ -8,6 +8,7 @@ import { GestionDocumentosPage } from './admin/GestionDocumentosPage';
 import { QRCodesPage } from './QRCodesPage';
 import { MarketplaceSection } from './marketplace/MarketplaceSection';
 import { getClientFullName } from '../utils/clienteMapping';
+import { FEATURES } from '../config/features';
 
 interface ConsultaInternaProps {
   onBack: () => void;
@@ -336,9 +337,20 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
 
             {/* Marketplace */}
             <button
-              onClick={() => setViewMode('marketplace')}
-              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl animate-scale-in group"
+              onClick={() => {
+                if (!FEATURES.MARKETPLACE_FIRESTORE) {
+                  alert('🚧 MÓDULO EN DESARROLLO\n\nEstamos trabajando en una nueva versión del Marketplace con mejoras significativas:\n\n✨ Actualizaciones en tiempo real\n⚡ Respuesta instantánea (<1 segundo)\n🔄 Sincronización automática\n📊 Mejor visualización de ofertas\n\n¡Pronto estará disponible!');
+                  return;
+                }
+                setViewMode('marketplace');
+              }}
+              className={`bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent transition-all hover:shadow-2xl animate-scale-in group relative ${FEATURES.MARKETPLACE_FIRESTORE ? 'hover:border-[#a8e063]' : 'opacity-70 cursor-not-allowed'}`}
             >
+              {!FEATURES.MARKETPLACE_FIRESTORE && (
+                <div className="absolute -top-2 -right-2 px-3 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full border-2 border-amber-300 shadow-lg z-10">
+                  🚧 EN DESARROLLO
+                </div>
+              )}
               <div className="flex flex-col items-center text-center gap-4">
                 <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
                   <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -347,7 +359,9 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
                 </div>
                 <h2 className="text-2xl font-bold text-gray-800">Marketplace</h2>
                 <p className="text-gray-600">
-                  Gestiona viajes, ofertas y asignaciones de fleteros
+                  {FEATURES.MARKETPLACE_FIRESTORE
+                    ? 'Gestiona viajes, ofertas y asignaciones de fleteros'
+                    : 'Pronto: actualizaciones en tiempo real y mejor visualización'}
                 </p>
               </div>
             </button>
@@ -451,13 +465,24 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
               <span className="hidden sm:inline">Recursos</span>
             </button>
             <button
-              onClick={() => setViewMode('marketplace')}
-              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+              onClick={() => {
+                if (!FEATURES.MARKETPLACE_FIRESTORE) {
+                  alert('🚧 MÓDULO EN DESARROLLO\n\nEstamos trabajando en una nueva versión del Marketplace con mejoras significativas:\n\n✨ Actualizaciones en tiempo real\n⚡ Respuesta instantánea (<1 segundo)\n🔄 Sincronización automática\n📊 Mejor visualización de ofertas\n\n¡Pronto estará disponible!');
+                  return;
+                }
+                setViewMode('marketplace');
+              }}
+              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 relative ${
                 viewMode === 'marketplace'
                   ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                  : FEATURES.MARKETPLACE_FIRESTORE
+                    ? 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    : 'bg-white/10 text-gray-400 opacity-60 cursor-not-allowed'
               }`}
             >
+              {!FEATURES.MARKETPLACE_FIRESTORE && (
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border-2 border-[#1a2332] animate-pulse"></span>
+              )}
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
@@ -470,8 +495,48 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
       {/* Content Area */}
       <div className="max-w-6xl mx-auto p-6">
         {viewMode === 'marketplace' ? (
-          /* Marketplace Section */
-          <MarketplaceSection />
+          /* Marketplace Section - Check feature flag */
+          FEATURES.MARKETPLACE_FIRESTORE ? (
+            <MarketplaceSection />
+          ) : (
+            <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
+              <div className="max-w-2xl mx-auto">
+                <div className="w-24 h-24 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <svg className="w-12 h-12 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-4">🚧 Módulo en Desarrollo</h2>
+                <p className="text-gray-600 text-lg mb-8">
+                  Estamos trabajando en una nueva versión del Marketplace con mejoras significativas
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                    <div className="text-green-600 font-semibold mb-2">✨ Actualizaciones en tiempo real</div>
+                    <p className="text-sm text-gray-600">Vea cambios instantáneamente sin recargar</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                    <div className="text-blue-600 font-semibold mb-2">⚡ Respuesta instantánea</div>
+                    <p className="text-sm text-gray-600">Menos de 1 segundo de latencia</p>
+                  </div>
+                  <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
+                    <div className="text-purple-600 font-semibold mb-2">🔄 Sincronización automática</div>
+                    <p className="text-sm text-gray-600">99% menos llamadas a la API</p>
+                  </div>
+                  <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+                    <div className="text-orange-600 font-semibold mb-2">📊 Mejor visualización</div>
+                    <p className="text-sm text-gray-600">Interfaz renovada y más intuitiva</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setViewMode('search')}
+                  className="px-8 py-3 bg-[#a8e063] text-[#1a2332] rounded-xl font-semibold hover:shadow-lg transition-all"
+                >
+                  Volver a Búsqueda
+                </button>
+              </div>
+            </div>
+          )
         ) : viewMode === 'indicadores' ? (
           /* Indicadores Section */
           <Indicadores onClose={() => setViewMode('search')} />
