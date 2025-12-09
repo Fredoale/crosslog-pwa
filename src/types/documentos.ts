@@ -33,6 +33,7 @@ export interface Cuadernillo {
   fechaEmision: string;
   fechaVencimiento: string;
   estado: EstadoDocumento;
+  nombreChofer?: string; // Optional: if assigned to specific chofer
 }
 
 // Alertas
@@ -54,6 +55,6 @@ export interface InfoChoferCompleta {
   esPropio: boolean;
   documentos: DocumentoChofer[];
   documentosUnidad: DocumentoUnidad[];
-  cuadernillo: Cuadernillo | null;
+  cuadernillos: Cuadernillo[]; // Changed from single to array
   alertas: Alerta[];
 }

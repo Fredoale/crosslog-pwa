@@ -325,7 +325,7 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
               <button
                 onClick={() => {
                   if (!FEATURES.MARKETPLACE_FIRESTORE) {
-                    alert('🚧 MÓDULO EN DESARROLLO\n\nEstamos trabajando en una nueva versión del Marketplace con mejoras significativas:\n\n✨ Actualizaciones en tiempo real\n⚡ Respuesta instantánea (<1 segundo)\n🔄 Sincronización automática\n📊 Mejor visualización de ofertas\n\n¡Pronto estará disponible!');
+                    alert('🚧 MÓDULO EN DESARROLLO\n\nEstamos trabajando en una nueva versión del marketplace de viaje - Crosslog.');
                     return;
                   }
                   setSelectedModule('marketplace');
@@ -376,8 +376,8 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
                 </div>
                 <p className="text-gray-600 text-sm leading-relaxed">
                   {FEATURES.MARKETPLACE_FIRESTORE
-                    ? 'Vea viajes disponibles, envíe ofertas y haga seguimiento de sus propuestas en el marketplace de Crosslog.'
-                    : 'Pronto: actualizaciones en tiempo real, respuesta instantánea y mejor visualización de ofertas.'}
+                    ? 'Vea viajes disponibles, envíe solicitudes de servicio y haga seguimiento de sus propuestas en el marketplace de Crosslog.'
+                    : 'Pronto: actualizaciones en tiempo real, respuesta instantánea y mejor visualización de viajes.'}
                 </p>
               </button>
             </div>

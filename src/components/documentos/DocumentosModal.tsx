@@ -97,25 +97,28 @@ export function DocumentosModal({ info, onClose }: DocumentosModalProps) {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {tabActiva === 'cuadernillo' && (
             <div className="space-y-4">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">Cuadernillo Mensual</h3>
-              {info.cuadernillo ? (
-                <DocumentCard
-                  documento={{
-                    id: 'cuadernillo',
-                    nombre: `Cuadernillo ${info.cuadernillo.mes}`,
-                    urlArchivo: info.cuadernillo.cuadernilloCompleto,
-                    fechaVencimiento: info.cuadernillo.fechaVencimiento,
-                    estado: info.cuadernillo.estado
-                  }}
-                  onDescargar={() => handleDescargar(info.cuadernillo!.cuadernilloCompleto, `Cuadernillo-${info.cuadernillo!.mes}.pdf`)}
-                  onVisualizar={() => handleVisualizar(info.cuadernillo!.cuadernilloCompleto)}
-                />
+              <h3 className="text-lg font-bold text-gray-800 mb-4">Cuadernillos Crosslog</h3>
+              {info.cuadernillos && info.cuadernillos.length > 0 ? (
+                info.cuadernillos.map((cuad, index) => (
+                  <DocumentCard
+                    key={`cuadernillo-${index}`}
+                    documento={{
+                      id: `cuadernillo-${index}`,
+                      nombre: `Cuadernillo ${cuad.mes}${cuad.nombreChofer ? ` - ${cuad.nombreChofer}` : ''}`,
+                      urlArchivo: cuad.cuadernilloCompleto,
+                      fechaVencimiento: cuad.fechaVencimiento,
+                      estado: cuad.estado
+                    }}
+                    onDescargar={() => handleDescargar(cuad.cuadernilloCompleto, `Cuadernillo-${cuad.mes}.pdf`)}
+                    onVisualizar={() => handleVisualizar(cuad.cuadernilloCompleto)}
+                  />
+                ))
               ) : (
                 <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-6 text-center">
                   <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <p className="text-gray-500 font-medium">No hay cuadernillo disponible</p>
+                  <p className="text-gray-500 font-medium">No hay cuadernillos disponibles</p>
                 </div>
               )}
             </div>

@@ -66,13 +66,13 @@ const DATOS_MOCK: Record<string, InfoChoferCompleta> = {
         estado: 'VIGENTE'
       }
     ],
-    cuadernillo: {
+    cuadernillos: [{
       mes: '2024-11',
       cuadernilloCompleto: '/CROSSLOG - Manual Choferes.pdf',
       fechaEmision: '2024-11-01',
       fechaVencimiento: '2024-11-30',
       estado: 'VIGENTE'
-    },
+    }],
     alertas: []
   },
   'Jonathan Esteban': {
@@ -119,13 +119,13 @@ const DATOS_MOCK: Record<string, InfoChoferCompleta> = {
         estado: 'POR_VENCER'
       }
     ],
-    cuadernillo: {
+    cuadernillos: [{
       mes: '2024-11',
       cuadernilloCompleto: '/CROSSLOG - Manual Choferes.pdf',
       fechaEmision: '2024-11-01',
       fechaVencimiento: '2024-11-30',
       estado: 'VIGENTE'
-    },
+    }],
     alertas: []
   },
   'Martin Romero': {
@@ -154,13 +154,13 @@ const DATOS_MOCK: Record<string, InfoChoferCompleta> = {
         estado: 'VIGENTE'
       }
     ],
-    cuadernillo: {
+    cuadernillos: [{
       mes: '2024-11',
       cuadernilloCompleto: '/CROSSLOG - Manual Choferes.pdf',
       fechaEmision: '2024-11-01',
       fechaVencimiento: '2024-11-30',
       estado: 'VIGENTE'
-    },
+    }],
     alertas: []
   },
   'Jonatan Esteban': {
@@ -207,13 +207,13 @@ const DATOS_MOCK: Record<string, InfoChoferCompleta> = {
         estado: 'POR_VENCER'
       }
     ],
-    cuadernillo: {
+    cuadernillos: [{
       mes: '2024-11',
       cuadernilloCompleto: '/CROSSLOG - Manual Choferes.pdf',
       fechaEmision: '2024-11-01',
       fechaVencimiento: '2024-11-30',
       estado: 'VIGENTE'
-    },
+    }],
     alertas: []
   }
 };
@@ -239,12 +239,12 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
 
     try {
       // Fetch data from Google Sheets
-      const [choferDocsRaw, cuadernilloRaw] = await Promise.all([
+      const [choferDocsRaw, cuadernillosRaw] = await Promise.all([
         sheetsApi.fetchChoferDocumentos(nombreChofer),
-        sheetsApi.fetchCuadernillo(nombreChofer)
+        sheetsApi.fetchCuadernillos() // Get ALL cuadernillos, not filtered by chofer
       ]);
 
-      if (choferDocsRaw.length === 0 && !cuadernilloRaw) {
+      if (choferDocsRaw.length === 0 && cuadernillosRaw.length === 0) {
         console.log('[DocumentosStore] ❌ No se encontraron documentos para:', nombreChofer);
         set({
           loading: false,
@@ -284,14 +284,15 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
         estado: calcularEstadoDocumento(doc.fechaVencimiento)
       }));
 
-      // Transform cuadernillo
-      const cuadernillo: Cuadernillo | null = cuadernilloRaw ? {
-        mes: cuadernilloRaw.mes,
-        cuadernilloCompleto: cuadernilloRaw.urlCuadernillo,
-        fechaEmision: cuadernilloRaw.fechaEmision,
-        fechaVencimiento: cuadernilloRaw.fechaVencimiento,
-        estado: calcularEstadoDocumento(cuadernilloRaw.fechaVencimiento)
-      } : null;
+      // Transform cuadernillos (ALL, not just for this chofer)
+      const cuadernillos: Cuadernillo[] = cuadernillosRaw.map((cuad: any) => ({
+        mes: cuad.mes,
+        cuadernilloCompleto: cuad.urlCuadernillo,
+        fechaEmision: cuad.fechaEmision,
+        fechaVencimiento: cuad.fechaVencimiento,
+        estado: calcularEstadoDocumento(cuad.fechaVencimiento),
+        nombreChofer: cuad.nombreChofer // Keep track of which chofer if any
+      }));
 
       // Generate alerts
       const alertas: Alerta[] = [];
@@ -330,20 +331,20 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
         }
       });
 
-      // Alert from cuadernillo
-      if (cuadernillo) {
-        const estado = calcularEstadoDocumento(cuadernillo.fechaVencimiento);
+      // Alerts from cuadernillos
+      cuadernillos.forEach((cuad, index) => {
+        const estado = calcularEstadoDocumento(cuad.fechaVencimiento);
         if (estado !== 'VIGENTE') {
-          const dias = diasHastaVencimiento(cuadernillo.fechaVencimiento);
+          const dias = diasHastaVencimiento(cuad.fechaVencimiento);
           alertas.push({
-            id: 'alerta-cuadernillo',
+            id: `alerta-cuadernillo-${index}`,
             tipo: 'cuadernillo',
-            mensaje: generarMensajeAlerta('Cuadernillo', dias),
+            mensaje: generarMensajeAlerta(`Cuadernillo ${cuad.mes}`, dias),
             criticidad: 'alta',
             diasRestantes: dias
           });
         }
-      }
+      });
 
       console.log('[DocumentosStore] ✅ Documentos cargados desde Sheets. Alertas:', alertas.length);
 
@@ -355,7 +356,7 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
           esPropio,
           documentos,
           documentosUnidad,
-          cuadernillo,
+          cuadernillos,
           alertas: alertas.sort((a, b) => a.diasRestantes - b.diasRestantes)
         }
       });
