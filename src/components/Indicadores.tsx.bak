@@ -5,7 +5,6 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Ba
 import { collectHistoricalData } from '../utils/reportData';
 import { generateClaudeAnalysis, validateClaudeApiKey } from '../utils/claudeAnalysis';
 import { generatePDFReport, prepareChartsForPDF } from '../utils/pdfGenerator';
-import ValoresDiariosChart from './ValoresDiariosChart';
 
 interface IndicadoresProps {
   onClose: () => void;
@@ -35,11 +34,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
   const [previewData, setPreviewData] = useState<any>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
-
-  // Estados para VALORES DIARIOS DE DISTRIBUCIÓN
-  const [dataValoresDiarios, setDataValoresDiarios] = useState<any>(null);
-  const [filtroTipoTransporteVD, setFiltroTipoTransporteVD] = useState<string>('todos');
-  const [mostrarSoloActivos, setMostrarSoloActivos] = useState<boolean>(false);
 
   // Extract unique years from available months
   const aniosDisponibles = React.useMemo(() => {
@@ -78,8 +72,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
     loadMesesDisponibles();
     // Load monthly data
     loadDataMensual();
-    // Load valores diarios (último mes disponible)
-    loadValoresDiarios();
   }, []);
 
   useEffect(() => {
@@ -147,18 +139,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
       setDataMensual(data);
     } catch (error) {
       console.error('[Indicadores] Error loading monthly data:', error);
-    }
-  };
-
-  const loadValoresDiarios = async (mes?: string) => {
-    try {
-      console.log('[Indicadores] Cargando valores diarios para mes:', mes);
-      const data = await sheetsApi.getValoresDiariosDistribucion(mes);
-      setDataValoresDiarios(data);
-      return data;
-    } catch (error) {
-      console.error('[Indicadores] Error loading valores diarios:', error);
-      return null;
     }
   };
 
@@ -561,7 +541,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
                 </div>
               </div>
               {/* Gráfico de Barras Horizontal */}
-              <div className="flex justify-center w-full">
               <ResponsiveContainer width="100%" height={Math.min(data.topFleteros.length * 50 + 60, 400)}>
                 <BarChart
                   data={data.topFleteros}
@@ -587,7 +566,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
                   <Bar dataKey="viajes" fill="#475569" name="Viajes" radius={[0, 8, 8, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-              </div>
             </div>
           ) : (
             <p className="text-gray-500 text-center py-4 text-sm">No hay fleteros registrados</p>
@@ -609,7 +587,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
               </div>
             </div>
             {/* Gráfico de Barras Horizontal */}
-            <div className="flex justify-center w-full">
             <ResponsiveContainer width="100%" height={Math.min(data.topClientes.length * 50 + 60, 400)}>
               <BarChart
                 data={data.topClientes.map((item: any) => ({
@@ -638,7 +615,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
                 <Bar dataKey="viajes" fill="#3b82f6" name="Viajes" radius={[0, 8, 8, 0]} />
               </BarChart>
             </ResponsiveContainer>
-            </div>
           </div>
         </div>
 
@@ -648,7 +624,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
             <span className="text-xl">🚛</span>
             Tipos de Unidad
           </h3>
-          <div className="flex justify-center w-full">
           <ResponsiveContainer width="100%" height={Math.min(data.topTiposUnidad.length * 50 + 60, 400)}>
             <BarChart
               data={data.topTiposUnidad}
@@ -674,7 +649,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
               <Bar dataKey="cantidad" fill="#10b981" name="Cantidad" radius={[0, 8, 8, 0]} />
             </BarChart>
           </ResponsiveContainer>
-          </div>
         </div>
 
         {/* Top Internos - Full Width */}
@@ -683,7 +657,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
             <span className="text-xl">🔢</span>
             Top 10 Internos
           </h3>
-          <div className="flex justify-center w-full">
           <ResponsiveContainer width="100%" height={Math.min(data.topInternos.length * 50 + 60, 400)}>
             <BarChart
               data={data.topInternos}
@@ -709,7 +682,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
               <Bar dataKey="viajes" fill="#475569" name="Viajes" radius={[0, 8, 8, 0]} />
             </BarChart>
           </ResponsiveContainer>
-          </div>
         </div>
 
         {/* Gráfico de Viajes por Mes */}
@@ -841,16 +813,6 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
             </div>
           )}
         </div>
-
-        {/* VALORES DIARIOS DE DISTRIBUCIÓN */}
-        <ValoresDiariosChart
-          data={dataValoresDiarios}
-          filtroTipoTransporte={filtroTipoTransporteVD}
-          mostrarSoloActivos={mostrarSoloActivos}
-          onChangeFiltroTipoTransporte={setFiltroTipoTransporteVD}
-          onChangeMostrarSoloActivos={setMostrarSoloActivos}
-          onLoadMes={loadValoresDiarios}
-        />
 
         {/* Footer */}
         <div className="mt-6 flex justify-end">

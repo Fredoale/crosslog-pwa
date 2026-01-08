@@ -7,7 +7,11 @@ import Indicadores from './Indicadores';
 import { GestionDocumentosPage } from './admin/GestionDocumentosPage';
 import { QRCodesPage } from './QRCodesPage';
 import { MarketplaceSection } from './marketplace/MarketplaceSection';
+import DashboardMantenimiento from './mantenimiento/DashboardMantenimiento';
 import { getClientFullName } from '../utils/clienteMapping';
+import { GlobalHeader } from './GlobalHeader';
+import { ContextBar } from './ContextBar';
+import { ModuloCarousel } from './ModuloCarousel';
 
 interface ConsultaInternaProps {
   onBack: () => void;
@@ -36,7 +40,8 @@ const RESULTS_PER_PAGE = 7;
 
 const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
   const [authenticated, setAuthenticated] = useState(false);
-  const [viewMode, setViewMode] = useState<'menu' | 'search' | 'indicadores' | 'recursos' | 'documentos' | 'marketplace' | 'qrcodes'>('menu');
+  const [activeTab, setActiveTab] = useState<'inicio' | 'operaciones' | 'administracion' | 'recursos'>('inicio');
+  const [viewMode, setViewMode] = useState<'menu' | 'search' | 'indicadores' | 'recursos' | 'documentos' | 'marketplace' | 'qrcodes' | 'mantenimiento'>('menu');
   const [searchType, setSearchType] = useState<'hdr' | 'remito' | 'fletero'>('hdr');
   const [searchValue, setSearchValue] = useState('');
   const [selectedFletero, setSelectedFletero] = useState<FleteroEmpresa | ''>('');
@@ -50,6 +55,9 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
     const stored = localStorage.getItem('crosslog_marketplace_fleteros_enabled');
     return stored === 'true';
   });
+
+  // Carousel states for TAB INICIO
+  // Carousels ahora manejados por Swiper (eliminados estados manuales)
 
   // Check for existing session on mount
   useEffect(() => {
@@ -76,6 +84,11 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
     }
   }, []);
 
+  // Debug: Monitorear cambios de viewMode
+  useEffect(() => {
+    console.log('[ConsultaInterna] ViewMode cambió a:', viewMode);
+  }, [viewMode]);
+
   const handleAuthenticated = () => {
     setAuthenticated(true);
 
@@ -100,6 +113,17 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
     // Clear session from localStorage
     localStorage.removeItem(SESSION_KEY);
     console.log('[ConsultaInterna] 🚪 Logged out');
+  };
+
+  const handleVolver = () => {
+    // Si está en un viewMode diferente al menú principal, volver al inicio
+    if (viewMode !== 'menu') {
+      setViewMode('menu');
+      setActiveTab('inicio');
+    } else {
+      // Si está en el menú principal, salir al login
+      onBack();
+    }
   };
 
   const toggleMarketplaceFleteros = () => {
@@ -255,115 +279,454 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
   // Show module selection menu after login
   if (viewMode === 'menu') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100 animate-fade-in">
-        {/* Header */}
-        <div className="bg-[#1a2332] text-white p-6 shadow-lg">
-          <div className="max-w-6xl mx-auto">
-            <div className="flex justify-between items-center mb-4">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50 to-emerald-50 animate-fade-in">
+        {/* Header + Barra de Navegación Sticky Container */}
+        <div className="sticky top-0 z-50">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-[#1a2332] via-[#2d3e50] to-[#1a2332] text-white shadow-2xl">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+              <div className="flex justify-between items-center mb-4">
+                <button
+                  onClick={handleVolver}
+                  className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Volver
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 text-gray-300 hover:text-red-400 transition-colors text-sm"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Cerrar sesión
+                </button>
+              </div>
+              <h1 className="text-3xl font-bold flex items-center gap-3 mb-4">
+                <span className="text-[#a8e063]">CROSSLOG</span>
+                <span className="text-xl font-normal">- Consultas Internas</span>
+              </h1>
+              <p className="text-gray-300">
+                🔐 Acceso al portal interno de Crosslog
+              </p>
+            </div>
+          </div>
+
+          {/* Barra de Navegación Fija */}
+          <div className="bg-white border-b border-gray-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-2 sm:px-6 py-1 sm:py-1">
+            <div className="grid grid-cols-4 gap-1 sm:gap-2">
               <button
-                onClick={onBack}
-                className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
+                onClick={() => setActiveTab('inicio')}
+                className={`px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-md font-medium transition-all text-xs ${
+                  activeTab === 'inicio'
+                    ? 'bg-gradient-to-r from-[#56ab2f] to-[#a8e063] text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Volver
+                🏠 Inicio
               </button>
               <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 text-gray-300 hover:text-red-400 transition-colors text-sm"
+                onClick={() => setActiveTab('operaciones')}
+                className={`px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-md font-medium transition-all text-xs ${
+                  activeTab === 'operaciones'
+                    ? 'bg-gradient-to-r from-[#56ab2f] to-[#a8e063] text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                Cerrar sesión
+                📊 Operaciones
+              </button>
+              <button
+                onClick={() => setActiveTab('administracion')}
+                className={`px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-md font-medium transition-all text-xs ${
+                  activeTab === 'administracion'
+                    ? 'bg-gradient-to-r from-[#56ab2f] to-[#a8e063] text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                ⚙️ Admin
+              </button>
+              <button
+                onClick={() => setActiveTab('recursos')}
+                className={`px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-md font-medium transition-all text-xs ${
+                  activeTab === 'recursos'
+                    ? 'bg-gradient-to-r from-[#56ab2f] to-[#a8e063] text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                📚 Recursos
               </button>
             </div>
-            <h1 className="text-3xl font-bold flex items-center gap-3">
-              <span className="text-[#a8e063]">CROSSLOG</span>
-              <span className="text-xl font-normal">- Consultas Internas</span>
-            </h1>
-            <p className="text-gray-300 mt-2">
-              🔐 Selecciona el módulo que deseas utilizar
-            </p>
+          </div>
           </div>
         </div>
 
-        {/* Module Selection Grid */}
-        <div className="max-w-6xl mx-auto p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Búsqueda HDR */}
-            <button
-              onClick={() => setViewMode('search')}
-              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl animate-scale-in group"
-            >
-              <div className="flex flex-col items-center text-center gap-4">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-800">Búsqueda HDR</h2>
-                <p className="text-gray-600">
-                  Busca viajes por HDR, Remito o Fletero con filtros avanzados
-                </p>
+        {/* Tab Content */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          {activeTab === 'inicio' && (
+            <div className="space-y-6 animate-fade-in">
+              {/* Welcome Banner */}
+              <div className="bg-gradient-to-r from-[#56ab2f] to-[#a8e063] rounded-2xl shadow-xl p-6 sm:p-8 text-white">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-2">Bienvenido al Portal Crosslog</h2>
+                <p className="text-green-50 text-sm sm:text-base">Acceso rápido a todas las herramientas y módulos del sistema</p>
               </div>
-            </button>
 
-            {/* Indicadores Crosslog */}
-            <button
-              onClick={() => setViewMode('indicadores')}
-              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl animate-scale-in group"
-            >
-              <div className="flex flex-col items-center text-center gap-4">
-                <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              {/* Acceso Rápido Grid */}
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <svg className="w-6 h-6 text-[#56ab2f]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-800">Indicadores Crosslog</h2>
-                <p className="text-gray-600">
-                  Estadísticas y métricas de rendimiento de la operación
-                </p>
-              </div>
-            </button>
+                  Acceso Rápido
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Búsqueda HDR */}
+                  <button
+                    onClick={() => setViewMode('search')}
+                    className="bg-white rounded-xl shadow-lg p-6 border-2 border-transparent hover:border-[#a8e063] hover:shadow-xl transition-all group text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-800 mb-1">Búsqueda HDR</h4>
+                        <p className="text-sm text-gray-600">Consulta viajes y remitos</p>
+                      </div>
+                    </div>
+                  </button>
 
-            {/* Recursos */}
-            <button
-              onClick={() => setViewMode('recursos')}
-              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl animate-scale-in group"
-            >
-              <div className="flex flex-col items-center text-center gap-4">
-                <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-800">Recursos</h2>
-                <p className="text-gray-600">
-                  Documentación, QR Codes y herramientas de apoyo
-                </p>
-              </div>
-            </button>
+                  {/* Indicadores */}
+                  <button
+                    onClick={() => setViewMode('indicadores')}
+                    className="bg-white rounded-xl shadow-lg p-6 border-2 border-transparent hover:border-[#a8e063] hover:shadow-xl transition-all group text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-800 mb-1">Indicadores</h4>
+                        <p className="text-sm text-gray-600">Dashboard ejecutivo</p>
+                      </div>
+                    </div>
+                  </button>
 
-            {/* Marketplace */}
-            <button
-              onClick={() => setViewMode('marketplace')}
-              className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl hover:scale-105 animate-scale-in group"
-            >
-              <div className="flex flex-col items-center text-center gap-4">
-                <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
-                  </svg>
+                  {/* Marketplace */}
+                  <button
+                    onClick={() => setViewMode('marketplace')}
+                    className="bg-white rounded-xl shadow-lg p-6 border-2 border-transparent hover:border-[#a8e063] hover:shadow-xl transition-all group text-left"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-800 mb-1">Marketplace</h4>
+                        <p className="text-sm text-gray-600">Gestión de viajes</p>
+                      </div>
+                    </div>
+                  </button>
                 </div>
-                <h2 className="text-2xl font-bold text-gray-800">Marketplace</h2>
-                <p className="text-gray-600">
-                  Gestiona viajes, ofertas y asignaciones de fleteros
-                </p>
               </div>
-            </button>
-          </div>
+
+              {/* Secciones con Carruseles Automáticos */}
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <svg className="w-6 h-6 text-[#56ab2f]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                  Módulos del Sistema
+                </h3>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* OPERACIONES Carousel */}
+                  <ModuloCarousel
+                    titulo="Operaciones"
+                    iconoTitulo={<span className="text-lg">📊</span>}
+                    slides={[
+                      {
+                        icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
+                        title: "Búsqueda HDR",
+                        subtitle: "Consulta viajes por HDR, Remito o Fletero",
+                        gradient: "linear-gradient(to bottom right, #3b82f6, #2563eb)",
+                        onClick: () => {
+                          console.log('[Carousel] Click en Búsqueda HDR → setViewMode("search")');
+                          setViewMode('search');
+                        }
+                      },
+                      {
+                        icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
+                        title: "Marketplace",
+                        subtitle: "Gestiona viajes y asignaciones",
+                        gradient: "linear-gradient(to bottom right, #60a5fa, #3b82f6)",
+                        onClick: () => {
+                          console.log('[Carousel] Click en Marketplace → setViewMode("marketplace")');
+                          setViewMode('marketplace');
+                        }
+                      },
+                      {
+                        icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+                        title: "Config Marketplace",
+                        subtitle: marketplaceHabilitadoFleteros ? '✅ Habilitado' : '⏸️ Deshabilitado',
+                        gradient: marketplaceHabilitadoFleteros
+                          ? "linear-gradient(to bottom right, #56ab2f, #a8e063)"
+                          : "linear-gradient(to bottom right, #6b7280, #4b5563)",
+                        onClick: toggleMarketplaceFleteros
+                      }
+                    ]}
+                  />
+
+                  {/* MANTENIMIENTO Carousel */}
+                  <ModuloCarousel
+                    titulo="Mantenimiento"
+                    iconoTitulo={<span className="text-lg">🔧</span>}
+                    slides={[
+                      {
+                        icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+                        title: "Checklists",
+                        subtitle: "Inspecciones de vehículos",
+                        gradient: "linear-gradient(to bottom right, #ea580c, #f97316)",
+                        onClick: () => {
+                          console.log('[Carousel] Click en Checklists → setViewMode("mantenimiento")');
+                          setViewMode('mantenimiento');
+                        }
+                      },
+                      {
+                        icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01",
+                        title: "Órdenes de Trabajo",
+                        subtitle: "Gestión de reparaciones",
+                        gradient: "linear-gradient(to bottom right, #f59e0b, #fbbf24)",
+                        onClick: () => {
+                          console.log('[Carousel] Click en Órdenes de Trabajo → setViewMode("mantenimiento")');
+                          setViewMode('mantenimiento');
+                        }
+                      },
+                      {
+                        icon: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z",
+                        title: "Novedades",
+                        subtitle: "Reportes de incidentes",
+                        gradient: "linear-gradient(to bottom right, #fb923c, #fdba74)",
+                        onClick: () => {
+                          console.log('[Carousel] Click en Novedades → setViewMode("mantenimiento")');
+                          setViewMode('mantenimiento');
+                        }
+                      }
+                    ]}
+                  />
+
+                  {/* ADMINISTRACIÓN Carousel */}
+                  <ModuloCarousel
+                    titulo="Administración"
+                    iconoTitulo={<span className="text-lg">⚙️</span>}
+                    slides={[
+                      {
+                        icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+                        title: "Indicadores",
+                        subtitle: "Dashboard ejecutivo y métricas",
+                        gradient: "linear-gradient(to bottom right, #8b5cf6, #a78bfa)",
+                        onClick: () => {
+                          console.log('[Carousel] Click en Indicadores → setViewMode("indicadores")');
+                          setViewMode('indicadores');
+                        }
+                      },
+                      {
+                        icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+                        title: "Gestión Documentos",
+                        subtitle: "Administra cuadernillos y recursos",
+                        gradient: "linear-gradient(to bottom right, #6366f1, #818cf8)",
+                        onClick: () => {
+                          console.log('[Carousel] Click en Gestión Documentos → setViewMode("documentos")');
+                          setViewMode('documentos');
+                        }
+                      }
+                    ]}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'operaciones' && (
+            <div className="space-y-6 animate-fade-in">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <svg className="w-6 h-6 text-[#56ab2f]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Operaciones
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Búsqueda HDR */}
+                <button
+                  onClick={() => setViewMode('search')}
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Búsqueda HDR</h3>
+                    <p className="text-sm text-gray-600">Busca viajes por HDR, Remito o Fletero</p>
+                  </div>
+                </button>
+
+                {/* Marketplace */}
+                <button
+                  onClick={() => setViewMode('marketplace')}
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Marketplace</h3>
+                    <p className="text-sm text-gray-600">Gestiona viajes y asignaciones</p>
+                  </div>
+                </button>
+
+                {/* Mantenimiento */}
+                <button
+                  onClick={() => setViewMode('mantenimiento')}
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Mantenimiento</h3>
+                    <p className="text-sm text-gray-600">Checklists, Novedades y OTs</p>
+                  </div>
+                </button>
+
+                {/* Config Marketplace */}
+                <button
+                  onClick={toggleMarketplaceFleteros}
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className={`w-20 h-20 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform ${marketplaceHabilitadoFleteros ? 'bg-gradient-to-br from-green-500 to-emerald-600' : 'bg-gradient-to-br from-red-500 to-red-600'}`}>
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Config Marketplace</h3>
+                    <p className={`text-sm font-semibold ${marketplaceHabilitadoFleteros ? 'text-green-600' : 'text-red-600'}`}>
+                      {marketplaceHabilitadoFleteros ? 'Habilitado para Fleteros' : 'Deshabilitado para Fleteros'}
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'administracion' && (
+            <div className="space-y-6 animate-fade-in">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <svg className="w-6 h-6 text-[#56ab2f]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Administración
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Indicadores */}
+                <button
+                  onClick={() => setViewMode('indicadores')}
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Indicadores Crosslog</h3>
+                    <p className="text-sm text-gray-600">Estadísticas y métricas de operación</p>
+                  </div>
+                </button>
+
+                {/* Gestión Documentos */}
+                <button
+                  onClick={() => setViewMode('documentos')}
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Gestión Documentos</h3>
+                    <p className="text-sm text-gray-600">Administra cuadernillos y recursos</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'recursos' && (
+            <div className="space-y-6 animate-fade-in">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <svg className="w-6 h-6 text-[#56ab2f]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Recursos
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Manual PWA */}
+                <a
+                  href="/CROSSLOG - Manual Choferes.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Manual PWA</h3>
+                    <p className="text-sm text-gray-600">Ver documentación PDF</p>
+                  </div>
+                </a>
+
+                {/* QR Codes */}
+                <button
+                  onClick={() => setViewMode('qrcodes')}
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">QR Codes</h3>
+                    <p className="text-sm text-gray-600">Genera códigos QR</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -380,114 +743,106 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
 
   // Show GestionDocumentosPage if in documentos mode
   if (viewMode === 'documentos') {
-    return <GestionDocumentosPage onBack={() => setViewMode('recursos')} />;
+    return <GestionDocumentosPage onBack={() => { setActiveTab('administracion'); setViewMode('menu'); }} />;
   }
 
   // Show QRCodesPage if in qrcodes mode
   if (viewMode === 'qrcodes') {
-    return <QRCodesPage onBack={() => setViewMode('recursos')} />;
+    return <QRCodesPage onBack={() => { setActiveTab('recursos'); setViewMode('menu'); }} />;
+  }
+
+  // Show Marketplace with GlobalHeader + ContextBar
+  if (viewMode === 'marketplace') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
+        <GlobalHeader
+          activeTab={activeTab}
+          onNavigate={(tab) => { setActiveTab(tab); setViewMode('menu'); }}
+          onBack={handleVolver}
+          onLogout={handleLogout}
+        />
+        <ContextBar
+          icon="🚛"
+          title="Marketplace de Viajes"
+          subtitle="Gestión de Viajes y Ofertas de Fleteros"
+          color="orange"
+        />
+        <div className="max-w-6xl mx-auto p-6">
+          <MarketplaceSection />
+        </div>
+      </div>
+    );
+  }
+
+  // Show Indicadores with GlobalHeader + ContextBar
+  if (viewMode === 'indicadores') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
+        <GlobalHeader
+          activeTab={activeTab}
+          onNavigate={(tab) => { setActiveTab(tab); setViewMode('menu'); }}
+          onBack={handleVolver}
+          onLogout={handleLogout}
+        />
+        <ContextBar
+          icon="📊"
+          title="Indicadores Crosslog"
+          subtitle="Dashboard Ejecutivo y Métricas de Rendimiento"
+          color="purple"
+        />
+        <div className="max-w-6xl mx-auto p-6">
+          <Indicadores onClose={() => setViewMode('menu')} />
+        </div>
+      </div>
+    );
+  }
+
+  // Show Mantenimiento with GlobalHeader + ContextBar
+  if (viewMode === 'mantenimiento') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
+        <GlobalHeader
+          activeTab={activeTab}
+          onNavigate={(tab) => { setActiveTab(tab); setViewMode('menu'); }}
+          onBack={handleVolver}
+          onLogout={handleLogout}
+        />
+        <ContextBar
+          icon="🔧"
+          title="Panel de Mantenimiento"
+          subtitle="Gestión de Checklists, Novedades y Órdenes de Trabajo"
+          color="indigo"
+        />
+        <div className="max-w-7xl mx-auto">
+          <DashboardMantenimiento onBack={() => setViewMode('menu')} />
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
-      {/* Header */}
-      <div className="bg-[#1a2332] text-white p-6 shadow-lg">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex justify-between items-center mb-4">
-            <button
-              onClick={() => setViewMode('menu')}
-              className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Volver al Menú
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-gray-300 hover:text-red-400 transition-colors text-sm"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Cerrar sesión
-            </button>
-          </div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <span className="text-[#a8e063]">CROSSLOG</span>
-            <span className="text-xl font-normal">- Consulta Interna</span>
-          </h1>
-          <p className="text-gray-300 mt-2">
-            🔐 Acceso Interno Crosslog | Búsqueda avanzada con múltiples filtros
-          </p>
+      {/* Global Header - Unificado */}
+      <GlobalHeader
+        activeTab={activeTab}
+        onNavigate={(tab) => { setActiveTab(tab); setViewMode('menu'); }}
+        onBack={handleVolver}
+        onLogout={handleLogout}
+      />
 
-          {/* View Mode Toggle - 4 Buttons */}
-          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
-            <button
-              onClick={() => setViewMode('search')}
-              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
-                viewMode === 'search'
-                  ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <span className="hidden sm:inline">Búsqueda</span>
-            </button>
-            <button
-              onClick={() => setViewMode('indicadores')}
-              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
-                viewMode === 'indicadores'
-                  ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              <span className="hidden sm:inline">Indicadores</span>
-            </button>
-            <button
-              onClick={() => setViewMode('recursos')}
-              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
-                viewMode === 'recursos'
-                  ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-              <span className="hidden sm:inline">Recursos</span>
-            </button>
-            <button
-              onClick={() => setViewMode('marketplace')}
-              className={`px-3 md:px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
-                viewMode === 'marketplace'
-                  ? 'bg-[#a8e063] text-[#1a2332] shadow-lg'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <span className="hidden sm:inline">Marketplace</span>
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Context Bar - Solo para Búsqueda HDR */}
+      {viewMode === 'search' && (
+        <ContextBar
+          icon="🔍"
+          title="Búsqueda HDR"
+          subtitle="Consulta de Viajes por HDR, Remito o Fletero"
+          color="blue"
+        />
+      )}
 
       {/* Content Area */}
       <div className="max-w-6xl mx-auto p-6">
-        {viewMode === 'marketplace' ? (
-          /* Marketplace Section */
-          <MarketplaceSection />
-        ) : viewMode === 'indicadores' ? (
-          /* Indicadores Section */
-          <Indicadores onClose={() => setViewMode('search')} />
-        ) : viewMode === 'recursos' ? (
+        {viewMode === 'recursos' ? (
           /* Recursos Section - Improved Professional Interface */
           <div className="space-y-6">
             {/* Header Card */}

@@ -617,11 +617,11 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             </button>
           </div>
 
-          {/* Tabs - Responsive: 2 columns on mobile, 4 on desktop */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {/* Tabs - Una sola fila en todos los dispositivos */}
+          <div className="grid grid-cols-4 gap-1 sm:gap-2">
             <button
               onClick={() => setSeccionActiva('dashboard')}
-              className={`px-3 sm:px-6 py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              className={`px-1.5 sm:px-6 py-1.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                 seccionActiva === 'dashboard' ? 'text-gray-900' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
               }`}
               style={seccionActiva === 'dashboard' ? { backgroundColor: '#a8e063' } : {}}
@@ -630,7 +630,7 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             </button>
             <button
               onClick={() => setSeccionActiva('chofer')}
-              className={`px-3 sm:px-6 py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              className={`px-1.5 sm:px-6 py-1.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                 seccionActiva === 'chofer' ? 'text-gray-900' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
               }`}
               style={seccionActiva === 'chofer' ? { backgroundColor: '#a8e063' } : {}}
@@ -639,7 +639,7 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             </button>
             <button
               onClick={() => setSeccionActiva('unidad')}
-              className={`px-3 sm:px-6 py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              className={`px-1.5 sm:px-6 py-1.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                 seccionActiva === 'unidad' ? 'text-gray-900' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
               }`}
               style={seccionActiva === 'unidad' ? { backgroundColor: '#a8e063' } : {}}
@@ -648,7 +648,7 @@ export function GestionDocumentosPage({ onBack }: GestionDocumentosPageProps) {
             </button>
             <button
               onClick={() => setSeccionActiva('cuadernillo')}
-              className={`px-3 sm:px-6 py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+              className={`px-1.5 sm:px-6 py-1.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                 seccionActiva === 'cuadernillo' ? 'text-gray-900' : 'bg-white bg-opacity-20 text-white hover:bg-opacity-30'
               }`}
               style={seccionActiva === 'cuadernillo' ? { backgroundColor: '#a8e063' } : {}}

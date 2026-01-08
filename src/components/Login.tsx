@@ -1,10 +1,18 @@
 import { useState } from 'react';
 import { useEntregasStore } from '../stores/entregasStore';
+import { useTallerStore } from '../stores/tallerStore';
 import { useGoogleSheets } from '../hooks/useGoogleSheets';
 import { sheetsApi } from '../utils/sheetsApi';
 import { getClientFolderId, getClientName } from '../config/clientFolders';
 import { WelcomeModal } from './WelcomeModal';
 import ShareQRButton from './ShareQRButton';
+import { CarouselSector, type SectorType, CISTERNAS_VRAC, UNIDADES_VRAC, UNIDADES_VITAL_AIRE } from './CarouselSector';
+import { ChecklistVRAC } from './ChecklistVRAC';
+import { ChecklistVitalAire } from './ChecklistVitalAire';
+import { ChecklistDistribucion } from './ChecklistDistribucion';
+import { FormularioCargaCombustible } from './combustible/FormularioCargaCombustible';
+import type { ChecklistRegistro } from '../types/checklist';
+import { checkChecklistExists } from '../services/checklistService';
 
 interface LoginProps {
   onSuccess: () => void;
@@ -33,11 +41,39 @@ function generarOpcionesUnidad(unidades: string[], correcta: string): string[] {
 
 export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
   const [hdr, setHdr] = useState('');
+  const [selectedSector, setSelectedSector] = useState<SectorType>('distribucion');
+  const [unidadSeleccionada, setUnidadSeleccionada] = useState('');
+  const [cisternaSeleccionada, setCisternaSeleccionada] = useState('');
+  const [codigoTaller, setCodigoTaller] = useState('');
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validatedInfo, setValidatedInfo] = useState<{ chofer: string; fecha: string } | null>(null);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [welcomeData, setWelcomeData] = useState<{ chofer: string; hdr: string; cliente: string; fecha: string; tipoTransporte?: string; isCompleted?: boolean } | null>(null);
+
+  // Checklist state
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [checklistData, setChecklistData] = useState<{
+    sector: 'vrac' | 'vital-aire';
+    unidad: { numero: string; patente: string };
+    cisterna?: { numero: string; patente: string };
+    chofer: string;
+  } | null>(null);
+
+  // Checklist Distribución state
+  const [showChecklistDistribucion, setShowChecklistDistribucion] = useState(false);
+  const [checklistDistribucionData, setChecklistDistribucionData] = useState<{
+    hdr: string;
+    chofer: string;
+    unidad: string;
+  } | null>(null);
+
+  // Combustible state
+  const [showFormularioCombustible, setShowFormularioCombustible] = useState(false);
+  const [combustibleData, setCombustibleData] = useState<{
+    unidad: { numero: string; patente: string };
+    chofer: string;
+  } | null>(null);
 
   // Validation step state
   const [showValidationStep, setShowValidationStep] = useState(false);
@@ -51,14 +87,109 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
   const [tempHDRData, setTempHDRData] = useState<any>(null);
 
   const { setHDR, setEntregas, setClientInfo } = useEntregasStore();
+  const { login: loginTaller } = useTallerStore();
   const { validateHDR } = useGoogleSheets();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!hdr.trim()) {
-      setError('Por favor ingresa un HDR');
+    // Validate based on selected sector
+    if (selectedSector === 'taller') {
+      // TALLER - validate code
+      if (!codigoTaller.trim()) {
+        setError('Por favor ingresa el código de taller');
+        return;
+      }
+
+      // Attempt login
+      const loginSuccess = loginTaller(codigoTaller.trim());
+      if (loginSuccess) {
+        console.log('[Login] ✅ Acceso al taller exitoso');
+        // TODO: Redirect to TallerDashboard
+        onSuccess();
+      } else {
+        setError('Código incorrecto. Verifica el código de acceso.');
+      }
+      return;
+    } else if (selectedSector === 'combustible') {
+      // COMBUSTIBLE - validate unit selection
+      if (!unidadSeleccionada) {
+        setError('Por favor selecciona una unidad');
+        return;
+      }
+
+      // Buscar datos de la unidad
+      const todasUnidades = [...UNIDADES_VRAC, ...UNIDADES_VITAL_AIRE];
+      const unidadData = todasUnidades.find(u => u.numero === unidadSeleccionada);
+
+      if (!unidadData) {
+        setError('Error: Unidad no encontrada');
+        return;
+      }
+
+      // Mostrar formulario de carga de combustible
+      console.log('[Login] ⛽ Acceso a registro de combustible - Unidad:', unidadSeleccionada);
+      setCombustibleData({
+        unidad: {
+          numero: unidadData.numero,
+          patente: unidadData.patente
+        },
+        chofer: 'Chofer' // TODO: Obtener nombre real del chofer
+      });
+      setShowFormularioCombustible(true);
+      return;
+    } else if (selectedSector === 'distribucion') {
+      if (!hdr.trim()) {
+        setError('Por favor ingresa un HDR');
+        return;
+      }
+    } else {
+      // VRAC or Vital Aire - need unit selection
+      if (!unidadSeleccionada) {
+        setError('Por favor selecciona una unidad');
+        return;
+      }
+
+      // VRAC also needs cisterna selection
+      if (selectedSector === 'vrac' && !cisternaSeleccionada) {
+        setError('Por favor selecciona una cisterna');
+        return;
+      }
+
+      // Preparar datos para el checklist
+      const unidadData = selectedSector === 'vrac'
+        ? UNIDADES_VRAC.find(u => u.numero === unidadSeleccionada)
+        : UNIDADES_VITAL_AIRE.find(u => u.numero === unidadSeleccionada);
+
+      if (!unidadData) {
+        setError('Error: Unidad no encontrada');
+        return;
+      }
+
+      const cisternaData = selectedSector === 'vrac' && cisternaSeleccionada
+        ? CISTERNAS_VRAC.find(c => c.numero === cisternaSeleccionada)
+        : undefined;
+
+      if (selectedSector === 'vrac' && !cisternaData) {
+        setError('Error: Cisterna no encontrada');
+        return;
+      }
+
+      // Mostrar checklist
+      setChecklistData({
+        sector: selectedSector as 'vrac' | 'vital-aire',
+        unidad: {
+          numero: unidadData.numero,
+          patente: unidadData.patente
+        },
+        cisterna: cisternaData ? {
+          numero: cisternaData.numero,
+          patente: cisternaData.patente
+        } : undefined,
+        chofer: selectedSector === 'vrac' ? 'Chofer VRAC' : 'Chofer Vital Aire' // TODO: Obtener nombre real del chofer
+      });
+      setShowChecklist(true);
       return;
     }
 
@@ -159,7 +290,7 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
       if (todasCompletadas) {
         console.log('[Login] HDR completado - saltando verificación de seguridad');
 
-        // Save to store
+        // Save to store (no unidad for completed HDRs since validation was skipped)
         setHDR(hdr.trim(), result.chofer, result.tipoTransporte);
         setEntregas(result.entregas);
 
@@ -238,7 +369,7 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
     onSuccess();
   };
 
-  const handleValidationConfirm = () => {
+  const handleValidationConfirm = async () => {
     if (!selectedOption || !validationData || !tempHDRData) {
       setError('Por favor selecciona una opción');
       return;
@@ -255,20 +386,43 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
     setSelectedOption(null);
     setValidationData(null);
 
-    // Save to store
-    setHDR(tempHDRData.hdr, tempHDRData.chofer, tempHDRData.tipoTransporte);
+    // Save to store (pass selectedOption as unidad if tipoTransporte is "Propio")
+    const unidadToSave = tempHDRData.tipoTransporte === 'Propio' ? selectedOption : undefined;
+    setHDR(tempHDRData.hdr, tempHDRData.chofer, tempHDRData.tipoTransporte, unidadToSave);
     setEntregas(tempHDRData.entregas);
 
     // Prepare welcome modal data
-    setWelcomeData({
+    const welcomeDataTemp = {
       chofer: tempHDRData.chofer,
       hdr: tempHDRData.hdr,
       cliente: tempHDRData.clientName,
       fecha: tempHDRData.fechaViaje || 'Sin fecha',
       tipoTransporte: tempHDRData.tipoTransporte
-    });
+    };
+    setWelcomeData(welcomeDataTemp);
 
-    // Show welcome modal
+    // If PROPIO, check if checklist already exists
+    if (tempHDRData.tipoTransporte === 'Propio') {
+      console.log('[Login] Tipo PROPIO - verificando checklist para HDR:', tempHDRData.hdr);
+
+      const checklistExists = await checkChecklistExists(tempHDRData.hdr);
+
+      if (!checklistExists) {
+        console.log('[Login] Checklist NO existe - mostrando checklist distribución');
+        // Show checklist BEFORE welcome modal
+        setChecklistDistribucionData({
+          hdr: tempHDRData.hdr,
+          chofer: tempHDRData.chofer,
+          unidad: selectedOption
+        });
+        setShowChecklistDistribucion(true);
+        return; // Stop here, don't show welcome modal yet
+      } else {
+        console.log('[Login] Checklist ya existe - saltando al modal de bienvenida');
+      }
+    }
+
+    // For FLETEROS or if checklist already exists, show welcome modal directly
     setShowWelcomeModal(true);
   };
 
@@ -279,6 +433,111 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
     setTempHDRData(null);
     setError(null);
   };
+
+  const handleChecklistComplete = (checklist: ChecklistRegistro) => {
+    console.log('[Login] Checklist completado:', checklist);
+    // TODO: Guardar checklist en Firebase
+    // TODO: Generar novedades si hay items NO_CONFORME críticos
+
+    // Mostrar resultado
+    alert(`Checklist completado!\n\nResultado: ${checklist.resultado}\nÍtems conformes: ${checklist.itemsConformes}\nÍtems rechazados: ${checklist.itemsRechazados}`);
+
+    // Resetear
+    setShowChecklist(false);
+    setChecklistData(null);
+    setUnidadSeleccionada('');
+    setCisternaSeleccionada('');
+  };
+
+  const handleChecklistCancel = () => {
+    setShowChecklist(false);
+    setChecklistData(null);
+  };
+
+  const handleCombustibleComplete = () => {
+    console.log('[Login] ✅ Carga de combustible completada');
+
+    // Resetear
+    setShowFormularioCombustible(false);
+    setCombustibleData(null);
+    setUnidadSeleccionada('');
+  };
+
+  const handleCombustibleCancel = () => {
+    setShowFormularioCombustible(false);
+    setCombustibleData(null);
+  };
+
+  const handleChecklistDistribucionComplete = () => {
+    console.log('[Login] ✅ Checklist distribución completado');
+
+    // Resetear checklist state
+    setShowChecklistDistribucion(false);
+    setChecklistDistribucionData(null);
+
+    // Show welcome modal now
+    setShowWelcomeModal(true);
+  };
+
+  const handleChecklistDistribucionCancel = () => {
+    console.log('[Login] ❌ Checklist distribución cancelado');
+
+    // Resetear todo
+    setShowChecklistDistribucion(false);
+    setChecklistDistribucionData(null);
+    setWelcomeData(null);
+    setTempHDRData(null);
+  };
+
+  // Render ChecklistDistribucion if active
+  if (showChecklistDistribucion && checklistDistribucionData) {
+    return (
+      <ChecklistDistribucion
+        hdr={checklistDistribucionData.hdr}
+        chofer={checklistDistribucionData.chofer}
+        unidad={checklistDistribucionData.unidad}
+        onComplete={handleChecklistDistribucionComplete}
+        onCancel={handleChecklistDistribucionCancel}
+      />
+    );
+  }
+
+  // Render formulario de combustible if active
+  if (showFormularioCombustible && combustibleData) {
+    return (
+      <FormularioCargaCombustible
+        unidad={combustibleData.unidad}
+        chofer={combustibleData.chofer}
+        onComplete={handleCombustibleComplete}
+        onCancel={handleCombustibleCancel}
+      />
+    );
+  }
+
+  // Render checklist if active
+  if (showChecklist && checklistData) {
+    // Renderizar checklist según sector
+    if (checklistData.sector === 'vrac') {
+      return (
+        <ChecklistVRAC
+          unidad={checklistData.unidad}
+          cisterna={checklistData.cisterna!}
+          chofer={checklistData.chofer}
+          onComplete={handleChecklistComplete}
+          onCancel={handleChecklistCancel}
+        />
+      );
+    } else if (checklistData.sector === 'vital-aire') {
+      return (
+        <ChecklistVitalAire
+          unidad={checklistData.unidad}
+          chofer={checklistData.chofer}
+          onComplete={handleChecklistComplete}
+          onCancel={handleChecklistCancel}
+        />
+      );
+    }
+  }
 
   return (
     <>
@@ -431,7 +690,7 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
         </div>
 
         {/* Card */}
-        <div className="card p-6 space-y-4" style={{
+        <div className="card p-5 space-y-3" style={{
           background: 'rgba(255, 255, 255, 0.98)',
           backdropFilter: 'blur(10px)',
           borderRadius: '16px',
@@ -439,63 +698,62 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
         }}>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* HDR Input */}
-            <div>
-              <label htmlFor="hdr" className="block text-sm font-bold mb-2" style={{
-                color: '#1a2332',
-                letterSpacing: '0.3px'
-              }}>
-                Número de HDR
-              </label>
-              <input
-                type="text"
-                id="hdr"
-                value={hdr}
-                onChange={(e) => setHdr(e.target.value)}
-                className="w-full px-4 py-3 text-lg font-semibold border-2 rounded-xl focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  borderColor: '#e5e7eb',
-                  color: '#1a2332',
-                  backgroundColor: '#fafafa'
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#a8e063';
-                  e.target.style.backgroundColor = '#ffffff';
-                  e.target.style.boxShadow = '0 0 0 3px rgba(168, 224, 99, 0.1)';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#e5e7eb';
-                  e.target.style.backgroundColor = '#fafafa';
-                  e.target.style.boxShadow = 'none';
-                }}
-                placeholder="Ej: 7372022"
-                disabled={validating}
-                autoComplete="off"
-              />
-              <p className="text-xs mt-2" style={{ color: '#6b7280' }}>
-                El chofer y fecha se cargan automáticamente
-              </p>
-            </div>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* Carousel Sector */}
+            <CarouselSector
+              onSectorChange={(sector) => {
+                setSelectedSector(sector);
+                setError(null);
+                setValidatedInfo(null);
+                // Clear values when switching sectors
+                if (sector === 'distribucion') {
+                  setUnidadSeleccionada('');
+                  setCisternaSeleccionada('');
+                  setCodigoTaller('');
+                } else if (sector === 'taller') {
+                  setHdr('');
+                  setUnidadSeleccionada('');
+                  setCisternaSeleccionada('');
+                } else {
+                  setHdr('');
+                  setCodigoTaller('');
+                }
+              }}
+              onHDRChange={setHdr}
+              onUnidadChange={(unidad) => {
+                setUnidadSeleccionada(unidad);
+                // Clear cisterna when changing unidad
+                if (selectedSector === 'vrac') {
+                  setCisternaSeleccionada('');
+                }
+              }}
+              onCisternaChange={setCisternaSeleccionada}
+              onCodigoTallerChange={setCodigoTaller}
+              hdrValue={hdr}
+              unidadValue={unidadSeleccionada}
+              cisternaValue={cisternaSeleccionada}
+              codigoTallerValue={codigoTaller}
+              disabled={validating}
+            />
 
             {/* Validated Info Display */}
             {validatedInfo && (
-              <div className="rounded-xl p-3 space-y-2 border-2" style={{
+              <div className="rounded-lg p-2.5 space-y-1.5 border-2" style={{
                 backgroundColor: '#f0f9e8',
                 borderColor: '#a8e063',
                 boxShadow: '0 2px 8px rgba(168, 224, 99, 0.15)'
               }}>
                 <div>
-                  <span className="text-xs font-bold" style={{ color: '#7cc33f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <span className="text-xs font-bold" style={{ color: '#56ab2f', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                     👤 Chofer
                   </span>
-                  <p className="text-base font-bold mt-1" style={{ color: '#1a2332' }}>{validatedInfo.chofer}</p>
+                  <p className="text-sm font-bold mt-0.5" style={{ color: '#1a2332' }}>{validatedInfo.chofer}</p>
                 </div>
-                <div className="pt-2 border-t" style={{ borderColor: 'rgba(168, 224, 99, 0.3)' }}>
-                  <span className="text-xs font-bold" style={{ color: '#7cc33f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <div className="pt-1.5 border-t" style={{ borderColor: 'rgba(168, 224, 99, 0.3)' }}>
+                  <span className="text-xs font-bold" style={{ color: '#56ab2f', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                     📅 Fecha del Viaje
                   </span>
-                  <p className="text-base font-bold mt-1" style={{ color: '#1a2332' }}>{validatedInfo.fecha}</p>
+                  <p className="text-sm font-bold mt-0.5" style={{ color: '#1a2332' }}>{validatedInfo.fecha}</p>
                 </div>
               </div>
             )}
@@ -522,14 +780,14 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
             <button
               type="submit"
               disabled={validating}
-              className="w-full py-3 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-2.5 px-5 text-white text-base font-bold rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                background: 'linear-gradient(135deg, #a8e063 0%, #7cc33f 100%)',
+                background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)',
                 boxShadow: '0 4px 14px rgba(168, 224, 99, 0.4)'
               }}
               onMouseEnter={(e) => {
                 if (!validating) {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
                   e.currentTarget.style.boxShadow = '0 6px 20px rgba(168, 224, 99, 0.5)';
                 }
               }}
@@ -559,7 +817,10 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
                   <span>Validando HDR...</span>
                 </div>
               ) : (
-                'Iniciar Entregas'
+                selectedSector === 'distribucion' ? 'Iniciar Entregas' :
+                selectedSector === 'combustible' ? 'Registrar Carga' :
+                selectedSector === 'taller' ? 'Ingresar a Taller' :
+                'Continuar con Checklist'
               )}
             </button>
           </form>
@@ -581,14 +842,14 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
             <button
               type="button"
               onClick={onGoToConsultas}
-              className="w-full py-3 px-6 text-gray-700 text-base font-semibold rounded-xl border-2 transition-all hover:border-blue-400 hover:bg-blue-50"
+              className="w-full py-2.5 px-5 text-gray-700 text-sm font-semibold rounded-lg border-2 transition-all hover:border-gray-400 hover:bg-gray-50"
               style={{
                 borderColor: '#d1d5db',
                 background: '#ffffff'
               }}
             >
               <div className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <span>Consultar entregas</span>

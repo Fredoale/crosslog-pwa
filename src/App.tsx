@@ -7,16 +7,19 @@ import SeleccionPerfil from './components/SeleccionPerfil';
 import ConsultaCliente from './components/ConsultaCliente';
 import ConsultaFletero from './components/ConsultaFletero';
 import ConsultaInterna from './components/ConsultaInterna';
+import { DashboardTaller } from './components/mantenimiento/DashboardTaller';
 import { useEntregasStore } from './stores/entregasStore';
+import { useTallerStore } from './stores/tallerStore';
 import { googleAuth } from './utils/googleAuth';
 import type { Entrega, PerfilConsulta } from './types';
 
-type Screen = 'login' | 'list' | 'capture' | 'consulta-home' | 'consulta-cliente' | 'consulta-fletero' | 'consulta-interna';
+type Screen = 'login' | 'list' | 'capture' | 'consulta-home' | 'consulta-cliente' | 'consulta-fletero' | 'consulta-interna' | 'taller';
 
 function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [selectedEntrega, setSelectedEntrega] = useState<Entrega | null>(null);
   const { currentHDR, chofer, entregas, setOnline, logout, setHDR, setEntregas } = useEntregasStore();
+  const { isAuthenticated: tallerAuthenticated } = useTallerStore();
 
   // Check if HDR is completed AND synced (loaded from Google Sheets)
   const todasCompletadas = entregas.length > 0 && entregas.every((e) => e.estado === 'COMPLETADO');
@@ -100,7 +103,15 @@ function App() {
   }, [setOnline]);
 
   const handleLoginSuccess = () => {
-    setCurrentScreen('list');
+    // Check if taller login was successful (get fresh state from store)
+    const currentTallerAuth = useTallerStore.getState().isAuthenticated;
+    if (currentTallerAuth) {
+      console.log('[App] Taller authenticated, going to taller screen');
+      setCurrentScreen('taller');
+    } else {
+      console.log('[App] Regular login, going to list screen');
+      setCurrentScreen('list');
+    }
   };
 
   const handleSelectEntrega = (entrega: Entrega) => {
@@ -121,6 +132,8 @@ function App() {
 
   const handleLogout = () => {
     logout(); // Clear current session but keep data
+    const tallerStore = useTallerStore.getState();
+    tallerStore.logout(); // Clear taller session if exists
     setCurrentScreen('login'); // Go back to login
   };
 
@@ -204,6 +217,10 @@ function App() {
 
       {currentScreen === 'consulta-interna' && (
         <ConsultaInterna onBack={handleBackToConsultaHome} />
+      )}
+
+      {currentScreen === 'taller' && (
+        <DashboardTaller onLogout={handleLogout} />
       )}
     </>
   );

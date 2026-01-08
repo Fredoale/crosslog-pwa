@@ -4,6 +4,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -20,5 +21,8 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore
 export const db = getFirestore(app);
+
+// Initialize Storage (for photos)
+export const storage = getStorage(app);
 
 console.log('[Firebase] Inicializado correctamente');

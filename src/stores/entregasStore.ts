@@ -15,6 +15,7 @@ interface EntregasState {
   // Authentication
   currentHDR: string | null;
   chofer: string | null;
+  unidad: string | null; // Número de unidad (ej: "46", "INT-46")
   tipoTransporte: string | null; // "Propio" o nombre del fletero
 
   // Client info
@@ -39,7 +40,7 @@ interface EntregasState {
   config: AppConfig | null;
 
   // Actions
-  setHDR: (hdr: string, chofer: string, tipoTransporte?: string) => void;
+  setHDR: (hdr: string, chofer: string, tipoTransporte?: string, unidad?: string) => void;
   setClientInfo: (clientInfo: ClientInfo | null) => void;
   setEntregas: (entregas: Entrega[]) => void;
   setCurrentEntrega: (entrega: Entrega | null) => void;
@@ -71,6 +72,7 @@ export const useEntregasStore = create<EntregasState>()(
       // Initial state
       currentHDR: null,
       chofer: null,
+      unidad: null,
       tipoTransporte: null,
       clientInfo: null,
       entregas: [],
@@ -83,7 +85,7 @@ export const useEntregasStore = create<EntregasState>()(
       config: null,
 
       // Authentication
-      setHDR: (hdr, chofer, tipoTransporte = 'Propio') => set({ currentHDR: hdr, chofer, tipoTransporte }),
+      setHDR: (hdr, chofer, tipoTransporte = 'Propio', unidad) => set({ currentHDR: hdr, chofer, tipoTransporte, unidad }),
 
       // Client
       setClientInfo: (clientInfo) => set({ clientInfo }),

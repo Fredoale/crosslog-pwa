@@ -223,7 +223,7 @@ interface DocumentosState {
   loading: boolean;
   error: string | null;
 
-  cargarDocumentosChofer: (nombreChofer: string) => void;
+  cargarDocumentosChofer: (nombreChofer: string, numeroUnidad?: string) => void;
   limpiar: () => void;
 }
 
@@ -232,20 +232,67 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
   loading: false,
   error: null,
 
-  cargarDocumentosChofer: async (nombreChofer: string) => {
+  cargarDocumentosChofer: async (nombreChofer: string, numeroUnidad?: string) => {
     set({ loading: true, error: null });
 
-    console.log('[DocumentosStore] Cargando documentos para:', nombreChofer);
+    console.log('[DocumentosStore] Cargando documentos para:', nombreChofer, 'Unidad:', numeroUnidad || 'N/A');
 
     try {
-      // Fetch data from Google Sheets
-      const [choferDocsRaw, cuadernillosRaw] = await Promise.all([
-        sheetsApi.fetchChoferDocumentos(nombreChofer),
-        sheetsApi.fetchCuadernillos() // Get ALL cuadernillos, not filtered by chofer
-      ]);
+      let choferDocsRaw: any[] = [];
+      let cuadernillosRaw: any[] = [];
 
-      if (choferDocsRaw.length === 0 && cuadernillosRaw.length === 0) {
-        console.log('[DocumentosStore] ❌ No se encontraron documentos para:', nombreChofer);
+      // Strategy: Try multiple approaches to find documents
+      if (numeroUnidad) {
+        // APPROACH 1: If we have numeroUnidad, search by unit first
+        console.log('[DocumentosStore] Buscando por unidad:', numeroUnidad);
+        [choferDocsRaw, cuadernillosRaw] = await Promise.all([
+          sheetsApi.fetchChoferByUnidad(numeroUnidad),
+          sheetsApi.fetchCuadernillos()
+        ]);
+
+        // If no results by unit, try by nombre
+        if (choferDocsRaw.length === 0 && nombreChofer) {
+          console.log('[DocumentosStore] No encontrado por unidad, buscando por nombre:', nombreChofer);
+          choferDocsRaw = await sheetsApi.fetchChoferDocumentos(nombreChofer);
+        }
+      } else {
+        // APPROACH 2: Only nombre provided, search by nombre
+        console.log('[DocumentosStore] Buscando solo por nombre:', nombreChofer);
+        [choferDocsRaw, cuadernillosRaw] = await Promise.all([
+          sheetsApi.fetchChoferDocumentos(nombreChofer),
+          sheetsApi.fetchCuadernillos()
+        ]);
+      }
+
+      // Get unidad from chofer docs OR use provided numeroUnidad
+      let unidad = '';
+      let esPropio = false;
+
+      if (choferDocsRaw.length > 0) {
+        // Has chofer documents - extract unidad from there
+        const firstDoc = choferDocsRaw[0];
+        unidad = firstDoc?.unidad || '';
+        esPropio = firstDoc?.esPropio || false;
+        console.log('[DocumentosStore] Unidad extraída de documentos del chofer:', unidad);
+      } else if (numeroUnidad) {
+        // No chofer documents, but we have numeroUnidad provided
+        unidad = numeroUnidad;
+        esPropio = true; // Assume propio if we have unidad but no chofer docs
+        console.log('[DocumentosStore] Usando número de unidad proporcionado:', unidad);
+      }
+
+      // Fetch unit documents if we have unidad
+      const unidadDocsRaw = unidad ? await sheetsApi.fetchUnidadDocumentos(unidad) : [];
+
+      console.log('[DocumentosStore] Documentos encontrados:', {
+        chofer: choferDocsRaw.length,
+        unidad: unidadDocsRaw.length,
+        cuadernillos: cuadernillosRaw.length
+      });
+
+      // If NO documents at all (chofer, unidad, cuadernillos), return error
+      if (choferDocsRaw.length === 0 && unidadDocsRaw.length === 0 && cuadernillosRaw.length === 0) {
+        console.log('[DocumentosStore] ❌ No se encontraron documentos');
         set({
           loading: false,
           error: 'No se encontraron documentos',
@@ -253,14 +300,6 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
         });
         return;
       }
-
-      // Get first chofer doc to extract unidad and esPropio
-      const firstDoc = choferDocsRaw[0];
-      const unidad = firstDoc?.unidad || '';
-      const esPropio = firstDoc?.esPropio || false;
-
-      // Fetch unit documents if we have unidad
-      const unidadDocsRaw = unidad ? await sheetsApi.fetchUnidadDocumentos(unidad) : [];
 
       // Transform chofer documents
       const documentos: DocumentoChofer[] = choferDocsRaw
@@ -299,14 +338,27 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
 
       // Transform cuadernillos (ALL, not just for this chofer)
       const cuadernillos: Cuadernillo[] = cuadernillosRaw
-        .map((cuad: any) => ({
-          mes: cuad.mes,
-          cuadernilloCompleto: cuad.urlCuadernillo,
-          fechaEmision: cuad.fechaEmision,
-          fechaVencimiento: cuad.fechaVencimiento,
-          estado: calcularEstadoDocumento(cuad.fechaVencimiento),
-          nombreChofer: cuad.nombreChofer // Keep track of which chofer if any
-        }))
+        .map((cuad: any) => {
+          // Para cuadernillos (documentos mensuales), calcular estado con umbral de 10 días
+          const dias = diasHastaVencimiento(cuad.fechaVencimiento);
+          let estadoCuadernillo: 'VIGENTE' | 'POR_VENCER' | 'VENCIDO' = 'VIGENTE';
+          if (dias < 0) {
+            estadoCuadernillo = 'VENCIDO';
+          } else if (dias <= 10) {
+            estadoCuadernillo = 'POR_VENCER';
+          }
+
+          console.log(`[DocumentosStore] Cuadernillo ${cuad.mes}: ${dias} días restantes → Estado: ${estadoCuadernillo}`);
+
+          return {
+            mes: cuad.mes,
+            cuadernilloCompleto: cuad.urlCuadernillo,
+            fechaEmision: cuad.fechaEmision,
+            fechaVencimiento: cuad.fechaVencimiento,
+            estado: estadoCuadernillo,
+            nombreChofer: cuad.nombreChofer // Keep track of which chofer if any
+          };
+        })
         .sort((a, b) => {
           // Sort by fecha emisión (most recent first)
           return new Date(b.fechaEmision).getTime() - new Date(a.fechaEmision).getTime();
@@ -349,18 +401,22 @@ export const useDocumentosStore = create<DocumentosState>((set) => ({
         }
       });
 
-      // Alerts from cuadernillos
+      // Alerts from cuadernillos (solo alertar si faltan 10 días o menos - documentos mensuales)
       cuadernillos.forEach((cuad, index) => {
-        const estado = calcularEstadoDocumento(cuad.fechaVencimiento);
-        if (estado !== 'VIGENTE') {
-          const dias = diasHastaVencimiento(cuad.fechaVencimiento);
+        const dias = diasHastaVencimiento(cuad.fechaVencimiento);
+        console.log(`[DocumentosStore] Evaluando alerta cuadernillo ${cuad.mes}: ${dias} días → ¿Generar alerta? ${dias < 0 || dias <= 10}`);
+        // Solo generar alerta si vencido o faltan 10 días o menos
+        if (dias < 0 || dias <= 10) {
+          console.log(`[DocumentosStore] ✅ GENERANDO alerta para cuadernillo ${cuad.mes}`);
           alertas.push({
             id: `alerta-cuadernillo-${index}`,
             tipo: 'cuadernillo',
             mensaje: generarMensajeAlerta(`Cuadernillo ${cuad.mes}`, dias),
-            criticidad: 'alta',
+            criticidad: dias < 0 ? 'alta' : dias <= 5 ? 'alta' : 'media', // Alta si vencido o ≤5 días
             diasRestantes: dias
           });
+        } else {
+          console.log(`[DocumentosStore] ❌ NO generando alerta para cuadernillo ${cuad.mes} (${dias} > 10 días)`);
         }
       });
 

@@ -124,12 +124,8 @@ export function MarketplaceSection() {
       {/* Sistema de Notificaciones */}
       <NotificacionesToast />
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">🚛 Marketplace de Viajes</h2>
-          <p className="text-sm sm:text-base text-gray-600 mt-1">Gestiona viajes y ofertas de fleteros</p>
-        </div>
+      {/* Botón Publicar Viaje */}
+      <div className="flex justify-end mb-6">
         <button
           onClick={() => setMostrarFormulario(!mostrarFormulario)}
           className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl font-semibold text-sm sm:text-base whitespace-nowrap"

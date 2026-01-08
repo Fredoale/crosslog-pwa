@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+// Import Firebase testing utilities (available in console as window.testFirebase)
+import './tests/testChecklistFirebase';
+// Import Firebase cleanup utilities (available in console as window.cleanupFirebase)
+import './tests/cleanupTestData';
+
 // Service Worker TEMPORARILY DISABLED
 // Causing issues with Google Sheets API requests
 // Will re-enable after fixing Workbox configuration
