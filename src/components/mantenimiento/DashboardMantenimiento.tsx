@@ -26,6 +26,28 @@ import type { ChecklistRegistro, Novedad, OrdenTrabajo, CargaCombustible, Alerta
 import { KanbanBoard } from './KanbanBoard';
 import { getAllCargasCombustible, getAlertasByUnidad, getConsumoUnidad, deleteCargaCombustible } from '../../services/combustibleService';
 
+// Mapeo de patentes de unidades
+const PATENTES_UNIDADES: Record<string, string> = {
+  '45': 'LYG959',
+  '803': 'AE116AE',
+  '46': 'NBJ986',
+  '61': 'KYQ147',
+  '813': 'AE906WF',
+  '62': 'MAL538',
+  '64': 'MGY394',
+  '41': 'AB152AZ',
+  '58': 'KTJ385',
+  '54': 'HPD893',
+  '48': 'AC531CX',
+  '817': 'AH506ID',
+  '818': 'AH912GI'
+};
+
+// Función para obtener patente de una unidad
+const obtenerPatente = (numeroUnidad: string): string => {
+  return PATENTES_UNIDADES[numeroUnidad] || 'N/A';
+};
+
 interface DashboardMantenimientoProps {
   onBack: () => void;
 }
@@ -1455,7 +1477,7 @@ const ModalDetalleChecklist: React.FC<ModalDetalleChecklistProps> = ({ checklist
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Patente:</span>
-                  <span className="font-semibold text-gray-900">{checklist.unidad.patente}</span>
+                  <span className="font-semibold text-gray-900">{obtenerPatente(checklist.unidad.numero)}</span>
                 </div>
                 {checklist.cisterna && (
                   <>
@@ -2937,7 +2959,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                   <h3 className="text-base md:text-lg font-bold text-gray-800 truncate">
                                     INT-{checklist.unidad.numero}
                                   </h3>
-                                  <span className="text-sm text-gray-600 font-mono">{checklist.unidad.patente}</span>
+                                  <span className="text-sm text-gray-600 font-mono">{obtenerPatente(checklist.unidad.numero)}</span>
                                   <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold ${
                                     checklist.sector === 'vrac'
                                       ? 'bg-blue-100 text-blue-700'
@@ -2985,6 +3007,13 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
                                     <span className="font-medium text-red-700">{checklist.itemsRechazados} Fallos</span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                    </svg>
+                                    <span className="font-medium text-gray-700">{checklist.odometroInicial.valor.toLocaleString()} km</span>
                                   </div>
                                 </div>
 
