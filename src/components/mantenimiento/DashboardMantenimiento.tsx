@@ -25,6 +25,8 @@ import { db, storage } from '../../config/firebase';
 import type { ChecklistRegistro, Novedad, OrdenTrabajo, CargaCombustible, AlertaCombustible, ConsumoCombustible } from '../../types/checklist';
 import { KanbanBoard } from './KanbanBoard';
 import { getAllCargasCombustible, getAlertasByUnidad, getConsumoUnidad, deleteCargaCombustible } from '../../services/combustibleService';
+import { showSuccess, showError, showWarning } from '../../utils/toast';
+import { convertirTimestampFirebase } from '../../utils/dateUtils';
 
 // Mapeo de patentes de unidades
 const PATENTES_UNIDADES: Record<string, string> = {
@@ -135,7 +137,7 @@ const ModalCrearNovedad: React.FC<ModalCrearNovedadProps> = ({ onClose, onCreate
       onCreated();
     } catch (error) {
       console.error('[ModalCrearNovedad] Error:', error);
-      alert('Error al crear la novedad: ' + (error as Error).message);
+      showError('Error al crear la novedad: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -147,7 +149,7 @@ const ModalCrearNovedad: React.FC<ModalCrearNovedadProps> = ({ onClose, onCreate
     // Validar tamaño máximo de 5MB por imagen
     const archivosValidos = files.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
-        alert(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
+        showWarning(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
         return false;
       }
       return true;
@@ -404,7 +406,7 @@ const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated })
       onCreated();
     } catch (error) {
       console.error('[ModalCrearOrden] Error:', error);
-      alert('Error al crear la orden de trabajo: ' + (error as Error).message);
+      showError('Error al crear la orden de trabajo: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -416,7 +418,7 @@ const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated })
     // Validar tamaño máximo de 5MB por imagen
     const archivosValidos = files.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
-        alert(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
+        showWarning(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
         return false;
       }
       return true;
@@ -648,7 +650,7 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
       onUpdated();
     } catch (error) {
       console.error('[ModalDetalleNovedad] Error:', error);
-      alert('Error al actualizar la novedad');
+      showError('Error al actualizar la novedad');
     } finally {
       setLoading(false);
     }
@@ -663,12 +665,12 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
     try {
       await deleteDoc(doc(db, 'novedades', novedad.id));
       console.log('[ModalDetalleNovedad] Novedad eliminada:', novedad.id);
-      alert('Novedad eliminada exitosamente');
+      showSuccess('Novedad eliminada exitosamente');
       onClose();
       onUpdated();
     } catch (error) {
       console.error('[ModalDetalleNovedad] Error al eliminar:', error);
-      alert('Error al eliminar la novedad: ' + (error as Error).message);
+      showError('Error al eliminar la novedad: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -702,7 +704,7 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
       const ordenTrabajoData = {
         ...ordenTrabajo,
         fecha: Timestamp.fromDate(ordenTrabajo.fecha),
-        fechaCreacion: Timestamp.fromDate(ordenTrabajo.fechaCreacion),
+        fechaCreacion: Timestamp.fromDate(ordenTrabajo.fechaCreacion!),
         timestamp: Timestamp.fromDate(ordenTrabajo.timestamp)
       };
 
@@ -716,13 +718,13 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
       });
 
       console.log('[ModalDetalleNovedad] ✅ Orden de Trabajo creada:', ordenTrabajoId);
-      alert('✅ Orden de Trabajo creada exitosamente');
+      showSuccess('Orden de Trabajo creada exitosamente');
 
       onUpdated();
       onClose();
     } catch (error) {
       console.error('[ModalDetalleNovedad] ❌ Error creando OT:', error);
-      alert('Error al crear la orden de trabajo: ' + (error as Error).message);
+      showError('Error al crear la orden de trabajo: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -865,7 +867,7 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
                 <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                {novedad.fecha ? new Date(novedad.fecha).toLocaleDateString('es-AR') : 'N/A'}
+                {novedad.fecha ? convertirTimestampFirebase(novedad.fecha).toLocaleDateString('es-AR') : 'N/A'}
               </div>
             </div>
             {novedad.ordenTrabajoId && (
@@ -1065,7 +1067,7 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
       onUpdated();
     } catch (error) {
       console.error('[ModalDetalleOrden] Error:', error);
-      alert('Error al actualizar la orden de trabajo');
+      showError('Error al actualizar la orden de trabajo');
     } finally {
       setLoading(false);
     }
@@ -1080,12 +1082,12 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
     try {
       await deleteDoc(doc(db, 'ordenes_trabajo', orden.id));
       console.log('[ModalDetalleOrden] Orden eliminada:', orden.id);
-      alert('Orden de trabajo eliminada exitosamente');
+      showSuccess('Orden de trabajo eliminada exitosamente');
       onClose();
       onUpdated();
     } catch (error) {
       console.error('[ModalDetalleOrden] Error al eliminar:', error);
-      alert('Error al eliminar la orden de trabajo: ' + (error as Error).message);
+      showError('Error al eliminar la orden de trabajo: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -1352,14 +1354,13 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
 // ============================================================================
 // UTILIDADES
 // ============================================================================
-const formatearFecha = (fecha: Date | null | undefined): string => {
+const formatearFecha = (fecha: any): string => {
   if (!fecha) {
-    console.warn('[formatearFecha] ⚠️ Fecha es null/undefined');
     return 'Fecha no disponible';
   }
 
   try {
-    const dateObj = fecha instanceof Date ? fecha : new Date(fecha);
+    const dateObj = convertirTimestampFirebase(fecha);
     if (isNaN(dateObj.getTime())) {
       console.error('[formatearFecha] ❌ Fecha inválida:', {
         tipoRecibido: typeof fecha,
@@ -1403,12 +1404,12 @@ const ModalDetalleChecklist: React.FC<ModalDetalleChecklistProps> = ({ checklist
     try {
       await deleteDoc(doc(db, 'checklists', checklist.id));
       console.log('[ModalDetalleChecklist] Checklist eliminado:', checklist.id);
-      alert('Checklist eliminado exitosamente');
+      showSuccess('Checklist eliminado exitosamente');
       onClose();
       onUpdated();
     } catch (error) {
       console.error('[ModalDetalleChecklist] Error al eliminar:', error);
-      alert('Error al eliminar el checklist: ' + (error as Error).message);
+      showError('Error al eliminar el checklist: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -1477,7 +1478,7 @@ const ModalDetalleChecklist: React.FC<ModalDetalleChecklistProps> = ({ checklist
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Patente:</span>
-                  <span className="font-semibold text-gray-900">{obtenerPatente(checklist.unidad.numero)}</span>
+                  <span className="font-semibold text-gray-900">{(checklist.unidad.patente && checklist.unidad.patente !== 'N/A') ? checklist.unidad.patente : obtenerPatente(checklist.unidad.numero)}</span>
                 </div>
                 {checklist.cisterna && (
                   <>
@@ -1715,13 +1716,13 @@ const ModalCompletarOrden: React.FC<ModalCompletarOrdenProps> = ({ orden, onClos
       await updateDoc(ordenRef, updateData);
 
       console.log('[ModalCompletarOrden] ✅ Orden completada exitosamente:', orden.id);
-      alert('✅ Orden de Trabajo completada exitosamente');
+      showSuccess('Orden de Trabajo completada exitosamente');
 
       onCompletado();
       onClose();
     } catch (error) {
       console.error('[ModalCompletarOrden] ❌ Error completando orden:', error);
-      alert('❌ Error al completar la orden. Intenta nuevamente.');
+      showError('Error al completar la orden. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
@@ -2124,7 +2125,7 @@ function AlertasUnidad({ unidadNumero }: { unidadNumero: string }) {
                      alerta.tipo}
                   </div>
                   <div className="text-xs text-gray-600">
-                    {new Date(alerta.fechaDeteccion).toLocaleDateString('es-AR')} - {alerta.estado}
+                    {convertirTimestampFirebase(alerta.fechaDeteccion).toLocaleDateString('es-AR')} - {alerta.estado}
                   </div>
                 </div>
               </div>
@@ -2314,34 +2315,24 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
           return {
             id: doc.id,
             ...docData,
-            fecha: docData.fecha
-              ? (docData.fecha instanceof Timestamp ? docData.fecha.toDate() : new Date(docData.fecha))
-              : new Date(),
-            timestamp: docData.timestamp
-              ? (docData.timestamp instanceof Timestamp ? docData.timestamp.toDate() : new Date(docData.timestamp))
-              : new Date(),
+            fecha: convertirTimestampFirebase(docData.fecha),
+            timestamp: convertirTimestampFirebase(docData.timestamp),
             timestampCompletado: docData.timestampCompletado
-              ? (docData.timestampCompletado instanceof Timestamp ? docData.timestampCompletado.toDate() : new Date(docData.timestampCompletado))
+              ? convertirTimestampFirebase(docData.timestampCompletado)
               : null,
-            odometroInicial: {
+            odometroInicial: docData.odometroInicial ? {
               ...docData.odometroInicial,
-              fecha_hora: docData.odometroInicial.fecha_hora instanceof Timestamp
-                ? docData.odometroInicial.fecha_hora.toDate()
-                : new Date(docData.odometroInicial.fecha_hora)
-            },
+              fecha_hora: convertirTimestampFirebase(docData.odometroInicial.fecha_hora)
+            } : { valor: 0, fecha_hora: new Date() },
             odometroFinal: docData.odometroFinal
               ? {
                   ...docData.odometroFinal,
-                  fecha_hora: docData.odometroFinal.fecha_hora instanceof Timestamp
-                    ? docData.odometroFinal.fecha_hora.toDate()
-                    : new Date(docData.odometroFinal.fecha_hora)
+                  fecha_hora: convertirTimestampFirebase(docData.odometroFinal.fecha_hora)
                 }
               : null,
-            items: docData.items.map((item: any) => ({
+            items: (docData.items || []).map((item: any) => ({
               ...item,
-              timestamp: item.timestamp
-                ? (item.timestamp instanceof Timestamp ? item.timestamp.toDate() : new Date(item.timestamp))
-                : null
+              timestamp: item.timestamp ? convertirTimestampFirebase(item.timestamp) : null
             }))
           } as ChecklistRegistro;
         });
@@ -2420,33 +2411,8 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
     const data = snapshot.docs.map(doc => {
       const docData = doc.data();
 
-      // Helper to safely convert Timestamp or Date - VALIDATES ALL Date objects
-      const safeDate = (value: any): Date => {
-        if (!value) return new Date();
-
-        // If it's a Timestamp, convert it and validate
-        if (value instanceof Timestamp) {
-          try {
-            const converted = value.toDate();
-            return isNaN(converted.getTime()) ? new Date() : converted;
-          } catch {
-            return new Date();
-          }
-        }
-
-        // If it's a Date, VALIDATE IT (don't trust it blindly - it might be Invalid Date)
-        if (value instanceof Date) {
-          return isNaN(value.getTime()) ? new Date() : value;
-        }
-
-        // Try to create a Date from the value
-        try {
-          const d = new Date(value);
-          return isNaN(d.getTime()) ? new Date() : d;
-        } catch {
-          return new Date();
-        }
-      };
+      // Helper to safely convert Timestamp or Date
+      const safeDate = (value: any): Date => convertirTimestampFirebase(value);
 
       return {
         id: doc.id,
@@ -2480,6 +2446,9 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
         }))
       } as ChecklistRegistro;
     });
+
+    // Ordenar por timestamp descendente (más reciente primero)
+    data.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     setChecklists(data);
   };
@@ -2555,10 +2524,10 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       await cargarCombustible();
 
       console.log('[DashboardMantenimiento] ✅ Carga eliminada exitosamente');
-      alert('✅ Carga de combustible eliminada exitosamente');
+      showSuccess('Carga de combustible eliminada exitosamente');
     } catch (error) {
       console.error('[DashboardMantenimiento] ❌ Error eliminando carga:', error);
-      alert('❌ Error al eliminar la carga. Por favor, intenta de nuevo.');
+      showError('Error al eliminar la carga. Por favor, intenta de nuevo.');
     }
   };
 
@@ -2660,7 +2629,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       console.log('[DashboardMantenimiento] 🔥 El listener en tiempo real actualizará la UI automáticamente');
     } catch (error) {
       console.error('[DashboardMantenimiento] ❌ Error actualizando estado:', error);
-      alert('Error al actualizar el estado de la orden. Por favor intenta de nuevo.');
+      showError('Error al actualizar el estado de la orden. Por favor intenta de nuevo.');
     }
   };
 
@@ -2672,11 +2641,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
     try {
       await deleteDoc(doc(db, 'novedades', novedadId));
       console.log('[DashboardMantenimiento] Novedad eliminada:', novedadId);
-      alert('Novedad eliminada exitosamente');
+      showSuccess('Novedad eliminada exitosamente');
       cargarDatos();
     } catch (error) {
       console.error('[DashboardMantenimiento] Error al eliminar novedad:', error);
-      alert('Error al eliminar la novedad: ' + (error as Error).message);
+      showError('Error al eliminar la novedad: ' + (error as Error).message);
     }
   };
 
@@ -2689,11 +2658,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       console.log('[DashboardMantenimiento] 🗑️ Intentando eliminar orden:', ordenId);
       await deleteDoc(doc(db, 'ordenes_trabajo', ordenId));
       console.log('[DashboardMantenimiento] ✅ Orden eliminada exitosamente:', ordenId);
-      alert('Orden de trabajo eliminada exitosamente');
+      showSuccess('Orden de trabajo eliminada exitosamente');
       // No necesitamos cargarDatos() - el listener en tiempo real se encarga de actualizar
     } catch (error) {
       console.error('[DashboardMantenimiento] ❌ Error al eliminar orden:', error);
-      alert('Error al eliminar la orden de trabajo: ' + (error as Error).message);
+      showError('Error al eliminar la orden de trabajo: ' + (error as Error).message);
     }
   };
 
@@ -2706,11 +2675,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       console.log('[DashboardMantenimiento] 🗑️ Intentando eliminar checklist:', checklistId);
       await deleteDoc(doc(db, 'checklists', checklistId));
       console.log('[DashboardMantenimiento] ✅ Checklist eliminado exitosamente:', checklistId);
-      alert('Checklist eliminado exitosamente');
+      showSuccess('Checklist eliminado exitosamente');
       // No necesitamos cargarDatos() - el listener en tiempo real se encarga de actualizar
     } catch (error) {
       console.error('[DashboardMantenimiento] ❌ Error al eliminar checklist:', error);
-      alert('Error al eliminar el checklist: ' + (error as Error).message);
+      showError('Error al eliminar el checklist: ' + (error as Error).message);
     }
   };
 
@@ -2719,146 +2688,129 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       {/* Tabs con branding Crosslog y responsive */}
       <div className="max-w-7xl mx-auto px-3 md:px-6">
         <div className="bg-white rounded-t-2xl shadow-lg">
-          <div className="flex border-b border-gray-200 overflow-x-auto">
+          {/* Tabs compactos para móvil - Solo iconos con badge */}
+          <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('checklists')}
-              className={`flex-1 min-w-[120px] px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors text-sm md:text-base touch-target-48 ${
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
                 activeTab === 'checklists'
-                  ? 'text-[#56ab2f] border-b-4 border-[#56ab2f] bg-[#f0f9e8]'
-                  : 'text-gray-600 hover:text-[#56ab2f] hover:bg-gray-50'
+                  ? 'text-[#56ab2f] border-b-3 border-[#56ab2f] bg-[#f0f9e8]'
+                  : 'text-gray-500 hover:text-[#56ab2f] hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap">
-                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                <span className="hidden sm:inline">Checklists</span>
-                <span className="sm:hidden">Check</span>
-                <span className={`text-xs px-2 py-0.5 md:py-1 rounded-full ${
-                  activeTab === 'checklists'
-                    ? 'bg-[#56ab2f] text-white'
-                    : 'bg-gray-200 text-gray-700'
-                }`}>
-                  {checklists.length}
-                </span>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="relative">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                    activeTab === 'checklists' ? 'bg-[#56ab2f] text-white' : 'bg-gray-300 text-gray-700'
+                  }`}>{checklists.length}</span>
+                </div>
+                <span className="hidden sm:inline text-[11px] sm:text-xs">Check</span>
               </div>
             </button>
 
             <button
               onClick={() => setActiveTab('novedades')}
-              className={`flex-1 min-w-[120px] px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors text-sm md:text-base touch-target-48 ${
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
                 activeTab === 'novedades'
-                  ? 'text-amber-600 border-b-4 border-amber-600 bg-amber-50'
-                  : 'text-gray-600 hover:text-amber-600 hover:bg-gray-50'
+                  ? 'text-amber-600 border-b-3 border-amber-600 bg-amber-50'
+                  : 'text-gray-500 hover:text-amber-600 hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap">
-                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <span className="hidden sm:inline">Novedades</span>
-                <span className="sm:hidden">Nov</span>
-                <span className={`text-xs px-2 py-0.5 md:py-1 rounded-full ${
-                  activeTab === 'novedades'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-gray-200 text-gray-700'
-                }`}>
-                  {novedades.length}
-                </span>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="relative">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                    activeTab === 'novedades' ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-700'
+                  }`}>{novedades.length}</span>
+                </div>
+                <span className="hidden sm:inline text-[11px] sm:text-xs">Nov</span>
               </div>
             </button>
 
             <button
               onClick={() => setActiveTab('ordenes')}
-              className={`flex-1 min-w-[120px] px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors text-sm md:text-base touch-target-48 ${
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
                 activeTab === 'ordenes'
-                  ? 'text-purple-600 border-b-4 border-purple-600 bg-purple-50'
-                  : 'text-gray-600 hover:text-purple-600 hover:bg-gray-50'
+                  ? 'text-purple-600 border-b-3 border-purple-600 bg-purple-50'
+                  : 'text-gray-500 hover:text-purple-600 hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap">
-                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                <span className="hidden sm:inline">Órdenes</span>
-                <span className="sm:hidden">OTs</span>
-                <span className={`text-xs px-2 py-0.5 md:py-1 rounded-full ${
-                  activeTab === 'ordenes'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-200 text-gray-700'
-                }`}>
-                  {ordenes.length}
-                </span>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="relative">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                    activeTab === 'ordenes' ? 'bg-purple-600 text-white' : 'bg-gray-300 text-gray-700'
+                  }`}>{ordenes.length}</span>
+                </div>
+                <span className="hidden sm:inline text-[11px] sm:text-xs">OTs</span>
               </div>
             </button>
 
             <button
               onClick={() => setActiveTab('kanban')}
-              className={`flex-1 min-w-[120px] px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors text-sm md:text-base touch-target-48 ${
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
                 activeTab === 'kanban'
-                  ? 'text-indigo-600 border-b-4 border-indigo-600 bg-indigo-50'
-                  : 'text-gray-600 hover:text-indigo-600 hover:bg-gray-50'
+                  ? 'text-indigo-600 border-b-3 border-indigo-600 bg-indigo-50'
+                  : 'text-gray-500 hover:text-indigo-600 hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap">
-                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                </svg>
-                <span className="hidden sm:inline">Kanban</span>
-                <span className="sm:hidden">Kanban</span>
-                <span className={`text-xs px-2 py-0.5 md:py-1 rounded-full ${
-                  activeTab === 'kanban'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-200 text-gray-700'
-                }`}>
-                  {ordenes.length}
-                </span>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="relative">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                  </svg>
+                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                    activeTab === 'kanban' ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-700'
+                  }`}>{ordenes.length}</span>
+                </div>
+                <span className="hidden sm:inline text-[11px] sm:text-xs">Board</span>
               </div>
             </button>
 
             <button
               onClick={() => setActiveTab('historial')}
-              className={`flex-1 min-w-[120px] px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors text-sm md:text-base touch-target-48 ${
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
                 activeTab === 'historial'
-                  ? 'text-emerald-600 border-b-4 border-emerald-600 bg-emerald-50'
-                  : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
+                  ? 'text-emerald-600 border-b-3 border-emerald-600 bg-emerald-50'
+                  : 'text-gray-500 hover:text-emerald-600 hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap">
-                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="hidden sm:inline">Historial</span>
-                <span className="sm:hidden">Hist</span>
-                <span className={`text-xs px-2 py-0.5 md:py-1 rounded-full ${
-                  activeTab === 'historial'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-gray-200 text-gray-700'
-                }`}>
-                  {ordenes.filter(o => o.estado === 'CERRADO').length}
-                </span>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="relative">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                    activeTab === 'historial' ? 'bg-emerald-600 text-white' : 'bg-gray-300 text-gray-700'
+                  }`}>{ordenes.filter(o => o.estado === 'CERRADO').length}</span>
+                </div>
+                <span className="hidden sm:inline text-[11px] sm:text-xs">Hist</span>
               </div>
             </button>
 
             <button
               onClick={() => setActiveTab('combustible')}
-              className={`flex-1 min-w-[120px] px-3 md:px-6 py-3 md:py-4 font-semibold transition-colors text-sm md:text-base touch-target-48 ${
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
                 activeTab === 'combustible'
-                  ? 'text-[#0033A0] border-b-4 border-[#0033A0] bg-blue-50'
-                  : 'text-gray-600 hover:text-[#0033A0] hover:bg-gray-50'
+                  ? 'text-[#0033A0] border-b-3 border-[#0033A0] bg-blue-50'
+                  : 'text-gray-500 hover:text-[#0033A0] hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap">
-                <span className="text-lg">⛽</span>
-                <span className="hidden sm:inline">Combustible</span>
-                <span className="sm:hidden">Comb</span>
-                <span className={`text-xs px-2 py-0.5 md:py-1 rounded-full ${
-                  activeTab === 'combustible'
-                    ? 'bg-[#0033A0] text-white'
-                    : 'bg-gray-200 text-gray-700'
-                }`}>
-                  {cargas.length}
-                </span>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="relative">
+                  <span className="text-base">⛽</span>
+                  <span className={`absolute -top-1.5 -right-2 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                    activeTab === 'combustible' ? 'bg-[#0033A0] text-white' : 'bg-gray-300 text-gray-700'
+                  }`}>{cargas.length}</span>
+                </div>
+                <span className="hidden sm:inline text-[11px] sm:text-xs">Comb</span>
               </div>
             </button>
           </div>
@@ -2959,7 +2911,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                   <h3 className="text-base md:text-lg font-bold text-gray-800 truncate">
                                     INT-{checklist.unidad.numero}
                                   </h3>
-                                  <span className="text-sm text-gray-600 font-mono">{obtenerPatente(checklist.unidad.numero)}</span>
+                                  <span className="text-sm text-gray-600 font-mono">{(checklist.unidad.patente && checklist.unidad.patente !== 'N/A') ? checklist.unidad.patente : obtenerPatente(checklist.unidad.numero)}</span>
                                   <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold ${
                                     checklist.sector === 'vrac'
                                       ? 'bg-blue-100 text-blue-700'
