@@ -9,6 +9,7 @@ import {
 import { saveChecklistDistribucion, checkChecklistExists } from '../services/checklistService';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
 
 interface ChecklistDistribucionProps {
   hdr: string;
@@ -195,7 +196,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
   // Handlers
   const handleOdometroSubmit = () => {
     if (!odometro || parseInt(odometro) <= 0) {
-      alert('Por favor ingresa un odómetro válido');
+      showWarning('Por favor ingresa un odómetro válido');
       return;
     }
     setCurrentStep('items');
@@ -229,7 +230,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
 
   const handleComentarioSubmit = () => {
     if (!comentarioTemp.trim()) {
-      alert('Por favor describe el problema detectado');
+      showWarning('Por favor describe el problema detectado');
       return;
     }
 
@@ -302,19 +303,19 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
           setItems(updatedItems);
           setCapturandoFoto(false);
 
-          alert('✅ Foto capturada y guardada');
+          showSuccess('Foto capturada y guardada');
         };
 
         reader.onerror = () => {
           setCapturandoFoto(false);
-          alert('❌ Error al procesar la imagen');
+          showError('Error al procesar la imagen');
         };
 
         reader.readAsDataURL(file);
       } catch (error) {
         console.error('[ChecklistDistribucion] Error capturando foto:', error);
         setCapturandoFoto(false);
-        alert('❌ Error al capturar la foto');
+        showError('Error al capturar la foto');
       }
     };
 
@@ -338,17 +339,17 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
         reader.onloadend = () => {
           setFotoNovedadTemp(reader.result as string);
           setCapturandoFotoNovedadModal(false);
-          alert('✅ Foto capturada');
+          showSuccess('Foto capturada');
         };
         reader.onerror = () => {
           setCapturandoFotoNovedadModal(false);
-          alert('❌ Error al procesar la imagen');
+          showError('Error al procesar la imagen');
         };
         reader.readAsDataURL(file);
       } catch (error) {
         console.error('[ChecklistDistribucion] Error capturando foto novedad:', error);
         setCapturandoFotoNovedadModal(false);
-        alert('❌ Error al capturar la foto');
+        showError('Error al capturar la foto');
       }
     };
 
@@ -357,7 +358,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
 
   const handleAgregarNovedad = () => {
     if (!novedadTemp.trim()) {
-      alert('Por favor describe la novedad encontrada');
+      showWarning('Por favor describe la novedad encontrada');
       return;
     }
 
@@ -365,7 +366,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
     setNovedadTemp('');
     setFotoNovedadTemp(null);
     setShowNovedadModal(false);
-    alert(`✅ Novedad registrada\n\n"${novedadTemp}"\n\nPuedes continuar con el checklist.`);
+    showSuccess(`Novedad registrada: "${novedadTemp}". Puedes continuar con el checklist.`);
   };
 
   const handleFinalizar = async () => {
@@ -444,12 +445,12 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
       }
 
       // Notificar éxito
-      alert('✅ Checklist guardado exitosamente en Firebase');
+      showSuccess('Checklist guardado exitosamente');
 
       onComplete();
     } catch (error) {
       console.error('[ChecklistDistribucion] Error guardando checklist:', error);
-      alert('❌ Error al guardar checklist. Intenta nuevamente.');
+      showError('Error al guardar checklist. Intenta nuevamente.');
     }
   };
 

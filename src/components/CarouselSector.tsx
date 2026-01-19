@@ -127,6 +127,42 @@ export function CarouselSector({
   const [isPaused, setIsPaused] = useState(false);
   const [resumeTimer, setResumeTimer] = useState<NodeJS.Timeout | null>(null);
 
+  // Filtro inteligente para unidades Vital Aire
+  const [filtroUnidadVitalAire, setFiltroUnidadVitalAire] = useState('');
+  const [mostrarDropdownVitalAire, setMostrarDropdownVitalAire] = useState(false);
+
+  // Filtrar unidades de Vital Aire
+  const unidadesVitalAireFiltradas = UNIDADES_VITAL_AIRE.filter(u =>
+    u.numero.toLowerCase().includes(filtroUnidadVitalAire.toLowerCase()) ||
+    u.patente.toLowerCase().includes(filtroUnidadVitalAire.toLowerCase())
+  );
+
+  // Filtro inteligente para VRAC (unidad tractor y cisterna)
+  const [filtroUnidadVRAC, setFiltroUnidadVRAC] = useState('');
+  const [mostrarDropdownUnidadVRAC, setMostrarDropdownUnidadVRAC] = useState(false);
+  const [filtroCisternaVRAC, setFiltroCisternaVRAC] = useState('');
+  const [mostrarDropdownCisternaVRAC, setMostrarDropdownCisternaVRAC] = useState(false);
+
+  // Filtrar unidades y cisternas de VRAC
+  const unidadesVRACFiltradas = UNIDADES_VRAC.filter(u =>
+    u.numero.toLowerCase().includes(filtroUnidadVRAC.toLowerCase()) ||
+    u.patente.toLowerCase().includes(filtroUnidadVRAC.toLowerCase())
+  );
+  const cisternasVRACFiltradas = CISTERNAS_VRAC.filter(c =>
+    c.numero.toLowerCase().includes(filtroCisternaVRAC.toLowerCase()) ||
+    c.patente.toLowerCase().includes(filtroCisternaVRAC.toLowerCase())
+  );
+
+  // Filtro inteligente para COMBUSTIBLE (todas las unidades)
+  const [filtroUnidadCombustible, setFiltroUnidadCombustible] = useState('');
+  const [mostrarDropdownCombustible, setMostrarDropdownCombustible] = useState(false);
+
+  // Filtrar todas las unidades para combustible
+  const unidadesCombustibleFiltradas = TODAS_LAS_UNIDADES.filter(u =>
+    u.numero.toLowerCase().includes(filtroUnidadCombustible.toLowerCase()) ||
+    u.patente.toLowerCase().includes(filtroUnidadCombustible.toLowerCase())
+  );
+
   // Resetear selecciones cuando cambia el sector
   useEffect(() => {
     console.log('[Carousel] Sector cambió a:', currentSector, '- Reseteando selecciones');
@@ -338,92 +374,201 @@ export function CarouselSector({
 
         {currentSector === 'vrac' && (
           <div className="animate-fade-in space-y-3">
-            {/* Selector de Unidad INT */}
+            {/* Filtro inteligente UI - Unidad INT */}
             <div>
               <label htmlFor="unidad-vrac" className="block text-xs font-bold mb-1.5" style={{ color: '#1a2332' }}>
                 Seleccione Unidad Interna
               </label>
-              <select
-                id="unidad-vrac"
-                value={unidadValue}
-                onChange={(e) => {
-                  onUnidadChange?.(e.target.value);
-                  // Detener autoplay al seleccionar
-                  if (e.target.value) {
-                    handleUserInteraction();
-                  }
-                }}
-                className="w-full px-3 py-2.5 md:px-4 md:py-3 text-base md:text-lg font-semibold border-2 rounded-lg focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed select-android-friendly"
-                style={{
-                  borderColor: '#e5e7eb',
-                  color: unidadValue ? '#1a2332' : '#9ca3af',
-                  backgroundColor: disabled ? '#fafafa' : '#ffffff'
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#0ea5e9';
-                  e.target.style.boxShadow = '0 0 0 3px rgba(14, 165, 233, 0.1)';
-                  handleUserInteraction();
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#e5e7eb';
-                  e.target.style.boxShadow = 'none';
-                }}
-                disabled={disabled}
-              >
-                <option value="" disabled>Seleccione unidad INT</option>
-                {UNIDADES_VRAC.map((unidad) => (
-                  <option key={unidad.numero} value={unidad.numero}>
-                    INT-{unidad.numero} {unidad.patente}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🚛</span>
+                  <input
+                    type="text"
+                    id="unidad-vrac"
+                    value={unidadValue ? `INT-${unidadValue} • ${UNIDADES_VRAC.find(u => u.numero === unidadValue)?.patente || ''}` : filtroUnidadVRAC}
+                    onChange={(e) => {
+                      if (!unidadValue) {
+                        setFiltroUnidadVRAC(e.target.value);
+                        setMostrarDropdownUnidadVRAC(true);
+                        handleUserInteraction();
+                      }
+                    }}
+                    onFocus={() => {
+                      if (!unidadValue) {
+                        setMostrarDropdownUnidadVRAC(true);
+                      }
+                      handleUserInteraction();
+                    }}
+                    placeholder="Buscar por INT o patente..."
+                    className="w-full pl-10 pr-10 py-2.5 md:py-3 text-base md:text-lg font-semibold border-2 rounded-lg focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      borderColor: unidadValue ? '#0ea5e9' : '#e5e7eb',
+                      color: '#1a2332',
+                      backgroundColor: unidadValue ? '#f0f9ff' : (disabled ? '#fafafa' : '#ffffff')
+                    }}
+                    disabled={disabled || !!unidadValue}
+                    readOnly={!!unidadValue}
+                  />
+                  {unidadValue ? (
+                    <button
+                      onClick={() => {
+                        onUnidadChange?.('');
+                        onCisternaChange?.('');
+                        setFiltroUnidadVRAC('');
+                        setMostrarDropdownUnidadVRAC(false);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-sky-500 hover:text-sky-700 font-bold text-sm"
+                      type="button"
+                    >
+                      Cambiar
+                    </button>
+                  ) : filtroUnidadVRAC && (
+                    <button
+                      onClick={() => {
+                        setFiltroUnidadVRAC('');
+                        setMostrarDropdownUnidadVRAC(false);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      type="button"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown de sugerencias - Unidad */}
+                {mostrarDropdownUnidadVRAC && !unidadValue && filtroUnidadVRAC.length > 0 && unidadesVRACFiltradas.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-2xl border-2 border-sky-200 z-50 max-h-48 overflow-y-auto">
+                    {unidadesVRACFiltradas.map((u) => (
+                      <button
+                        key={u.numero}
+                        onClick={() => {
+                          onUnidadChange?.(u.numero);
+                          setFiltroUnidadVRAC('');
+                          setMostrarDropdownUnidadVRAC(false);
+                          handleUserInteraction();
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-sky-50 transition-colors border-b border-gray-100 last:border-b-0 flex items-center justify-between"
+                        type="button"
+                      >
+                        <div>
+                          <span className="font-bold text-gray-800">INT-{u.numero}</span>
+                          <span className="ml-2 text-gray-500 font-mono text-sm">{u.patente}</span>
+                        </div>
+                        <span className="text-sky-500">→</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Sin resultados - Unidad */}
+                {mostrarDropdownUnidadVRAC && !unidadValue && filtroUnidadVRAC.length > 0 && unidadesVRACFiltradas.length === 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border-2 border-gray-200 z-50 p-3 text-center">
+                    <p className="text-gray-500 text-sm">No se encontró "{filtroUnidadVRAC}"</p>
+                  </div>
+                )}
+              </div>
               <p className="text-xs mt-1 text-gray-500">
-                Selecciona tu unidad INT para realizar el checklist diario
+                Escribe para buscar entre las {UNIDADES_VRAC.length} unidades
               </p>
             </div>
 
-            {/* Selector de Cisterna (aparece cuando hay unidad seleccionada) */}
+            {/* Filtro inteligente UI - Cisterna (aparece cuando hay unidad seleccionada) */}
             {unidadValue && (
               <div className="animate-fade-in">
                 <label htmlFor="cisterna-vrac" className="block text-xs font-bold mb-1.5" style={{ color: '#1a2332' }}>
                   Seleccionar Cisterna 🛢️
                 </label>
-                <select
-                  id="cisterna-vrac"
-                  value={cisternaValue}
-                  onChange={(e) => {
-                    onCisternaChange?.(e.target.value);
-                    // Detener autoplay al seleccionar
-                    if (e.target.value) {
-                      handleUserInteraction();
-                    }
-                  }}
-                  className="w-full px-3 py-2.5 md:px-4 md:py-3 text-base md:text-lg font-semibold border-2 rounded-lg focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed select-android-friendly"
-                  style={{
-                    borderColor: '#e5e7eb',
-                    color: cisternaValue ? '#1a2332' : '#9ca3af',
-                    backgroundColor: disabled ? '#fafafa' : '#ffffff'
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = '#0ea5e9';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(14, 165, 233, 0.1)';
-                    handleUserInteraction();
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = '#e5e7eb';
-                    e.target.style.boxShadow = 'none';
-                  }}
-                  disabled={disabled}
-                >
-                  <option value="" disabled>Seleccione cisterna</option>
-                  {CISTERNAS_VRAC.map((cisterna) => (
-                    <option key={cisterna.numero} value={cisterna.numero}>
-                      Cisterna {cisterna.numero} - {cisterna.patente}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🛢️</span>
+                    <input
+                      type="text"
+                      id="cisterna-vrac"
+                      value={cisternaValue ? `CIS-${cisternaValue} • ${CISTERNAS_VRAC.find(c => c.numero === cisternaValue)?.patente || ''}` : filtroCisternaVRAC}
+                      onChange={(e) => {
+                        if (!cisternaValue) {
+                          setFiltroCisternaVRAC(e.target.value);
+                          setMostrarDropdownCisternaVRAC(true);
+                          handleUserInteraction();
+                        }
+                      }}
+                      onFocus={() => {
+                        if (!cisternaValue) {
+                          setMostrarDropdownCisternaVRAC(true);
+                        }
+                        handleUserInteraction();
+                      }}
+                      placeholder="Buscar por número o patente..."
+                      className="w-full pl-10 pr-10 py-2.5 md:py-3 text-base md:text-lg font-semibold border-2 rounded-lg focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        borderColor: cisternaValue ? '#0ea5e9' : '#e5e7eb',
+                        color: '#1a2332',
+                        backgroundColor: cisternaValue ? '#f0f9ff' : (disabled ? '#fafafa' : '#ffffff')
+                      }}
+                      disabled={disabled || !!cisternaValue}
+                      readOnly={!!cisternaValue}
+                    />
+                    {cisternaValue ? (
+                      <button
+                        onClick={() => {
+                          onCisternaChange?.('');
+                          setFiltroCisternaVRAC('');
+                          setMostrarDropdownCisternaVRAC(false);
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-sky-500 hover:text-sky-700 font-bold text-sm"
+                        type="button"
+                      >
+                        Cambiar
+                      </button>
+                    ) : filtroCisternaVRAC && (
+                      <button
+                        onClick={() => {
+                          setFiltroCisternaVRAC('');
+                          setMostrarDropdownCisternaVRAC(false);
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        type="button"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dropdown de sugerencias - Cisterna */}
+                  {mostrarDropdownCisternaVRAC && !cisternaValue && filtroCisternaVRAC.length > 0 && cisternasVRACFiltradas.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-2xl border-2 border-sky-200 z-50 max-h-48 overflow-y-auto">
+                      {cisternasVRACFiltradas.map((c) => (
+                        <button
+                          key={c.numero}
+                          onClick={() => {
+                            onCisternaChange?.(c.numero);
+                            setFiltroCisternaVRAC('');
+                            setMostrarDropdownCisternaVRAC(false);
+                            handleUserInteraction();
+                          }}
+                          className="w-full px-4 py-3 text-left hover:bg-sky-50 transition-colors border-b border-gray-100 last:border-b-0 flex items-center justify-between"
+                          type="button"
+                        >
+                          <div>
+                            <span className="font-bold text-gray-800">CIS-{c.numero}</span>
+                            <span className="ml-2 text-gray-500 font-mono text-sm">{c.patente}</span>
+                          </div>
+                          <span className="text-sky-500">→</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Sin resultados - Cisterna */}
+                  {mostrarDropdownCisternaVRAC && !cisternaValue && filtroCisternaVRAC.length > 0 && cisternasVRACFiltradas.length === 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border-2 border-gray-200 z-50 p-3 text-center">
+                      <p className="text-gray-500 text-sm">No se encontró "{filtroCisternaVRAC}"</p>
+                    </div>
+                  )}
+                </div>
                 <p className="text-xs mt-1 text-gray-500">
-                  Selecciona la cisterna que vas a utilizar hoy
+                  Escribe para buscar entre las {CISTERNAS_VRAC.length} cisternas
                 </p>
               </div>
             )}
@@ -435,42 +580,97 @@ export function CarouselSector({
             <label htmlFor="unidad-vital" className="block text-xs font-bold mb-1.5" style={{ color: '#1a2332' }}>
               Seleccione Unidad Interna
             </label>
-            <select
-              id="unidad-vital"
-              value={unidadValue}
-              onChange={(e) => {
-                onUnidadChange?.(e.target.value);
-                // Detener autoplay al seleccionar
-                if (e.target.value) {
-                  handleUserInteraction();
-                }
-              }}
-              className="w-full px-3 py-2.5 md:px-4 md:py-3 text-base md:text-lg font-semibold border-2 rounded-lg focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed select-android-friendly"
-              style={{
-                borderColor: '#e5e7eb',
-                color: unidadValue ? '#1a2332' : '#9ca3af',
-                backgroundColor: disabled ? '#fafafa' : '#ffffff'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#f59e0b';
-                e.target.style.boxShadow = '0 0 0 3px rgba(245, 158, 11, 0.1)';
-                handleUserInteraction();
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#e5e7eb';
-                e.target.style.boxShadow = 'none';
-              }}
-              disabled={disabled}
-            >
-              <option value="" disabled>Seleccione unidad</option>
-              {UNIDADES_VITAL_AIRE.map((unidad) => (
-                <option key={unidad.numero} value={unidad.numero}>
-                  Unidad {unidad.numero} - {unidad.patente}
-                </option>
-              ))}
-            </select>
+            {/* Filtro inteligente UI */}
+            <div className="relative">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🚐</span>
+                <input
+                  type="text"
+                  id="unidad-vital"
+                  value={unidadValue ? `INT-${unidadValue} • ${UNIDADES_VITAL_AIRE.find(u => u.numero === unidadValue)?.patente || ''}` : filtroUnidadVitalAire}
+                  onChange={(e) => {
+                    if (!unidadValue) {
+                      setFiltroUnidadVitalAire(e.target.value);
+                      setMostrarDropdownVitalAire(true);
+                      handleUserInteraction();
+                    }
+                  }}
+                  onFocus={() => {
+                    if (!unidadValue) {
+                      setMostrarDropdownVitalAire(true);
+                    }
+                    handleUserInteraction();
+                  }}
+                  placeholder="Buscar por INT o patente..."
+                  className="w-full pl-10 pr-10 py-2.5 md:py-3 text-base md:text-lg font-semibold border-2 rounded-lg focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    borderColor: unidadValue ? '#f59e0b' : '#e5e7eb',
+                    color: '#1a2332',
+                    backgroundColor: unidadValue ? '#fff7ed' : (disabled ? '#fafafa' : '#ffffff')
+                  }}
+                  disabled={disabled || !!unidadValue}
+                  readOnly={!!unidadValue}
+                />
+                {unidadValue ? (
+                  <button
+                    onClick={() => {
+                      onUnidadChange?.('');
+                      setFiltroUnidadVitalAire('');
+                      setMostrarDropdownVitalAire(false);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-orange-500 hover:text-orange-700 font-bold text-sm"
+                    type="button"
+                  >
+                    Cambiar
+                  </button>
+                ) : filtroUnidadVitalAire && (
+                  <button
+                    onClick={() => {
+                      setFiltroUnidadVitalAire('');
+                      setMostrarDropdownVitalAire(false);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    type="button"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Dropdown de sugerencias */}
+              {mostrarDropdownVitalAire && !unidadValue && filtroUnidadVitalAire.length > 0 && unidadesVitalAireFiltradas.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-2xl border-2 border-orange-200 z-50 max-h-48 overflow-y-auto">
+                  {unidadesVitalAireFiltradas.map((u) => (
+                    <button
+                      key={u.numero}
+                      onClick={() => {
+                        onUnidadChange?.(u.numero);
+                        setFiltroUnidadVitalAire('');
+                        setMostrarDropdownVitalAire(false);
+                        handleUserInteraction();
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-b-0 flex items-center justify-between"
+                      type="button"
+                    >
+                      <div>
+                        <span className="font-bold text-gray-800">INT-{u.numero}</span>
+                        <span className="ml-2 text-gray-500 font-mono text-sm">{u.patente}</span>
+                      </div>
+                      <span className="text-orange-500">→</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Sin resultados */}
+              {mostrarDropdownVitalAire && !unidadValue && filtroUnidadVitalAire.length > 0 && unidadesVitalAireFiltradas.length === 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border-2 border-gray-200 z-50 p-3 text-center">
+                  <p className="text-gray-500 text-sm">No se encontró "{filtroUnidadVitalAire}"</p>
+                </div>
+              )}
+            </div>
             <p className="text-xs mt-1 text-gray-500">
-              Selecciona tu camioneta para realizar el checklist diario
+              Escribe para buscar entre las {UNIDADES_VITAL_AIRE.length} unidades
             </p>
           </div>
         )}
@@ -522,40 +722,98 @@ export function CarouselSector({
             <label htmlFor="unidad-combustible" className="block text-xs font-bold mb-1.5" style={{ color: '#1a2332' }}>
               Seleccione Unidad INT
             </label>
-            <select
-              id="unidad-combustible"
-              value={unidadValue}
-              onChange={(e) => {
-                onUnidadChange?.(e.target.value);
-                handleUserInteraction();
-              }}
-              className="select-android-friendly w-full px-3 py-2.5 text-base font-semibold border-2 rounded-lg focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                borderColor: '#e5e7eb',
-                color: '#1a2332',
-                backgroundColor: disabled ? '#fafafa' : '#ffffff',
-                fontSize: '16px'
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = '#0033A0';
-                e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0, 51, 160, 0.1)';
-                handleUserInteraction();
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = '#e5e7eb';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-              disabled={disabled}
-            >
-              <option value="" disabled>Seleccione unidad INT</option>
-              {TODAS_LAS_UNIDADES.sort((a, b) => a.numero.localeCompare(b.numero)).map((unidad) => (
-                <option key={unidad.numero} value={unidad.numero}>
-                  INT-{unidad.numero} ({unidad.patente})
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                id="unidad-combustible"
+                type="text"
+                value={unidadValue ? `INT-${unidadValue} • ${TODAS_LAS_UNIDADES.find(u => u.numero === unidadValue)?.patente || ''}` : filtroUnidadCombustible}
+                onChange={(e) => {
+                  if (!unidadValue) {
+                    setFiltroUnidadCombustible(e.target.value);
+                    setMostrarDropdownCombustible(true);
+                  }
+                  handleUserInteraction();
+                }}
+                onFocus={() => {
+                  if (!unidadValue) {
+                    setMostrarDropdownCombustible(true);
+                  }
+                  handleUserInteraction();
+                }}
+                onBlur={() => {
+                  setTimeout(() => setMostrarDropdownCombustible(false), 200);
+                }}
+                placeholder="Buscar por INT o patente..."
+                className="w-full px-3 py-2.5 text-base font-semibold border-2 rounded-lg focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  borderColor: unidadValue ? '#0033A0' : '#e5e7eb',
+                  color: '#1a2332',
+                  backgroundColor: unidadValue ? '#eff6ff' : (disabled ? '#fafafa' : '#ffffff'),
+                  fontSize: '16px'
+                }}
+                disabled={disabled}
+                readOnly={!!unidadValue}
+              />
+              {unidadValue ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUnidadChange?.('');
+                    setFiltroUnidadCombustible('');
+                    handleUserInteraction();
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-blue-200 transition-colors"
+                  style={{ color: '#0033A0' }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              ) : filtroUnidadCombustible && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroUnidadCombustible('');
+                    handleUserInteraction();
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-gray-200 transition-colors text-gray-400"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {/* Dropdown de resultados filtrados */}
+            {mostrarDropdownCombustible && !unidadValue && filtroUnidadCombustible.length > 0 && unidadesCombustibleFiltradas.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border-2 border-blue-300 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+                   style={{ left: 0, right: 0 }}>
+                {unidadesCombustibleFiltradas.map((u) => (
+                  <button
+                    key={u.numero}
+                    type="button"
+                    onClick={() => {
+                      onUnidadChange?.(u.numero);
+                      setFiltroUnidadCombustible('');
+                      setMostrarDropdownCombustible(false);
+                      handleUserInteraction();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0"
+                  >
+                    <span className="font-bold text-blue-800">INT-{u.numero}</span>
+                    <span className="text-gray-600 ml-2">• {u.patente}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Mensaje sin resultados */}
+            {mostrarDropdownCombustible && !unidadValue && filtroUnidadCombustible.length > 0 && unidadesCombustibleFiltradas.length === 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-300 rounded-lg shadow-lg p-3">
+                <p className="text-gray-500 text-sm">No se encontro "{filtroUnidadCombustible}"</p>
+              </div>
+            )}
             <p className="text-xs mt-1 text-gray-500">
-              Registro de carga de combustible para la flota
+              Registro de carga de combustible para la flota ({TODAS_LAS_UNIDADES.length} unidades)
             </p>
           </div>
         )}

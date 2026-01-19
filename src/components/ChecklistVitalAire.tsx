@@ -1,30 +1,224 @@
 import { useState } from 'react';
 import {
-  ITEMS_CHECKLIST,
   type EstadoItem,
   type ChecklistRegistro,
   type ItemChecklist,
-  type Novedad
+  type Novedad,
+  CategoriaItem
 } from '../types/checklist';
 import { saveChecklist } from '../services/checklistService';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
+
+// ============================================================================
+// ITEMS ESPECÍFICOS DE VITAL AIRE (17 items)
+// ============================================================================
+const ITEMS_VITAL_AIRE: Omit<ItemChecklist, 'estado' | 'timestamp'>[] = [
+  // SEGURIDAD PERSONAL
+  {
+    id: 'va_item_01',
+    numero: 1,
+    categoria: CategoriaItem.SEGURIDAD_PERSONAL,
+    descripcion: 'Elementos de protección personal (EPP): Guantes, Casco, Botines de Seguridad, Ropa Ignifuga',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  // DOCUMENTACIÓN
+  {
+    id: 'va_item_02',
+    numero: 2,
+    categoria: CategoriaItem.DOCUMENTACION,
+    descripcion: 'El chofer declara tener la sig. documentación: (DNI, LICENCIA NACIONAL, VTV, SEGURO AUTOMOTOR, CEDULA AUTOMOTOR)',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  // CHEQUEO DE UNIDAD (REQUISITOS_OBLIGATORIOS)
+  {
+    id: 'va_item_03',
+    numero: 3,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Control de (Aceite, Refrigerante, Hidráulico, Frenos)]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_04',
+    numero: 4,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Estado de LUCES (Verificar funcionamiento e intensidad adecuada / Alta, baja, reglamentaria, STOP y direccional)]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_05',
+    numero: 5,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Estado EXTERIOR (Estado general chapa, pintura y limpieza)]',
+    esCritico: false,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_06',
+    numero: 6,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Plataforma hidráulica]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_07',
+    numero: 7,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Estado de MATAFUEGOS, Compartimiento GOX, LOX y habitaculo]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_08',
+    numero: 8,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Cuñas Plásticas, Cintas de sujeción]',
+    esCritico: false,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_09',
+    numero: 9,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Estado de la cabina INTERIOR (Limpieza, No hay objetos pesados sueltos)]',
+    esCritico: false,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_10',
+    numero: 10,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Estado de la cabina GOX (Limpieza, No hay Objetos sueltos)]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_11',
+    numero: 11,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Estado de la cabina LOX (Limpieza, No hay objetos sueltos)]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_12',
+    numero: 12,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [ESTADO DE NEUMÁTICOS DELANTEROS, TRASEROS, AUXILIO y VERIFICACION DE CHECKPOINTS]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_13',
+    numero: 13,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Estado PARABRISAS (Sin marcas ni fisuras y funcionamiento del limpia parabrisas y sapito)]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_14',
+    numero: 14,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Estado de ESPEJOS, estándar y puntos ciegos]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_15',
+    numero: 15,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Alarma de retroceso (Verificar funcionamiento), Bocina]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_16',
+    numero: 16,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Funcionamiento de Velocimetro, Tacografo]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+  {
+    id: 'va_item_17',
+    numero: 17,
+    categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
+    descripcion: 'CHEQUEO DE LA UNIDAD [Funcionamiento de los FRENOS DE SERVICIO Y DE MANO (Verificado por conductor)]',
+    esCritico: true,
+    fotoRequerida: false,
+  },
+];
+
+// ============================================================================
+// CHOFERES DE VITAL AIRE (21 choferes)
+// ============================================================================
+export const CHOFERES_VITAL_AIRE = [
+  'ACUÑA, FRANCISCO',
+  'ANTUNEZ, MARCOS',
+  'BERGOLO, JUAN',
+  'CAMARGO, MARIO',
+  'GOMEZ, OSCAR',
+  'GONZALEZ, DARIO',
+  'GONZALEZ, MARIANO',
+  'GRAMAJO, EZEQUIEL',
+  'MANCUSO, CESAR',
+  'MORALES, JONATHAN',
+  'MURAS, JUAN MANUEL',
+  'NAVARRO, DANIEL',
+  'ORTIZ, GERARDO',
+  'PAEZ, ALBERTO',
+  'PRINGLES, MATIAS',
+  'QUESADA, RUBEN',
+  'REYES, HERNAN',
+  'RIQUELME, GASTON',
+  'ROMERO, MARTIN',
+  'SALVATIERRA, DARIO',
+  'ZAPATA, LUIS',
+];
+
+// ============================================================================
+// UNIDADES DE VITAL AIRE (8 unidades)
+// ============================================================================
+export const UNIDADES_VITAL_AIRE = [
+  { numero: '52', patente: 'AA279FE' },
+  { numero: '811', patente: 'AG705RB' },
+  { numero: '55', patente: 'MYN849' },
+  { numero: '808', patente: 'AF313QP' },
+  { numero: '801', patente: 'AE052TW' },
+  { numero: '53', patente: 'AC823TK' },
+  { numero: '56', patente: 'AC823XZ' },
+  { numero: '59', patente: 'KSZ061' },
+];
 
 interface ChecklistVitalAireProps {
   unidad: {
     numero: string;
     patente: string;
   };
-  chofer: string;
   onComplete: (checklist: ChecklistRegistro) => void;
   onCancel: () => void;
 }
 
-export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: ChecklistVitalAireProps) {
-  const [currentStep, setCurrentStep] = useState<'odometro' | 'items' | 'resumen'>('odometro');
+export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVitalAireProps) {
+  // Pasos del checklist: selección chofer → odómetro → items → resumen
+  const [currentStep, setCurrentStep] = useState<'seleccion-chofer' | 'odometro' | 'items' | 'resumen'>('seleccion-chofer');
+
+  // Estado para chofer seleccionado
+  const [choferSeleccionado, setChoferSeleccionado] = useState<string>('');
+
+  // Filtro de búsqueda
+  const [filtroChofer, setFiltroChofer] = useState('');
+
   const [odometro, setOdometro] = useState('');
   const [items, setItems] = useState<ItemChecklist[]>(
-    ITEMS_CHECKLIST.map(item => ({
+    ITEMS_VITAL_AIRE.map(item => ({
       ...item,
       estado: 'CONFORME' as EstadoItem,
       comentario: '',
@@ -43,6 +237,14 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
   const [showConfirmacionSinEvidencia, setShowConfirmacionSinEvidencia] = useState(false);
   const [capturandoFoto, setCapturandoFoto] = useState(false);
 
+  // Filtrar choferes según búsqueda
+  const choferesFiltrados = CHOFERES_VITAL_AIRE.filter(c =>
+    c.toLowerCase().includes(filtroChofer.toLowerCase())
+  );
+
+  // Chofer seleccionado
+  const chofer = choferSeleccionado;
+
   const currentItem = items[currentItemIndex];
   const totalItems = items.length;
   const progress = ((currentItemIndex + 1) / totalItems) * 100;
@@ -50,7 +252,7 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
   // Handlers
   const handleOdometroSubmit = () => {
     if (!odometro || parseInt(odometro) <= 0) {
-      alert('Por favor ingresa un odómetro válido');
+      showWarning('Por favor ingresa un odómetro válido');
       return;
     }
     setCurrentStep('items');
@@ -84,7 +286,7 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
 
   const handleComentarioSubmit = () => {
     if (!comentarioTemp.trim()) {
-      alert('Por favor describe el problema detectado');
+      showWarning('Por favor describe el problema detectado');
       return;
     }
 
@@ -150,17 +352,17 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
           };
           setItems(updatedItems);
           setCapturandoFoto(false);
-          alert('✅ Foto capturada y guardada');
+          showSuccess('Foto capturada y guardada');
         };
         reader.onerror = () => {
           setCapturandoFoto(false);
-          alert('❌ Error al procesar la imagen');
+          showError('Error al procesar la imagen');
         };
         reader.readAsDataURL(file);
       } catch (error) {
         console.error('[ChecklistVitalAire] Error capturando foto:', error);
         setCapturandoFoto(false);
-        alert('❌ Error al capturar la foto');
+        showError('Error al capturar la foto');
       }
     };
 
@@ -184,17 +386,17 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
         reader.onloadend = () => {
           setFotoNovedadTemp(reader.result as string);
           setCapturandoFotoNovedadModal(false);
-          alert('✅ Foto capturada');
+          showSuccess('Foto capturada');
         };
         reader.onerror = () => {
           setCapturandoFotoNovedadModal(false);
-          alert('❌ Error al procesar la imagen');
+          showError('Error al procesar la imagen');
         };
         reader.readAsDataURL(file);
       } catch (error) {
         console.error('[ChecklistVitalAire] Error capturando foto novedad:', error);
         setCapturandoFotoNovedadModal(false);
-        alert('❌ Error al capturar la foto');
+        showError('Error al capturar la foto');
       }
     };
 
@@ -203,7 +405,7 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
 
   const handleAgregarNovedad = () => {
     if (!novedadTemp.trim()) {
-      alert('Por favor describe la novedad encontrada');
+      showWarning('Por favor describe la novedad encontrada');
       return;
     }
 
@@ -211,7 +413,7 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
     setNovedadTemp('');
     setFotoNovedadTemp(null);
     setShowNovedadModal(false);
-    alert(`✅ Novedad registrada\n\n"${novedadTemp}"\n\nPuedes continuar con el checklist.`);
+    showSuccess(`Novedad registrada: "${novedadTemp}". Puedes continuar con el checklist.`);
   };
 
   const handleFinalizar = async () => {
@@ -288,12 +490,12 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
       }
 
       // Notificar éxito
-      alert('✅ Checklist guardado exitosamente en Firebase');
+      showSuccess('Checklist guardado exitosamente');
 
       onComplete(checklistData);
     } catch (error) {
       console.error('[ChecklistVitalAire] Error guardando checklist:', error);
-      alert('❌ Error al guardar checklist. Intenta nuevamente.');
+      showError('Error al guardar checklist. Intenta nuevamente.');
     }
   };
 
@@ -398,7 +600,105 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
     </button>
   );
 
-  // Render: Paso de Odómetro
+  // ============================================================================
+  // Render: Paso 1 - Selección de Chofer (Autocomplete)
+  // ============================================================================
+  if (currentStep === 'seleccion-chofer') {
+    const mostrarSugerenciasChofer = filtroChofer.length > 0 && choferesFiltrados.length > 0;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+        <div className="max-w-md mx-auto">
+          {/* Header */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            {/* Unidad (viene del carrusel) */}
+            <div className="rounded-xl p-3 border-2 mb-4" style={{ backgroundColor: '#fff7ed', borderColor: '#f59e0b' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold" style={{ color: '#f97316' }}>UNIDAD</p>
+                  <p className="text-base font-bold text-gray-800">INT-{unidad.numero} • {unidad.patente}</p>
+                </div>
+                <span className="text-2xl">🚐</span>
+              </div>
+            </div>
+
+            <div className="text-center mb-4">
+              <div className="text-5xl mb-3">👤</div>
+              <h1 className="text-2xl font-bold text-gray-800">Selecciona el Chofer</h1>
+              <p className="text-sm text-gray-600 mt-1">Ingresa el nombre del chofer</p>
+            </div>
+
+            {/* Campo de búsqueda con dropdown */}
+            <div className="relative">
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl">👤</span>
+                <input
+                  type="text"
+                  value={filtroChofer}
+                  onChange={(e) => setFiltroChofer(e.target.value)}
+                  placeholder="Ej: GOMEZ, NAVARRO..."
+                  className="w-full pl-12 pr-12 py-4 text-lg border-2 border-gray-200 rounded-xl focus:outline-none focus:border-orange-400 transition-colors"
+                  autoFocus
+                />
+                {filtroChofer && (
+                  <button
+                    onClick={() => setFiltroChofer('')}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xl"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Dropdown de sugerencias */}
+              {mostrarSugerenciasChofer && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border-2 border-orange-200 z-50 max-h-60 overflow-y-auto">
+                  {choferesFiltrados.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => {
+                        setChoferSeleccionado(c);
+                        setCurrentStep('odometro');
+                        setFiltroChofer('');
+                      }}
+                      className="w-full p-4 text-left hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-b-0 flex items-center justify-between"
+                    >
+                      <p className="text-base font-bold text-gray-800">{c}</p>
+                      <span className="text-2xl">→</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Sin resultados */}
+              {filtroChofer.length > 0 && choferesFiltrados.length === 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border-2 border-gray-200 z-50 p-4 text-center">
+                  <p className="text-gray-500 text-sm">No se encontró el chofer "{filtroChofer}"</p>
+                </div>
+              )}
+            </div>
+
+            {/* Hint */}
+            <p className="text-xs text-gray-400 mt-3 text-center">
+              Escribe para buscar entre los 21 choferes de Vital Aire
+            </p>
+          </div>
+
+          {/* Botón cancelar */}
+          <button
+            onClick={onCancel}
+            className="w-full py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // Render: Paso 2 - Odómetro
+  // ============================================================================
   if (currentStep === 'odometro') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
@@ -407,18 +707,26 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
           <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
             <div className="text-center mb-4">
               <div className="text-5xl mb-3">📊</div>
-              <h1 className="text-2xl font-bold text-gray-800">Checklist Diario</h1>
-              <p className="text-sm text-gray-600 mt-1">VITAL AIRE - Camionetas</p>
+              <h1 className="text-2xl font-bold text-gray-800">Checklist Vital Aire</h1>
+              <p className="text-sm text-gray-600 mt-1">Paso 3: Ingresa el odómetro</p>
             </div>
 
-            {/* Info de la unidad */}
+            {/* Barra de progreso */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full w-3/4 rounded-full" style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)' }} />
+              </div>
+              <span className="text-xs text-gray-500 font-semibold">3/4</span>
+            </div>
+
+            {/* Info de la unidad y chofer */}
             <div className="space-y-2 rounded-xl p-4 border-2" style={{
               backgroundColor: '#fff7ed',
               borderColor: '#f59e0b'
             }}>
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold" style={{ color: '#f97316' }}>🚐 UNIDAD:</span>
-                <span className="text-sm font-bold text-gray-800">Unidad {unidad.numero} - {unidad.patente}</span>
+                <span className="text-sm font-bold text-gray-800">INT-{unidad.numero} • {unidad.patente}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold" style={{ color: '#f97316' }}>👤 CHOFER:</span>
@@ -460,10 +768,10 @@ export function ChecklistVitalAire({ unidad, chofer, onComplete, onCancel }: Che
             {/* Botones */}
             <div className="flex gap-3 mt-6">
               <button
-                onClick={onCancel}
+                onClick={() => setCurrentStep('seleccion-chofer')}
                 className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
               >
-                Cancelar
+                ← Volver
               </button>
               <button
                 onClick={handleOdometroSubmit}

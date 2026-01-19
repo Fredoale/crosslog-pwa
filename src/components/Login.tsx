@@ -6,13 +6,14 @@ import { sheetsApi } from '../utils/sheetsApi';
 import { getClientFolderId, getClientName } from '../config/clientFolders';
 import { WelcomeModal } from './WelcomeModal';
 import ShareQRButton from './ShareQRButton';
-import { CarouselSector, type SectorType, CISTERNAS_VRAC, UNIDADES_VRAC, UNIDADES_VITAL_AIRE } from './CarouselSector';
+import { CarouselSector, type SectorType, CISTERNAS_VRAC, UNIDADES_VRAC, UNIDADES_VITAL_AIRE, TODAS_LAS_UNIDADES } from './CarouselSector';
 import { ChecklistVRAC } from './ChecklistVRAC';
 import { ChecklistVitalAire } from './ChecklistVitalAire';
 import { ChecklistDistribucion } from './ChecklistDistribucion';
 import { FormularioCargaCombustible } from './combustible/FormularioCargaCombustible';
 import type { ChecklistRegistro } from '../types/checklist';
 import { checkChecklistExists } from '../services/checklistService';
+import { showSuccess } from '../utils/toast';
 
 interface LoginProps {
   onSuccess: () => void;
@@ -119,9 +120,8 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
         return;
       }
 
-      // Buscar datos de la unidad
-      const todasUnidades = [...UNIDADES_VRAC, ...UNIDADES_VITAL_AIRE];
-      const unidadData = todasUnidades.find(u => u.numero === unidadSeleccionada);
+      // Buscar datos de la unidad (incluye VRAC, VITAL AIRE y DISTRIBUCION)
+      const unidadData = TODAS_LAS_UNIDADES.find(u => u.numero === unidadSeleccionada);
 
       if (!unidadData) {
         setError('Error: Unidad no encontrada');
@@ -436,13 +436,8 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
 
   const handleChecklistComplete = (checklist: ChecklistRegistro) => {
     console.log('[Login] Checklist completado:', checklist);
-    // TODO: Guardar checklist en Firebase
-    // TODO: Generar novedades si hay items NO_CONFORME críticos
 
-    // Mostrar resultado
-    alert(`Checklist completado!\n\nResultado: ${checklist.resultado}\nÍtems conformes: ${checklist.itemsConformes}\nÍtems rechazados: ${checklist.itemsRechazados}`);
-
-    // Resetear
+    // Resetear (la notificación ya se muestra en el componente del checklist)
     setShowChecklist(false);
     setChecklistData(null);
     setUnidadSeleccionada('');
@@ -528,10 +523,10 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
         />
       );
     } else if (checklistData.sector === 'vital-aire') {
+      // Vital Aire: unidad viene del carrusel, chofer se selecciona internamente
       return (
         <ChecklistVitalAire
           unidad={checklistData.unidad}
-          chofer={checklistData.chofer}
           onComplete={handleChecklistComplete}
           onCancel={handleChecklistCancel}
         />
