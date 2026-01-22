@@ -323,9 +323,13 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
           onChange={(e) => setNovedadTemp(e.target.value)}
           placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
           dir="ltr"
+          lang="es"
           className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none min-h-32"
           style={{
-            borderColor: '#e5e7eb'
+            borderColor: '#e5e7eb',
+            direction: 'ltr',
+            textAlign: 'left',
+            unicodeBidi: 'plaintext'
           }}
           onFocus={(e) => {
             e.currentTarget.style.borderColor = '#f59e0b';

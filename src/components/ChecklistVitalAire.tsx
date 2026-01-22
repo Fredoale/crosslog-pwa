@@ -516,9 +516,13 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
           onChange={(e) => setNovedadTemp(e.target.value)}
           placeholder="Ejemplo: Fuga de aceite en motor, requiere revisión urgente"
           dir="ltr"
+          lang="es"
           className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none min-h-32"
           style={{
-            borderColor: '#e5e7eb'
+            borderColor: '#e5e7eb',
+            direction: 'ltr',
+            textAlign: 'left',
+            unicodeBidi: 'plaintext'
           }}
           onFocus={(e) => {
             e.currentTarget.style.borderColor = '#f59e0b';
