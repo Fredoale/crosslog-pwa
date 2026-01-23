@@ -2688,7 +2688,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       {/* Tabs con branding Crosslog y responsive */}
       <div className="max-w-7xl mx-auto px-3 md:px-6">
         <div className="bg-white rounded-t-2xl shadow-lg">
-          {/* Tabs compactos para móvil - Solo iconos con badge */}
+          {/* Tabs compactos para móvil - Badge al lado del icono */}
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('checklists')}
@@ -2699,11 +2699,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
               }`}
             >
               <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="relative">
+                <div className="flex items-center gap-1">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === 'checklists' ? 'bg-[#56ab2f] text-white' : 'bg-gray-300 text-gray-700'
                   }`}>{checklists.length}</span>
                 </div>
@@ -2720,11 +2720,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
               }`}
             >
               <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="relative">
+                <div className="flex items-center gap-1">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
-                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === 'novedades' ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-700'
                   }`}>{novedades.length}</span>
                 </div>
@@ -2741,11 +2741,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
               }`}
             >
               <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="relative">
+                <div className="flex items-center gap-1">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
-                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === 'ordenes' ? 'bg-purple-600 text-white' : 'bg-gray-300 text-gray-700'
                   }`}>{ordenes.length}</span>
                 </div>
@@ -2762,11 +2762,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
               }`}
             >
               <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="relative">
+                <div className="flex items-center gap-1">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
                   </svg>
-                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === 'kanban' ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-700'
                   }`}>{ordenes.length}</span>
                 </div>
@@ -2783,11 +2783,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
               }`}
             >
               <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="relative">
+                <div className="flex items-center gap-1">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className={`absolute -top-1.5 -right-1.5 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === 'historial' ? 'bg-emerald-600 text-white' : 'bg-gray-300 text-gray-700'
                   }`}>{ordenes.filter(o => o.estado === 'CERRADO').length}</span>
                 </div>
@@ -2804,9 +2804,9 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
               }`}
             >
               <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="relative">
+                <div className="flex items-center gap-1">
                   <span className="text-base">⛽</span>
-                  <span className={`absolute -top-1.5 -right-2 text-[9px] px-1 py-0.5 rounded-full font-bold ${
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === 'combustible' ? 'bg-[#0033A0] text-white' : 'bg-gray-300 text-gray-700'
                   }`}>{cargas.length}</span>
                 </div>

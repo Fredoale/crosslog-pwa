@@ -1,5 +1,5 @@
 # 📊 ESTADO DEL PROYECTO CROSSLOG PWA
-**Última actualización:** 1 de Enero de 2026 (10:30 hrs)
+**Última actualización:** 23 de Enero de 2026 (16:00 hrs)
 
 ---
 
@@ -432,6 +432,44 @@ Sistema completo de analytics de valores generados por día por cada unidad de d
 
 ## 🆕 ÚLTIMAS ACTUALIZACIONES
 
+### **23 de Enero de 2026 - Update v3.3 (UI/UX Unificado)**
+
+#### ✅ **Unificación de Diseño de Tabs en Mantenimiento**
+- **DashboardMantenimiento.tsx** y **DashboardTaller.tsx** ahora tienen diseño consistente
+- Tabs compactos con iconos SVG + badges de contador
+- **Badges al lado del icono** (no encima) para mejor legibilidad
+- Diseño responsivo: icono + badge + texto en móvil
+- Colores diferenciados por sección (verde, azul, púrpura, esmeralda, índigo)
+
+#### ✅ **Fix Bug RTL en Textarea de Novedades**
+- Corregido error donde el texto se escribía al revés en modal "Novedad Encontrada"
+- **Causa raíz:** Componente `NovedadModal` definido como función dentro del componente padre
+- **Solución:** JSX inline directo en el render (evita re-creación en cada render)
+- Aplicado a los 3 checklists: Distribución, VRAC, VitalAire
+
+#### ✅ **Modal "Novedad Encontrada" Personalizado**
+- **HDR (Distribución):** Muestra "Buen trabajo {chofer} has encontrado una Novedad del INT-{unidad} • {patente}"
+- **VRAC:** Muestra solo "INT-{numero} • {patente}" (sin mensaje de chofer)
+- **VitalAire:** Igual que HDR con mensaje personalizado
+
+#### ✅ **Fix "Unidad no encontrada" en COMBUSTIBLE**
+- Corregido error al buscar unidades de distribución en sección COMBUSTIBLE
+- Ahora usa `TODAS_LAS_UNIDADES` (27 unidades) en lugar de solo VRAC + VITAL_AIRE
+- Agregado filtro inteligente con autocomplete para selección de unidad
+
+#### ✅ **Modal de Confirmación Personalizado**
+- Reemplazado `window.confirm()` básico por modal estilizado en DashboardTaller
+- Diseño consistente con el resto de la aplicación
+- Confirmación visual clara para eliminar checklists
+
+#### ✅ **Tabs Responsivos para Móvil**
+- Eliminado scroll horizontal en tabs de mantenimiento
+- Tabs con `flex-1` para distribución uniforme
+- Texto abreviado en móvil: "Dash", "Disp", "Mías", "Check"
+- Badges con contador de elementos por sección
+
+---
+
 ### **1 de Enero de 2026 - Mega Update v3.2**
 
 #### ✅ **Funcionalidad de Fotos en Checklists**
@@ -532,5 +570,5 @@ Sistema completo de analytics de valores generados por día por cada unidad de d
 
 ---
 
-_Última actualización: 1 de Enero de 2026 - 10:30 hrs_
+_Última actualización: 23 de Enero de 2026 - 16:00 hrs_
 _Estado: 🟢 100% Operativo y en Producción_
