@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { showSuccess } from '../utils/toast';
 
 interface ShareQRButtonProps {
   url: string;
@@ -30,7 +31,7 @@ const ShareQRButton: React.FC<ShareQRButtonProps> = ({ url, title }) => {
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(url);
-    alert('✓ Link copiado al portapapeles');
+    showSuccess('Link copiado al portapapeles');
   };
 
   const handleDownloadQR = () => {

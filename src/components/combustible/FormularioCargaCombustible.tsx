@@ -9,6 +9,7 @@ import { collection, query, where, orderBy, limit, getDocs } from 'firebase/fire
 import { db } from '../../config/firebase';
 import type { CargaCombustible, TipoCombustible } from '../../types/checklist';
 import { saveCargaCombustible } from '../../services/combustibleService';
+import { showSuccess, showError, showWarning } from '../../utils/toast';
 
 interface FormularioCargaCombustibleProps {
   unidad: {
@@ -126,23 +127,23 @@ export function FormularioCargaCombustible({
   const handleContinuar = () => {
     // Validaciones
     if (!kilometrajeActual || parseFloat(kilometrajeActual) <= 0) {
-      alert('Por favor ingresa el kilometraje actual');
+      showWarning('Por favor ingresa el kilometraje actual');
       return;
     }
 
     if (!litrosCargados || parseFloat(litrosCargados) <= 0) {
-      alert('Por favor ingresa los litros cargados');
+      showWarning('Por favor ingresa los litros cargados');
       return;
     }
 
     if (!costoTotal || parseFloat(costoTotal) <= 0) {
-      alert('Por favor ingresa el costo total');
+      showWarning('Por favor ingresa el costo total');
       return;
     }
 
     // Validar que el kilometraje sea mayor al anterior
     if (ultimaCarga && parseFloat(kilometrajeActual) <= ultimaCarga.kilometrajeActual) {
-      alert(`El kilometraje debe ser mayor a la última carga (${ultimaCarga.kilometrajeActual} km)`);
+      showWarning(`El kilometraje debe ser mayor a la última carga (${ultimaCarga.kilometrajeActual} km)`);
       return;
     }
 
@@ -177,12 +178,12 @@ export function FormularioCargaCombustible({
       const cargaId = await saveCargaCombustible(carga);
       console.log('[FormularioCombustible] ✅ Carga guardada con ID:', cargaId);
 
-      alert('✅ Carga de combustible registrada exitosamente');
+      showSuccess('Carga de combustible registrada exitosamente');
       onComplete();
 
     } catch (error) {
       console.error('[FormularioCombustible] Error al guardar:', error);
-      alert('❌ Error al guardar la carga de combustible');
+      showError('Error al guardar la carga de combustible');
     } finally {
       setLoading(false);
     }

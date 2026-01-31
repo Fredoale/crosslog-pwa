@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { Login } from './components/Login';
 import { EntregasList } from './components/EntregasList';
 import { CapturaForm } from './components/CapturaForm';
@@ -11,6 +12,7 @@ import { DashboardTaller } from './components/mantenimiento/DashboardTaller';
 import { useEntregasStore } from './stores/entregasStore';
 import { useTallerStore } from './stores/tallerStore';
 import { googleAuth } from './utils/googleAuth';
+import { showError } from './utils/toast';
 import type { Entrega, PerfilConsulta } from './types';
 
 type Screen = 'login' | 'list' | 'capture' | 'consulta-home' | 'consulta-cliente' | 'consulta-fletero' | 'consulta-interna' | 'taller';
@@ -49,7 +51,7 @@ function App() {
       })
       .catch((error) => {
         console.error('[App] ❌ Failed to initialize Google Auth:', error);
-        alert('Error al cargar Google Drive. Recarga la página e intenta de nuevo.');
+        showError('Error al cargar Google Drive. Recarga la página e intenta de nuevo.');
       });
   }, []);
 
@@ -222,6 +224,30 @@ function App() {
       {currentScreen === 'taller' && (
         <DashboardTaller onLogout={handleLogout} />
       )}
+
+      {/* Toast notifications */}
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+            fontWeight: 500,
+          },
+          success: {
+            style: {
+              background: '#22c55e',
+            },
+          },
+          error: {
+            style: {
+              background: '#ef4444',
+            },
+            duration: 4000,
+          },
+        }}
+      />
     </>
   );
 }

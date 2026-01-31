@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { showWarning } from '../utils/toast';
 
 interface OCRRegionSelectorProps {
   imageBlob: Blob;
@@ -175,7 +176,7 @@ export function OCRRegionSelector({ imageBlob, onRegionSelected, onCancel }: OCR
 
   const handleConfirm = () => {
     if (!region || region.width < 10 || region.height < 10) {
-      alert('Selecciona un área más grande sobre el número del remito');
+      showWarning('Selecciona un area mas grande sobre el numero del remito');
       return;
     }
 

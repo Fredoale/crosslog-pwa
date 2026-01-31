@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { HDRConsulta } from '../types';
 import { getClientFullName } from '../utils/clienteMapping';
+import { showError } from '../utils/toast';
 
 interface DetalleViajeProps {
   hdrData: HDRConsulta;
@@ -28,7 +29,7 @@ const DetalleViaje: React.FC<DetalleViajeProps> = ({ hdrData, onBack }) => {
       // window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error('[DetalleViaje] Error downloading PDF:', error);
-      alert('Error al abrir el PDF');
+      showError('Error al abrir el PDF');
     } finally {
       setTimeout(() => setDownloadingPdf(null), 1000);
     }

@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
+import { showWarning } from '../utils/toast';
 
 interface SignatureCanvasProps {
   onSave: (signature: { dataUrl: string; nombreReceptor: string; timestamp: number }) => void;
@@ -96,12 +97,12 @@ export function SignatureCanvas({ onSave, onCancel }: SignatureCanvasProps) {
 
   const handleSave = () => {
     if (isEmpty) {
-      alert('Por favor, agregue su firma');
+      showWarning('Por favor, agregue su firma');
       return;
     }
 
     if (!nombreReceptor.trim()) {
-      alert('Por favor, ingrese el nombre del receptor');
+      showWarning('Por favor, ingrese el nombre del receptor');
       return;
     }
 

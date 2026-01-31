@@ -12,6 +12,7 @@ import { getClientFullName } from '../utils/clienteMapping';
 import { GlobalHeader } from './GlobalHeader';
 import { ContextBar } from './ContextBar';
 import { ModuloCarousel } from './ModuloCarousel';
+import { showWarning } from '../utils/toast';
 
 interface ConsultaInternaProps {
   onBack: () => void;
@@ -163,12 +164,12 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
 
   const handleSearch = async () => {
     if (searchType === 'fletero' && !selectedFletero) {
-      alert('Por favor seleccione un fletero');
+      showWarning('Por favor seleccione un fletero');
       return;
     }
 
     if (searchType !== 'fletero' && !searchValue.trim()) {
-      alert('Por favor ingrese un valor para buscar');
+      showWarning('Por favor ingrese un valor para buscar');
       return;
     }
 

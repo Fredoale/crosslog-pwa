@@ -9,6 +9,7 @@ import { buscarRequisitosCliente } from '../utils/clientesRequisitos';
 import { NotificacionesToast } from './NotificacionesToast';
 import { useNotificacionesStore } from '../stores/notificacionesStore';
 import { FEATURES } from '../config/features';
+import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
 
 // Función para verificar si marketplace está habilitado para fleteros
 const isMarketplaceHabilitadoParaFleteros = (): boolean => {
@@ -128,7 +129,7 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
 
   const handleSearch = async () => {
     if (!selectedFletero) {
-      alert('Por favor seleccione una empresa');
+      showWarning('Por favor seleccione una empresa');
       return;
     }
 
@@ -150,12 +151,12 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
 
   const handleFilterSearch = async () => {
     if (!searchValue.trim()) {
-      alert('Por favor ingrese un valor para buscar');
+      showWarning('Por favor ingrese un valor para buscar');
       return;
     }
 
     if (!selectedFletero) {
-      alert('Error: No se pudo obtener la información del fletero');
+      showError('Error: No se pudo obtener la información del fletero');
       return;
     }
 
@@ -331,7 +332,7 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
               <button
                 onClick={() => {
                   if (!isMarketplaceHabilitadoParaFleteros()) {
-                    alert('🚧 MÓDULO EN DESARROLLO\n\nEstamos trabajando en una nueva versión del marketplace de viaje - Crosslog.');
+                    showInfo('🚧 MÓDULO EN DESARROLLO\n\nEstamos trabajando en una nueva versión del marketplace de viaje - Crosslog.');
                     return;
                   }
                   setSelectedModule('marketplace');
@@ -397,7 +398,7 @@ const ConsultaFletero: React.FC<ConsultaFleteroProps> = ({ onBack }) => {
   if (selectedModule === 'marketplace') {
     if (!isMarketplaceHabilitadoParaFleteros()) {
       // Double-check: should not reach here, but handle gracefully
-      alert('🚧 Esta funcionalidad está temporalmente deshabilitada.\n\nEstamos mejorando el Marketplace. ¡Pronto estará disponible!');
+      showInfo('🚧 Esta funcionalidad está temporalmente deshabilitada.\n\nEstamos mejorando el Marketplace. ¡Pronto estará disponible!');
       setSelectedModule(null);
       return null;
     }
@@ -1299,7 +1300,7 @@ function MarketplaceFleteroView({ fleteroName, onBack, onLogout }: MarketplaceFl
                                     <button
                                       onClick={() => {
                                         navigator.clipboard.writeText(carga.link_maps || carga.direccion);
-                                        alert('✅ Link copiado');
+                                        showSuccess('✅ Link copiado');
                                       }}
                                       className="px-2 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-md border border-gray-200 transition-colors flex items-center gap-1"
                                       title="Copiar link"
@@ -1340,7 +1341,7 @@ function MarketplaceFleteroView({ fleteroName, onBack, onLogout }: MarketplaceFl
                                     <button
                                       onClick={() => {
                                         navigator.clipboard.writeText(descarga.link_maps || descarga.direccion);
-                                        alert('✅ Link copiado');
+                                        showSuccess('✅ Link copiado');
                                       }}
                                       className="px-2 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-md border border-gray-200 transition-colors flex items-center gap-1"
                                       title="Copiar link"
@@ -1683,7 +1684,7 @@ function MarketplaceFleteroView({ fleteroName, onBack, onLogout }: MarketplaceFl
                                   <button
                                     onClick={() => {
                                       navigator.clipboard.writeText(carga.link_maps || carga.direccion);
-                                      alert('✅ Link copiado');
+                                      showSuccess('✅ Link copiado');
                                     }}
                                     className="px-2 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-md border border-gray-200 transition-colors flex items-center gap-1"
                                     title="Copiar link"
@@ -1722,7 +1723,7 @@ function MarketplaceFleteroView({ fleteroName, onBack, onLogout }: MarketplaceFl
                                   <button
                                     onClick={() => {
                                       navigator.clipboard.writeText(descarga.link_maps || descarga.direccion);
-                                      alert('✅ Link copiado');
+                                      showSuccess('✅ Link copiado');
                                     }}
                                     className="px-2 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-md border border-gray-200 transition-colors flex items-center gap-1"
                                     title="Copiar link"
@@ -1966,7 +1967,7 @@ function MarketplaceFleteroView({ fleteroName, onBack, onLogout }: MarketplaceFl
                                   <button
                                     onClick={() => {
                                       navigator.clipboard.writeText(carga.link_maps || carga.direccion);
-                                      alert('✅ Link copiado');
+                                      showSuccess('✅ Link copiado');
                                     }}
                                     className="px-2 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-md border border-gray-200 transition-colors flex items-center gap-1"
                                     title="Copiar link"
@@ -2005,7 +2006,7 @@ function MarketplaceFleteroView({ fleteroName, onBack, onLogout }: MarketplaceFl
                                   <button
                                     onClick={() => {
                                       navigator.clipboard.writeText(descarga.link_maps || descarga.direccion);
-                                      alert('✅ Link copiado');
+                                      showSuccess('✅ Link copiado');
                                     }}
                                     className="px-2 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-md border border-gray-200 transition-colors flex items-center gap-1"
                                     title="Copiar link"

@@ -3,6 +3,7 @@
  * Maneja todas las operaciones de checklists en Firebase
  */
 
+import { showError } from '../utils/toast';
 import {
   collection,
   doc,
@@ -122,7 +123,7 @@ export async function saveChecklist(checklist: ChecklistRegistro): Promise<strin
 
     // Si es un error de permisos, dar mensaje específico
     if (error?.code === 'permission-denied') {
-      alert('ERROR DE PERMISOS\n\nFirebase Firestore está bloqueando el guardado.\n\nSolución: Actualiza las reglas de seguridad en Firebase Console.');
+      showError('ERROR DE PERMISOS: Firebase Firestore está bloqueando el guardado. Actualiza las reglas de seguridad en Firebase Console.');
     }
 
     throw error;
@@ -668,7 +669,7 @@ export async function saveChecklistDistribucion(hdr: string, checklist: Checklis
     console.error('[ChecklistService] ❌ Error message:', error?.message);
 
     if (error?.code === 'permission-denied') {
-      alert('ERROR DE PERMISOS\n\nFirebase Firestore está bloqueando el guardado.\n\nSolución: Actualiza las reglas de seguridad en Firebase Console.');
+      showError('ERROR DE PERMISOS: Firebase Firestore está bloqueando el guardado. Actualiza las reglas de seguridad en Firebase Console.');
     }
 
     throw error;

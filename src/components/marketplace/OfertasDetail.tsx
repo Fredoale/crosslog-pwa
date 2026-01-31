@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMarketplaceStore } from '../../stores/marketplaceStore';
 import type { ViajeMarketplace, OfertaMarketplace, FleteroScore } from '../../utils/marketplaceApi';
+import { showSuccess, showError } from '../../utils/toast';
 
 interface OfertasDetailProps {
   viaje: ViajeMarketplace;
@@ -58,13 +59,13 @@ export function OfertasDetail({ viaje, onClose }: OfertasDetailProps) {
         'crosslog_admin' // Usuario que autoriza (hardcoded por ahora)
       );
 
-      alert(`✅ Viaje ${viaje.HDR_viaje} asignado exitosamente a ${fleteroSeleccionado}`);
+      showSuccess(`Viaje ${viaje.HDR_viaje} asignado exitosamente a ${fleteroSeleccionado}`);
 
       setMostrarConfirmacion(false);
       onClose();
     } catch (error) {
       console.error('Error al asignar viaje:', error);
-      alert(`❌ Error al asignar viaje: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      showError(`Error al asignar viaje: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
   };
 

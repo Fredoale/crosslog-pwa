@@ -7,6 +7,7 @@ import { DocumentosModal } from './documentos/DocumentosModal';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Novedad } from '../types/checklist';
+import { showSuccess, showError, showWarning } from '../utils/toast';
 
 interface EntregasListProps {
   onSelectEntrega: (entrega: Entrega) => void;
@@ -160,17 +161,17 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
         reader.onloadend = () => {
           setFotoNovedad(reader.result as string);
           setCapturandoFotoNovedad(false);
-          alert('✅ Foto capturada');
+          showSuccess('Foto capturada');
         };
         reader.onerror = () => {
           setCapturandoFotoNovedad(false);
-          alert('❌ Error al procesar la imagen');
+          showError('Error al procesar la imagen');
         };
         reader.readAsDataURL(file);
       } catch (error) {
         console.error('[EntregasList] Error capturando foto:', error);
         setCapturandoFotoNovedad(false);
-        alert('❌ Error al capturar la foto');
+        showError('Error al capturar la foto');
       }
     };
 
@@ -179,7 +180,7 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
 
   const handleGuardarNovedad = async () => {
     if (!descripcionNovedad.trim()) {
-      alert('Por favor describe la novedad');
+      showWarning('Por favor describe la novedad');
       return;
     }
 
@@ -198,7 +199,7 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
         },
         descripcion: `HDR ${currentHDR} - ${descripcionNovedad.trim()}`,
         comentarioChofer: descripcionNovedad.trim(),
-        fotoUrl: fotoNovedad,
+        fotoUrl: fotoNovedad ?? undefined,
         prioridad: 'ALTA', // Novedades de remitos son ALTA prioridad
         estado: 'PENDIENTE',
         timestamp: new Date()
@@ -220,13 +221,13 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
       await setDoc(novedadRef, novedadData);
       console.log('[EntregasList] ✅ Novedad guardada en Firebase:', novedadId);
 
-      alert('✅ Novedad registrada exitosamente');
+      showSuccess('Novedad registrada exitosamente');
       setDescripcionNovedad('');
       setFotoNovedad(null);
       setMostrarModalNovedad(false);
     } catch (error) {
       console.error('[EntregasList] Error guardando novedad:', error);
-      alert('❌ Error al guardar novedad. Intenta nuevamente.');
+      showError('Error al guardar novedad. Intenta nuevamente.');
     } finally {
       setGuardandoNovedad(false);
     }

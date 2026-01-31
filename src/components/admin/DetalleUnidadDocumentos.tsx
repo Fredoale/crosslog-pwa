@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { sheetsApi } from '../../utils/sheetsApi';
 import { calcularEstadoDocumento, formatearFecha, diasHastaVencimiento, generarMensajeAlerta } from '../../utils/vencimientosUtils';
+import { showError } from '../../utils/toast';
 
 interface DetalleUnidadDocumentosProps {
   numeroUnidad: string;
@@ -44,7 +45,7 @@ export function DetalleUnidadDocumentos({ numeroUnidad, onBack, onAgregarNuevo }
       setDocumentoEditar(null);
     } catch (error) {
       console.error('[DetalleUnidad] Error al guardar:', error);
-      alert('Error al guardar el documento');
+      showError('Error al guardar el documento');
     } finally {
       setGuardando(false);
     }

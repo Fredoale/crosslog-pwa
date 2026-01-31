@@ -2761,7 +2761,7 @@ export class GoogleSheetsAPI {
           if (!mantenimientoPorDia.has(dia)) {
             mantenimientoPorDia.set(dia, []);
           }
-          mantenimientoPorDia.get(dia)!.push(interno);
+          mantenimientoPorDia.get(dia)!.push(nombreFletero);
         } else if (celdaValor === 'V') {
           estado = 'VIAJE';
           diasViaje++;
@@ -3043,7 +3043,7 @@ export class GoogleSheetsAPI {
     const unidades = Array.from(unidadesMap.values()).map(unidad => ({
       ...unidad,
       promedioDiario: unidad.diasActivos > 0 ? unidad.totalMes / unidad.diasActivos : 0,
-      valoresDiarios: unidad.valoresDiarios.sort((a, b) => a.dia - b.dia)
+      valoresDiarios: unidad.valoresDiarios.sort((a: { dia: number }, b: { dia: number }) => a.dia - b.dia)
     }));
 
     const totalesPorDia = Array.from(totalesPorDiaMap.values()).sort((a, b) => a.dia - b.dia);

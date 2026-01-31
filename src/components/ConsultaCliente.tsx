@@ -3,6 +3,7 @@ import { sheetsApi } from '../utils/sheetsApi';
 import type { HDRConsulta } from '../types';
 import DetalleViaje from './DetalleViaje';
 import AuthCliente from './AuthCliente';
+import { showWarning, showError } from '../utils/toast';
 
 interface ConsultaClienteProps {
   onBack: () => void;
@@ -114,12 +115,12 @@ const ConsultaCliente: React.FC<ConsultaClienteProps> = ({ onBack }) => {
 
   const handleSearch = async () => {
     if (!searchValue.trim()) {
-      alert('Por favor ingrese un valor para buscar');
+      showWarning('Por favor ingrese un valor para buscar');
       return;
     }
 
     if (!clienteId) {
-      alert('Error: No se pudo obtener su información de cliente');
+      showError('Error: No se pudo obtener su informacion de cliente');
       return;
     }
 

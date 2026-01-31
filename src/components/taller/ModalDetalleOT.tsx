@@ -3,6 +3,7 @@ import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../config/firebase';
 import type { OrdenTrabajo } from '../../types/checklist';
+import { showSuccess, showError, showWarning } from '../../utils/toast';
 
 interface ModalDetalleOTProps {
   orden: OrdenTrabajo;
@@ -26,7 +27,7 @@ export function ModalDetalleOT({ orden, onClose }: ModalDetalleOTProps) {
     const files = Array.from(e.target.files || []);
     const archivosValidos = files.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
-        alert(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
+        showWarning(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
         return false;
       }
       return true;
@@ -47,7 +48,7 @@ export function ModalDetalleOT({ orden, onClose }: ModalDetalleOTProps) {
     const files = Array.from(e.target.files || []);
     const archivosValidos = files.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
-        alert(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
+        showWarning(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
         return false;
       }
       return true;
@@ -106,11 +107,11 @@ export function ModalDetalleOT({ orden, onClose }: ModalDetalleOTProps) {
       });
 
       console.log('[ModalDetalleOT] Orden actualizada exitosamente');
-      alert('Orden de trabajo actualizada exitosamente');
+      showSuccess('Orden de trabajo actualizada exitosamente');
       onClose();
     } catch (error) {
       console.error('[ModalDetalleOT] Error al guardar:', error);
-      alert('Error al guardar la orden de trabajo: ' + (error as Error).message);
+      showError('Error al guardar la orden de trabajo: ' + (error as Error).message);
     } finally {
       setGuardando(false);
     }

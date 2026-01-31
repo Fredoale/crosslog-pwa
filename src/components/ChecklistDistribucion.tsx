@@ -10,6 +10,7 @@ import { saveChecklistDistribucion, checkChecklistExists } from '../services/che
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
+import { TODAS_LAS_UNIDADES } from './CarouselSector';
 
 interface ChecklistDistribucionProps {
   hdr: string;
@@ -454,94 +455,6 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
     }
   };
 
-  // Modal de Novedad Encontrada
-  const NovedadModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-        <div className="text-center mb-4">
-          <div className="text-5xl mb-3">🚨</div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">Novedad Encontrada</h2>
-          <p className="text-sm text-gray-600">
-            Describe la novedad crítica que requiere atención inmediata
-          </p>
-        </div>
-
-        <textarea
-          value={novedadTemp}
-          onChange={(e) => setNovedadTemp(e.target.value)}
-          placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
-          dir="ltr"
-          lang="es"
-          className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none min-h-32"
-          style={{
-            borderColor: '#e5e7eb',
-            direction: 'ltr',
-            textAlign: 'left',
-            unicodeBidi: 'plaintext'
-          }}
-          onFocus={(e) => {
-            e.currentTarget.style.borderColor = '#f59e0b';
-            e.currentTarget.style.boxShadow = '0 0 0 4px rgba(245, 158, 11, 0.1)';
-          }}
-          onBlur={(e) => {
-            e.currentTarget.style.borderColor = '#e5e7eb';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-          autoFocus
-        />
-
-        {/* Botón de captura de foto */}
-        <button
-          onClick={handleCapturarFotoNovedad}
-          disabled={capturandoFotoNovedadModal}
-          className="w-full mt-3 py-3 px-6 text-gray-700 text-sm font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {capturandoFotoNovedadModal ? (
-            <>
-              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              <span>Procesando...</span>
-            </>
-          ) : fotoNovedadTemp ? (
-            <>
-              <span className="text-xl">✅</span>
-              <span>Foto Guardada - Tomar Otra</span>
-            </>
-          ) : (
-            <>
-              <span className="text-xl">📸</span>
-              <span>Agregar Foto (Opcional)</span>
-            </>
-          )}
-        </button>
-
-        <div className="flex gap-3 mt-4">
-          <button
-            onClick={() => {
-              setShowNovedadModal(false);
-              setNovedadTemp('');
-              setFotoNovedadTemp(null);
-            }}
-            className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleAgregarNovedad}
-            disabled={!novedadTemp.trim()}
-            className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-            style={{
-              background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
-            }}
-          >
-            Registrar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 
   // Botón flotante de Novedad (solo en paso items)
   const FloatingNovedadButton = () => (
@@ -703,7 +616,80 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
 
       return (
         <>
-          {showNovedadModal && <NovedadModal />}
+          {/* Modal de Novedad Encontrada */}
+          {showNovedadModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+                <div className="text-center mb-4">
+                  <div className="text-5xl mb-3">🚨</div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-2">Novedad Encontrada</h2>
+                  <p className="text-sm text-gray-600">
+                    Buen trabajo <span className="font-bold text-gray-800">{chofer}</span> has encontrado una Novedad del{' '}
+                    <span className="font-bold text-blue-600">INT-{unidad} • {TODAS_LAS_UNIDADES.find(u => u.numero === unidad)?.patente || 'N/A'}</span>{' '}
+                    que requiere ser informada
+                  </p>
+                </div>
+
+                <textarea
+                  value={novedadTemp}
+                  onChange={(e) => setNovedadTemp(e.target.value)}
+                  placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
+                  className="w-full px-4 py-3 text-base border-2 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-32 resize-none"
+                  style={{ borderColor: '#e5e7eb' }}
+                />
+
+                {/* Botón de captura de foto */}
+                <button
+                  onClick={handleCapturarFotoNovedad}
+                  disabled={capturandoFotoNovedadModal}
+                  className="w-full mt-3 py-3 px-6 text-gray-700 text-sm font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {capturandoFotoNovedadModal ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Procesando...</span>
+                    </>
+                  ) : fotoNovedadTemp ? (
+                    <>
+                      <span className="text-xl">✅</span>
+                      <span>Foto Guardada - Tomar Otra</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xl">📸</span>
+                      <span>Agregar Foto (Opcional)</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => {
+                      setShowNovedadModal(false);
+                      setNovedadTemp('');
+                      setFotoNovedadTemp(null);
+                    }}
+                    className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleAgregarNovedad}
+                    disabled={!novedadTemp.trim()}
+                    className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                    style={{
+                      background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
+                    }}
+                  >
+                    Registrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {showConfirmacionSinEvidencia && <ConfirmacionSinEvidenciaModal />}
           <FloatingNovedadButton />
 
@@ -823,7 +809,80 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
     // Vista normal de ítems
     return (
       <>
-        {showNovedadModal && <NovedadModal />}
+        {/* Modal de Novedad Encontrada */}
+          {showNovedadModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+                <div className="text-center mb-4">
+                  <div className="text-5xl mb-3">🚨</div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-2">Novedad Encontrada</h2>
+                  <p className="text-sm text-gray-600">
+                    Buen trabajo <span className="font-bold text-gray-800">{chofer}</span> has encontrado una Novedad del{' '}
+                    <span className="font-bold text-blue-600">INT-{unidad} • {TODAS_LAS_UNIDADES.find(u => u.numero === unidad)?.patente || 'N/A'}</span>{' '}
+                    que requiere ser informada
+                  </p>
+                </div>
+
+                <textarea
+                  value={novedadTemp}
+                  onChange={(e) => setNovedadTemp(e.target.value)}
+                  placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
+                  className="w-full px-4 py-3 text-base border-2 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-32 resize-none"
+                  style={{ borderColor: '#e5e7eb' }}
+                />
+
+                {/* Botón de captura de foto */}
+                <button
+                  onClick={handleCapturarFotoNovedad}
+                  disabled={capturandoFotoNovedadModal}
+                  className="w-full mt-3 py-3 px-6 text-gray-700 text-sm font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {capturandoFotoNovedadModal ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Procesando...</span>
+                    </>
+                  ) : fotoNovedadTemp ? (
+                    <>
+                      <span className="text-xl">✅</span>
+                      <span>Foto Guardada - Tomar Otra</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xl">📸</span>
+                      <span>Agregar Foto (Opcional)</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => {
+                      setShowNovedadModal(false);
+                      setNovedadTemp('');
+                      setFotoNovedadTemp(null);
+                    }}
+                    className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleAgregarNovedad}
+                    disabled={!novedadTemp.trim()}
+                    className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                    style={{
+                      background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
+                    }}
+                  >
+                    Registrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         <FloatingNovedadButton />
 
         <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">

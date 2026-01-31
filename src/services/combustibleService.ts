@@ -3,6 +3,7 @@
  * Maneja todas las operaciones de cargas de combustible en Firebase
  */
 
+import { showError } from '../utils/toast';
 import {
   collection,
   doc,
@@ -85,7 +86,7 @@ export async function saveCargaCombustible(carga: Omit<CargaCombustible, 'id' | 
 
     // Si es un error de permisos, dar mensaje específico
     if (error?.code === 'permission-denied') {
-      alert('🚫 ERROR DE PERMISOS\n\nFirebase Firestore está bloqueando el guardado.\n\nSolución: Actualiza las reglas de seguridad en Firebase Console para permitir escritura en cargas_combustible.');
+      showError('ERROR DE PERMISOS: Firebase Firestore está bloqueando el guardado. Actualiza las reglas de seguridad en Firebase Console para permitir escritura en cargas_combustible.');
     }
 
     throw error;
@@ -210,7 +211,7 @@ export async function deleteCargaCombustible(cargaId: string): Promise<void> {
 
     // Si es un error de permisos, dar mensaje específico
     if (error?.code === 'permission-denied') {
-      alert('🚫 ERROR DE PERMISOS\n\nFirebase Firestore está bloqueando la eliminación.\n\nSolución: Actualiza las reglas de seguridad en Firebase Console.');
+      showError('ERROR DE PERMISOS: Firebase Firestore está bloqueando la eliminación. Actualiza las reglas de seguridad en Firebase Console.');
     }
 
     throw error;

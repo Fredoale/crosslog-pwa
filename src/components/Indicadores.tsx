@@ -6,6 +6,7 @@ import { collectHistoricalData } from '../utils/reportData';
 import { generateClaudeAnalysis, validateClaudeApiKey } from '../utils/claudeAnalysis';
 import { generatePDFReport, prepareChartsForPDF } from '../utils/pdfGenerator';
 import ValoresDiariosChart from './ValoresDiariosChart';
+import { showError, showWarning } from '../utils/toast';
 
 interface IndicadoresProps {
   onClose: () => void;
@@ -165,7 +166,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
   const handleGenerateIntelligentReport = async () => {
     // Validate API key
     if (!apiKey || !validateClaudeApiKey(apiKey)) {
-      alert('Por favor ingresa una API Key válida de Claude (debe comenzar con sk-ant-)');
+      showWarning('Por favor ingresa una API Key valida de Claude (debe comenzar con sk-ant-)');
       return;
     }
 
@@ -181,7 +182,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
       // This ensures we use real data, not system date (which may be incorrect)
 
       if (mesesDisponibles.length === 0) {
-        alert('No hay meses disponibles en Google Sheets para generar el reporte.');
+        showWarning('No hay meses disponibles en Google Sheets para generar el reporte.');
         setGeneratingReport(false);
         setReportProgress('');
         return;
@@ -207,7 +208,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
       // VALIDATION: Check if we have actual data before calling Claude API
       if (analysisData.totalViajes === 0) {
         const monthNames = analysisData.allMonths?.map(m => m.month).join(', ') || 'periodo seleccionado';
-        alert(`⚠️ NO HAY DATOS DISPONIBLES\n\nNo se encontraron viajes en los meses analizados:\n${monthNames}\n\nNo se generará el reporte para evitar consumir créditos de IA.\n\nPor favor selecciona un período con datos reales.`);
+        showWarning(`No hay datos disponibles. No se encontraron viajes en: ${monthNames}. Selecciona un periodo con datos reales.`);
         setGeneratingReport(false);
         setReportProgress('');
         return;
@@ -227,7 +228,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
 
     } catch (error) {
       console.error('[Report] Error generating report:', error);
-      alert(`Error al generar reporte: ${(error as Error).message}`);
+      showError(`Error al generar reporte: ${(error as Error).message}`);
       setGeneratingReport(false);
       setReportProgress('');
     }
@@ -235,7 +236,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
 
   const handleDownloadPDF = async () => {
     if (!analysisPreview || !previewData) {
-      alert('No hay análisis disponible para descargar');
+      showWarning('No hay analisis disponible para descargar');
       return;
     }
 
@@ -269,7 +270,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
 
     } catch (error) {
       console.error('[PDF] Error downloading PDF:', error);
-      alert(`Error al descargar PDF: ${(error as Error).message}`);
+      showError(`Error al descargar PDF: ${(error as Error).message}`);
       setDownloadingPDF(false);
     }
   };

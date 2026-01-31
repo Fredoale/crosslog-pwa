@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ViajeMarketplace } from '../../utils/marketplaceApi';
+import { showSuccess, showError } from '../../utils/toast';
 
 interface TestOfertasFormProps {
   viaje: ViajeMarketplace;
@@ -50,7 +51,7 @@ export function TestOfertasForm({ viaje, onOfertaCreada }: TestOfertasFormProps)
       const result = await response.json();
 
       if (result.success) {
-        alert('✅ Oferta creada exitosamente');
+        showSuccess('Oferta creada exitosamente');
         onOfertaCreada();
         // Limpiar form
         setFormData({
@@ -64,11 +65,11 @@ export function TestOfertasForm({ viaje, onOfertaCreada }: TestOfertasFormProps)
           mensaje_adicional: '',
         });
       } else {
-        alert('❌ Error: ' + result.message);
+        showError('Error: ' + result.message);
       }
     } catch (error) {
       console.error('Error al crear oferta:', error);
-      alert('❌ Error al crear oferta: ' + (error as Error).message);
+      showError('Error al crear oferta: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }

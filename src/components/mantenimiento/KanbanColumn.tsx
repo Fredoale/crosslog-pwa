@@ -35,6 +35,12 @@ const COLUMN_CONFIG = {
     colors: 'bg-green-50 border-green-300',
     headerColors: 'bg-green-100 text-green-800',
   },
+  COMPLETADA: {
+    title: 'Completada',
+    emoji: '🏆',
+    colors: 'bg-purple-50 border-purple-300',
+    headerColors: 'bg-purple-100 text-purple-800',
+  },
 };
 
 export function KanbanColumn({ estado, ordenes, onOrdenClick, onEliminar }: KanbanColumnProps) {

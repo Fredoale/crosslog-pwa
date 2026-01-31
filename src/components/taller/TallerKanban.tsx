@@ -10,6 +10,7 @@ import { db } from '../../config/firebase';
 import type { OrdenTrabajo } from '../../types/checklist';
 import { OrdenTrabajoCard } from './OrdenTrabajoCard';
 import { ModalDetalleOT } from './ModalDetalleOT';
+import { showError } from '../../utils/toast';
 
 export function TallerKanban() {
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
@@ -96,7 +97,7 @@ export function TallerKanban() {
       console.log(`[TallerKanban] Orden ${ordenId} cambió a ${nuevoEstado}`);
     } catch (error) {
       console.error('[TallerKanban] Error al cambiar estado:', error);
-      alert('Error al cambiar el estado de la orden');
+      showError('Error al cambiar el estado de la orden');
     }
   };
 

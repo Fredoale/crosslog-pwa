@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { applyCustomFilter } from '../utils/customFilter';
 import { scanDocument } from '../utils/documentScanner';
+import { showWarning, showError } from '../utils/toast';
 
 interface ImageEditorProps {
   imageBlob: Blob;
@@ -343,7 +344,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument = 
 
   const handleApplyCrop = async () => {
     if (!cropArea || cropArea.width < 10 || cropArea.height < 10) {
-      alert('Selecciona un área más grande para recortar');
+      showWarning('Selecciona un area mas grande para recortar');
       return;
     }
 
@@ -416,7 +417,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument = 
       setCropArea(null);
     } catch (error) {
       console.error('[ImageEditor] Error applying crop:', error);
-      alert('Error al aplicar el recorte. Intenta con un área más grande.');
+      showError('Error al aplicar el recorte. Intenta con un area mas grande.');
     }
   };
 
@@ -469,7 +470,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument = 
       console.log('[ImageEditor] ✓ Custom filter applied successfully');
     } catch (error) {
       console.error('[ImageEditor] Error applying custom filter:', error);
-      alert('Error al aplicar el filtro. Intenta de nuevo.');
+      showError('Error al aplicar el filtro. Intenta de nuevo.');
     } finally {
       setApplyingFilter(false);
     }
@@ -643,7 +644,7 @@ export function ImageEditor({ imageBlob, onSave, onCancel, autoDetectDocument = 
       onSave(blob);
     } catch (error) {
       console.error('[ImageEditor] Error saving:', error);
-      alert('Error al guardar la imagen editada');
+      showError('Error al guardar la imagen editada');
     } finally {
       setProcessing(false);
     }

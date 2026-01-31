@@ -1,5 +1,6 @@
 import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { showSuccess } from '../utils/toast';
 
 interface QRCodeData {
   id: string;
@@ -95,7 +96,7 @@ const QRCodesSection: React.FC = () => {
 
   const handleCopyUrl = (url: string, title: string) => {
     navigator.clipboard.writeText(url);
-    alert(`✓ Link de "${title}" copiado al portapapeles`);
+    showSuccess(`Link de "${title}" copiado al portapapeles`);
   };
 
   const handlePrintQR = (qrId: string) => {
