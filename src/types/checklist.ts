@@ -13,11 +13,12 @@ export type ResultadoChecklist = 'APTO' | 'NO_APTO' | 'PENDIENTE';
 export type SectorChecklist = 'vrac' | 'vital-aire' | 'distribucion';
 
 // Categorías de ítems del checklist
-export enum CategoriaItem {
-  REQUISITOS_OBLIGATORIOS = 'REQUISITOS_OBLIGATORIOS',
-  DOCUMENTACION = 'DOCUMENTACION',
-  SEGURIDAD_PERSONAL = 'SEGURIDAD_PERSONAL'
-}
+export const CategoriaItem = {
+  REQUISITOS_OBLIGATORIOS: 'REQUISITOS_OBLIGATORIOS',
+  DOCUMENTACION: 'DOCUMENTACION',
+  SEGURIDAD_PERSONAL: 'SEGURIDAD_PERSONAL'
+} as const;
+export type CategoriaItem = typeof CategoriaItem[keyof typeof CategoriaItem];
 
 // ============================================================================
 // INTERFACES - CHECKLIST
@@ -36,6 +37,7 @@ export interface ItemChecklist {
   comentario?: string;          // Comentario si NO_CONFORME
   fotoUrl?: string;             // URL de foto si es necesaria
   fotoRequerida: boolean;       // Si requiere foto obligatoria
+  fotosEvidencia?: string[];    // Array de fotos de evidencia
   timestamp?: Date;             // Momento de la inspección
 }
 
@@ -122,6 +124,7 @@ export interface Novedad {
   descripcion: string;          // Descripción del problema
   comentarioChofer: string;     // Comentario del chofer
   fotoUrl?: string;             // Foto del problema
+  fotosEvidencia?: string[];    // Array de fotos de evidencia
 
   prioridad: 'ALTA' | 'MEDIA' | 'BAJA';  // Prioridad de la novedad
   estado: 'PENDIENTE' | 'EN_PROCESO' | 'RESUELTA' | 'RECHAZADA';
@@ -158,7 +161,7 @@ export interface OrdenTrabajo {
   fechaAsignacion?: Date;
 
   // Estado
-  estado: 'PENDIENTE' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS' | 'CERRADO';
+  estado: 'PENDIENTE' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS' | 'CERRADO' | 'COMPLETADA';
   prioridad: 'ALTA' | 'MEDIA' | 'BAJA';
 
   // Evidencia fotográfica (array de URLs)
@@ -168,13 +171,28 @@ export interface OrdenTrabajo {
   repuestos?: {
     nombre: string;
     cantidad: number;
-    precioUnitario: number;
-    precioTotal: number;
+    costo: number;
+    precioUnitario?: number;
+    precioTotal?: number;
   }[];
   horasTrabajo?: number;        // Horas de trabajo
   costo?: number;               // Costo total
   costoManoObra?: number;       // Costo de mano de obra
   costoRepuestos?: number;      // Costo total de repuestos
+  costoReparacion?: number;     // Costo total de reparación (acumulativo)
+
+  // Registros de trabajo (historial acumulativo)
+  registrosTrabajo?: {
+    id: string;
+    fecha: any;
+    descripcion: string;
+    horasTrabajo: number;
+    costoTotal: number;
+    repuestos: { nombre: string; cantidad: number; costo: number }[];
+    fotosAntes: string[];
+    fotosDespues: string[];
+    tecnico?: string;
+  }[];
 
   // Mecánico y fechas reales
   mecanico?: string;            // Nombre del mecánico asignado
@@ -199,7 +217,9 @@ export interface OrdenTrabajo {
   // Metadata
   timestamp: Date;
   timestampCompletada?: Date;
-  fechaCreacion: Date;          // Fecha de creación de la OT
+  fechaCreacion?: Date;          // Fecha de creación de la OT
+  fechaCompletado?: Date;        // Fecha de completado
+  descripcionTrabajo?: string;   // Descripción del trabajo realizado
 }
 
 // ============================================================================

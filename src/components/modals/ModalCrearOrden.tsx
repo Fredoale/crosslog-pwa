@@ -16,6 +16,8 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../config/firebase';
 import type { OrdenTrabajo } from '../../types/checklist';
+import { showSuccess, showError, showWarning } from '../../utils/toast';
+import { TODAS_LAS_UNIDADES } from '../CarouselSector';
 
 interface ModalCrearOrdenProps {
   onClose: () => void;
@@ -33,6 +35,23 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
   });
   const [imagenesEvidencia, setImagenesEvidencia] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+
+  // Estado para filtro inteligente de unidad
+  const [unidadBusqueda, setUnidadBusqueda] = useState('');
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+
+  // Filtrar unidades según búsqueda
+  const unidadesFiltradas = TODAS_LAS_UNIDADES.filter(u =>
+    u.numero.toLowerCase().includes(unidadBusqueda.toLowerCase()) ||
+    u.patente.toLowerCase().includes(unidadBusqueda.toLowerCase())
+  ).slice(0, 8);
+
+  // Seleccionar unidad del dropdown
+  const seleccionarUnidad = (unidad: typeof TODAS_LAS_UNIDADES[0]) => {
+    setFormData({ ...formData, unidadNumero: unidad.numero, unidadPatente: unidad.patente });
+    setUnidadBusqueda(unidad.numero);
+    setMostrarSugerencias(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,11 +98,11 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
       });
 
       console.log('[ModalCrearOrden] Orden creada exitosamente con', urlsImagenes.length, 'imágenes');
-      alert('✅ Orden de trabajo creada exitosamente');
+      showSuccess('Orden de trabajo creada exitosamente');
       onCreated();
     } catch (error) {
       console.error('[ModalCrearOrden] Error:', error);
-      alert('Error al crear la orden de trabajo: ' + (error as Error).message);
+      showError('Error al crear la orden de trabajo: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -95,7 +114,7 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
     // Validar tamaño máximo de 5MB por imagen
     const archivosValidos = files.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
-        alert(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
+        showWarning(`La imagen ${file.name} excede el tamaño máximo de 5MB`);
         return false;
       }
       return true;
@@ -140,19 +159,41 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Unidad */}
+          {/* Unidad - Filtro Inteligente */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+            <div className="relative">
               <label className="block text-sm font-semibold text-gray-700 mb-2">Unidad (Número) *</label>
               <input
                 type="text"
                 required
-                value={formData.unidadNumero}
-                onChange={(e) => setFormData({ ...formData, unidadNumero: e.target.value })}
+                value={unidadBusqueda || formData.unidadNumero}
+                onChange={(e) => {
+                  setUnidadBusqueda(e.target.value);
+                  setFormData({ ...formData, unidadNumero: e.target.value, unidadPatente: '' });
+                  setMostrarSugerencias(true);
+                }}
+                onFocus={() => setMostrarSugerencias(true)}
+                onBlur={() => setTimeout(() => setMostrarSugerencias(false), 200)}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                placeholder="Ej: 810"
+                placeholder="Buscar unidad..."
                 style={{ fontSize: '16px' }}
               />
+              {/* Dropdown de sugerencias */}
+              {mostrarSugerencias && unidadBusqueda && unidadesFiltradas.length > 0 && (
+                <div className="absolute z-20 w-full mt-1 bg-white border-2 border-purple-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {unidadesFiltradas.map((unidad) => (
+                    <button
+                      key={unidad.numero}
+                      type="button"
+                      onClick={() => seleccionarUnidad(unidad)}
+                      className="w-full px-4 py-2 text-left hover:bg-purple-50 flex justify-between items-center border-b border-gray-100 last:border-b-0"
+                    >
+                      <span className="font-semibold text-gray-800">{unidad.numero}</span>
+                      <span className="text-sm text-gray-500">{unidad.patente}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Patente *</label>
@@ -161,9 +202,10 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
                 required
                 value={formData.unidadPatente}
                 onChange={(e) => setFormData({ ...formData, unidadPatente: e.target.value })}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                placeholder="Ej: AA123BB"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-gray-50"
+                placeholder="Se autocompleta"
                 style={{ fontSize: '16px' }}
+                readOnly={!!formData.unidadPatente}
               />
             </div>
           </div>

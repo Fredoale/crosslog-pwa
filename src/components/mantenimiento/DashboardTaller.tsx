@@ -27,6 +27,7 @@ import { useTallerStore, type PersonalMantenimiento } from '../../stores/tallerS
 import type { OrdenTrabajo, ConsumoCombustible, ChecklistRegistro } from '../../types/checklist';
 import { getAllCargasCombustible } from '../../services/combustibleService';
 import { ModalCrearOrden } from '../modals/ModalCrearOrden';
+import { TODAS_LAS_UNIDADES } from '../CarouselSector';
 
 // Mapeo de patentes de unidades
 const PATENTES_UNIDADES: Record<string, string> = {
@@ -60,6 +61,11 @@ interface Filtros {
   prioridad: '' | 'ALTA' | 'MEDIA' | 'BAJA';
   estado: '' | 'PENDIENTE' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS';
   unidad: string;
+  fechaDesde: string;
+  fechaHasta: string;
+  // Filtros para Checklists
+  sector: '' | 'vrac' | 'vital-aire' | 'distribucion';
+  resultado: '' | 'APTO' | 'NO_APTO' | 'PENDIENTE';
 }
 
 interface RegistroTrabajo {
@@ -90,8 +96,19 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
   const [filtros, setFiltros] = useState<Filtros>({
     prioridad: '',
     estado: '',
-    unidad: ''
+    unidad: '',
+    fechaDesde: '',
+    fechaHasta: '',
+    sector: '',
+    resultado: ''
   });
+
+  // Estados adicionales para historial
+  const [ordenesCerradas, setOrdenesCerradas] = useState<OrdenTrabajo[]>([]);
+  const [unidadBusquedaHist, setUnidadBusquedaHist] = useState('');
+
+  // Estado para búsqueda de unidad en checklists
+  const [unidadBusquedaCheck, setUnidadBusquedaCheck] = useState('');
 
   // Modales
   const [ordenSeleccionada, setOrdenSeleccionada] = useState<OrdenTrabajo | null>(null);
@@ -101,6 +118,7 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
   const [mostrarModalCrearOT, setMostrarModalCrearOT] = useState(false);
   const [checklistSeleccionado, setChecklistSeleccionado] = useState<ChecklistRegistro | null>(null);
   const [mostrarDetalleChecklist, setMostrarDetalleChecklist] = useState(false);
+  const [mostrarModalDetalleOT, setMostrarModalDetalleOT] = useState(false);
 
   // Cargar datos con listeners en tiempo real
   useEffect(() => {
@@ -279,6 +297,42 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
         console.log('[DashboardTaller] ✨ Checklists cargados:', data.length);
       }, (error) => {
         console.error('[DashboardTaller] ❌ Error cargando checklists:', error);
+        setLoading(false);
+      });
+
+    } else if (vista === 'historial') {
+      // Cargar órdenes cerradas para el historial
+      console.log('[DashboardTaller] 📋 Cargando historial de órdenes cerradas...');
+      const q = query(
+        ordenesRef,
+        where('estado', '==', 'CERRADO')
+      );
+
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const ordenes = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            fecha: data.fecha instanceof Timestamp ? data.fecha.toDate() : data.fecha,
+            timestamp: data.timestamp instanceof Timestamp ? data.timestamp.toDate() : data.timestamp,
+            fechaCompletado: data.fechaCompletado instanceof Timestamp ? data.fechaCompletado.toDate() : data.fechaCompletado,
+            timestampCompletada: data.timestampCompletada instanceof Timestamp ? data.timestampCompletada.toDate() : data.timestampCompletada,
+          };
+        }) as OrdenTrabajo[];
+
+        // Ordenar por fecha de cierre descendente (más reciente primero)
+        ordenes.sort((a, b) => {
+          const fechaA = a.timestampCompletada || a.fechaCompletado || a.timestamp;
+          const fechaB = b.timestampCompletada || b.fechaCompletado || b.timestamp;
+          return new Date(fechaB).getTime() - new Date(fechaA).getTime();
+        });
+
+        setOrdenesCerradas(ordenes);
+        setLoading(false);
+        console.log('[DashboardTaller] ✨ Historial cargado:', ordenes.length, 'órdenes cerradas');
+      }, (error) => {
+        console.error('[DashboardTaller] ❌ Error cargando historial:', error);
         setLoading(false);
       });
     }
@@ -574,12 +628,34 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                 <span className="text-[10px] sm:text-xs">Check</span>
               </div>
             </button>
+
+            {/* Tab Historial */}
+            <button
+              onClick={() => setVista('historial')}
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
+                vista === 'historial'
+                  ? 'text-amber-600 border-b-3 border-amber-600 bg-amber-50'
+                  : 'text-gray-500 hover:text-amber-600 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="flex items-center gap-1">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                    vista === 'historial' ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-700'
+                  }`}>{ordenesCerradas.length}</span>
+                </div>
+                <span className="text-[10px] sm:text-xs">Hist</span>
+              </div>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Filtros - Solo mostrar si no es dashboard y no es checklists */}
-      {vista !== 'dashboard' && vista !== 'checklists' && (
+      {/* Filtros - Solo mostrar si no es dashboard, checklists o historial */}
+      {vista !== 'dashboard' && vista !== 'checklists' && vista !== 'historial' && (
         <div className="bg-gradient-to-br from-green-50 to-gray-50 border-b border-green-200 p-3 md:p-4">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
@@ -631,10 +707,10 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
               {/* Botón Limpiar + Indicador */}
               <div className="flex flex-col justify-end gap-2">
                 <button
-                  onClick={() => setFiltros({ prioridad: '', estado: '', unidad: '' })}
+                  onClick={() => setFiltros({ prioridad: '', estado: '', unidad: '', fechaDesde: '', fechaHasta: '', sector: '', resultado: '' })}
                   className="w-full px-3 py-2.5 bg-gradient-to-r from-gray-200 to-gray-300 text-gray-800 font-semibold rounded-lg hover:from-gray-300 hover:to-gray-400 active:scale-95 transition-all shadow-sm text-sm"
                 >
-                  🔄 Limpiar Filtros
+                  Limpiar Filtros
                 </button>
                 <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-green-100 border border-green-300 rounded-lg">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -668,6 +744,10 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                 )}
                 onTomarOT={handleTomarOT}
                 onVerHistorial={handleVerHistorialUnidad}
+                onVerDetalle={(orden) => {
+                  setOrdenSeleccionada(orden);
+                  setMostrarModalDetalleOT(true);
+                }}
                 tecnicoActual={tecnicoSeleccionado?.nombre || ''}
               />
             )}
@@ -683,17 +763,383 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                 onMarcarEsperando={handleMarcarEsperandoRepuestos}
                 onCerrarOT={handleAbrirCierreOT}
                 onVerHistorial={handleVerHistorialUnidad}
+                onVerDetalle={(orden) => {
+                  setOrdenSeleccionada(orden);
+                  setMostrarModalDetalleOT(true);
+                }}
               />
             )}
 
             {vista === 'checklists' && (
-              <ListaChecklists
-                checklists={checklists}
-                onChecklistClick={(checklist) => {
-                  setChecklistSeleccionado(checklist);
-                  setMostrarDetalleChecklist(true);
-                }}
-              />
+              <div>
+                {/* Filtros para Checklists */}
+                <div className="bg-gradient-to-br from-emerald-50 to-gray-50 rounded-xl p-3 md:p-4 mb-4 md:mb-6 border border-emerald-200">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
+                    <div>
+                      <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Sector</label>
+                      <select
+                        value={filtros.sector}
+                        onChange={(e) => setFiltros({ ...filtros, sector: e.target.value as any })}
+                        className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white touch-target-48"
+                        style={{ fontSize: '16px' }}
+                      >
+                        <option value="">Todos los sectores</option>
+                        <option value="vrac">VRAC Cisternas</option>
+                        <option value="vital-aire">Vital Aire</option>
+                        <option value="distribucion">Distribución</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Resultado</label>
+                      <select
+                        value={filtros.resultado}
+                        onChange={(e) => setFiltros({ ...filtros, resultado: e.target.value as any })}
+                        className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white touch-target-48"
+                        style={{ fontSize: '16px' }}
+                      >
+                        <option value="">Todos</option>
+                        <option value="APTO">APTO</option>
+                        <option value="NO_APTO">NO APTO</option>
+                        <option value="PENDIENTE">PENDIENTE</option>
+                      </select>
+                    </div>
+
+                    <div className="relative">
+                      <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Unidad</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={unidadBusquedaCheck}
+                          onChange={(e) => setUnidadBusquedaCheck(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setFiltros({ ...filtros, unidad: unidadBusquedaCheck });
+                              setUnidadBusquedaCheck('');
+                            }
+                          }}
+                          placeholder={filtros.unidad ? `Filtrado: INT-${filtros.unidad}` : "Buscar INT..."}
+                          className="flex-1 px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white touch-target-48"
+                          style={{ fontSize: '16px' }}
+                        />
+                        {filtros.unidad && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFiltros({ ...filtros, unidad: '' });
+                              setUnidadBusquedaCheck('');
+                            }}
+                            className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-semibold text-sm"
+                            title="Quitar filtro"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {/* Dropdown de sugerencias */}
+                      {unidadBusquedaCheck && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border-2 border-emerald-500 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {TODAS_LAS_UNIDADES
+                            .filter(u => u.numero.includes(unidadBusquedaCheck) || u.patente.toLowerCase().includes(unidadBusquedaCheck.toLowerCase()))
+                            .slice(0, 8)
+                            .map(u => (
+                              <button
+                                key={u.numero}
+                                type="button"
+                                onClick={() => {
+                                  setFiltros({ ...filtros, unidad: u.numero });
+                                  setUnidadBusquedaCheck('');
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-emerald-50 transition-colors flex justify-between items-center"
+                              >
+                                <span className="font-semibold text-gray-800">INT-{u.numero}</span>
+                                <span className="text-sm text-gray-500">{u.patente}</span>
+                              </button>
+                            ))}
+                          {TODAS_LAS_UNIDADES.filter(u => u.numero.includes(unidadBusquedaCheck) || u.patente.toLowerCase().includes(unidadBusquedaCheck.toLowerCase())).length === 0 && (
+                            <div className="px-3 py-2 text-gray-500 text-sm">No se encontraron unidades</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-end">
+                      <button
+                        onClick={() => {
+                          setFiltros({ ...filtros, sector: '', resultado: '', unidad: '' });
+                          setUnidadBusquedaCheck('');
+                        }}
+                        className="w-full px-3 md:px-4 py-2.5 md:py-2 bg-gradient-to-r from-gray-200 to-gray-300 text-gray-800 font-semibold rounded-lg hover:from-gray-300 hover:to-gray-400 active:scale-95 transition-all shadow-sm touch-target-48 text-sm md:text-base"
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista de Checklists con filtros aplicados */}
+                <ListaChecklists
+                  checklists={checklists.filter(checklist => {
+                    // Filtro por sector
+                    if (filtros.sector && checklist.sector !== filtros.sector) return false;
+                    // Filtro por resultado
+                    if (filtros.resultado && checklist.resultado !== filtros.resultado) return false;
+                    // Filtro por unidad
+                    if (filtros.unidad && !checklist.unidad.numero.includes(filtros.unidad)) return false;
+                    return true;
+                  })}
+                  onChecklistClick={(checklist) => {
+                    setChecklistSeleccionado(checklist);
+                    setMostrarDetalleChecklist(true);
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Tab Historial - Órdenes Completadas */}
+            {vista === 'historial' && (
+              <div>
+                {/* Filtros para Historial */}
+                <div className="bg-gradient-to-br from-amber-50 to-gray-50 rounded-xl p-3 md:p-4 mb-4 md:mb-6 border border-amber-200">
+                  <h3 className="text-lg md:text-xl font-bold text-amber-700 mb-3 md:mb-4">
+                    Historial de Trabajos Completados
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+                    <div className="relative">
+                      <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Unidad</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder={filtros.unidad ? `Filtrado: INT-${filtros.unidad}` : "Buscar INT..."}
+                          value={unidadBusquedaHist}
+                          onChange={(e) => setUnidadBusquedaHist(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setFiltros({ ...filtros, unidad: unidadBusquedaHist });
+                              setUnidadBusquedaHist('');
+                            }
+                          }}
+                          className="flex-1 px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white touch-target-48"
+                          style={{ fontSize: '16px' }}
+                        />
+                        {filtros.unidad && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFiltros({ ...filtros, unidad: '' });
+                              setUnidadBusquedaHist('');
+                            }}
+                            className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-semibold text-sm"
+                            title="Quitar filtro"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {/* Dropdown de sugerencias */}
+                      {unidadBusquedaHist && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border-2 border-amber-500 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {TODAS_LAS_UNIDADES
+                            .filter(u => u.numero.includes(unidadBusquedaHist) || u.patente.toLowerCase().includes(unidadBusquedaHist.toLowerCase()))
+                            .slice(0, 8)
+                            .map(u => (
+                              <button
+                                key={u.numero}
+                                type="button"
+                                onClick={() => {
+                                  setFiltros({ ...filtros, unidad: u.numero });
+                                  setUnidadBusquedaHist('');
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-amber-50 transition-colors flex justify-between items-center"
+                              >
+                                <span className="font-semibold text-gray-800">INT-{u.numero}</span>
+                                <span className="text-sm text-gray-500">{u.patente}</span>
+                              </button>
+                            ))}
+                          {TODAS_LAS_UNIDADES.filter(u => u.numero.includes(unidadBusquedaHist) || u.patente.toLowerCase().includes(unidadBusquedaHist.toLowerCase())).length === 0 && (
+                            <div className="px-3 py-2 text-gray-500 text-sm">No se encontraron unidades</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Fecha Desde</label>
+                      <input
+                        type="date"
+                        value={filtros.fechaDesde}
+                        onChange={(e) => setFiltros({ ...filtros, fechaDesde: e.target.value })}
+                        className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white touch-target-48"
+                        style={{ fontSize: '16px' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Fecha Hasta</label>
+                      <input
+                        type="date"
+                        value={filtros.fechaHasta}
+                        onChange={(e) => setFiltros({ ...filtros, fechaHasta: e.target.value })}
+                        className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white touch-target-48"
+                        style={{ fontSize: '16px' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista de Órdenes Completadas */}
+                <div className="space-y-3 md:space-y-4">
+                  {ordenesCerradas
+                    .filter(orden => {
+                      // Filtro por unidad
+                      if (filtros.unidad && !orden.unidad.numero.includes(filtros.unidad)) return false;
+
+                      // Filtros por fecha
+                      const fechaOrden = orden.timestampCompletada || orden.fechaCompletado || orden.timestamp;
+                      if (filtros.fechaDesde) {
+                        const fechaDesde = new Date(filtros.fechaDesde);
+                        if (new Date(fechaOrden) < fechaDesde) return false;
+                      }
+                      if (filtros.fechaHasta) {
+                        const fechaHasta = new Date(filtros.fechaHasta);
+                        fechaHasta.setHours(23, 59, 59);
+                        if (new Date(fechaOrden) > fechaHasta) return false;
+                      }
+
+                      return true;
+                    })
+                    .map(orden => (
+                      <div
+                        key={orden.id}
+                        onClick={() => {
+                          setOrdenSeleccionada(orden);
+                          setMostrarModalDetalleOT(true);
+                        }}
+                        className="bg-white rounded-xl p-4 md:p-5 border-2 border-amber-200 hover:border-amber-400 hover:shadow-lg transition-all cursor-pointer"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-shrink-0 w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-md">
+                              <span className="text-white font-bold text-lg md:text-xl">
+                                {orden.unidad.numero}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="font-bold text-base md:text-lg text-gray-800">
+                                OT #{orden.numeroOT || orden.id?.slice(-6)}
+                              </div>
+                              <div className="text-sm md:text-base text-gray-600">
+                                Unidad {orden.unidad.numero} - {obtenerPatente(orden.unidad.numero) || orden.unidad.patente || 'N/A'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs md:text-sm font-semibold">
+                              COMPLETADO
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-sm md:text-base text-gray-700 mb-3 line-clamp-2">
+                          {orden.descripcion}
+                        </div>
+
+                        {/* Mostrar resumen de registros de trabajo */}
+                        {orden.registrosTrabajo && orden.registrosTrabajo.length > 0 && (
+                          <div className="bg-amber-50 rounded-lg p-3 mb-3 border border-amber-200">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-semibold text-amber-700">
+                                {orden.registrosTrabajo.length} registro(s) de trabajo
+                              </span>
+                              <div className="flex gap-4 text-gray-600">
+                                <span>Hrs: {orden.horasTrabajo || 0}</span>
+                                <span>Costo: ${orden.costoReparacion?.toLocaleString() || 0}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 text-xs md:text-sm">
+                          <div className="flex items-center gap-1.5 text-gray-600">
+                            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span>{(() => {
+                              const fecha = orden.timestampCompletada || orden.fechaCompletado || orden.timestamp;
+                              return fecha ? new Date(fecha).toLocaleDateString('es-AR') : 'Sin fecha';
+                            })()}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-gray-600">
+                            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                            <span>{orden.mecanico || orden.asignadoA || 'Sin asignar'}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-gray-600">
+                            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                            </svg>
+                            <span className={`font-semibold ${
+                              orden.prioridad === 'ALTA' ? 'text-red-600' :
+                              orden.prioridad === 'MEDIA' ? 'text-amber-600' :
+                              'text-green-600'
+                            }`}>
+                              {orden.prioridad}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-gray-600">
+                            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>{orden.tipo || 'Correctivo'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                  {ordenesCerradas.length === 0 && (
+                    <div className="text-center py-12 md:py-16">
+                      <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 bg-amber-100 rounded-full mb-4">
+                        <svg className="w-8 h-8 md:w-10 md:h-10 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-base md:text-lg text-gray-600 font-medium">
+                        No hay órdenes de trabajo completadas
+                      </p>
+                      <p className="text-sm md:text-base text-gray-500 mt-2">
+                        Las órdenes cerradas aparecerán aquí automáticamente
+                      </p>
+                    </div>
+                  )}
+
+                  {ordenesCerradas.length > 0 && ordenesCerradas.filter(o => {
+                    if (filtros.unidad && !o.unidad.numero.includes(filtros.unidad)) return false;
+                    const fechaOrden = o.timestampCompletada || o.fechaCompletado || o.timestamp;
+                    if (filtros.fechaDesde && new Date(fechaOrden) < new Date(filtros.fechaDesde)) return false;
+                    if (filtros.fechaHasta) {
+                      const fechaHasta = new Date(filtros.fechaHasta);
+                      fechaHasta.setHours(23, 59, 59);
+                      if (new Date(fechaOrden) > fechaHasta) return false;
+                    }
+                    return true;
+                  }).length === 0 && (
+                    <div className="text-center py-12 md:py-16">
+                      <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 bg-gray-100 rounded-full mb-4">
+                        <svg className="w-8 h-8 md:w-10 md:h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <p className="text-base md:text-lg text-gray-600 font-medium">
+                        No se encontraron resultados
+                      </p>
+                      <p className="text-sm md:text-base text-gray-500 mt-2">
+                        Prueba con otros filtros de búsqueda
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -759,6 +1205,22 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
             setMostrarDetalleChecklist(false);
             setChecklistSeleccionado(null);
           }}
+        />
+      )}
+
+      {/* Modal Detalle OT */}
+      {mostrarModalDetalleOT && ordenSeleccionada && (
+        <ModalDetalleOT
+          orden={ordenSeleccionada}
+          onClose={() => {
+            setMostrarModalDetalleOT(false);
+            setOrdenSeleccionada(null);
+          }}
+          onTomarOT={() => {
+            setMostrarModalDetalleOT(false);
+            handleTomarOT(ordenSeleccionada);
+          }}
+          tecnicoActual={tecnicoSeleccionado?.nombre || ''}
         />
       )}
     </div>
@@ -842,7 +1304,7 @@ function VistaDashboard({ ordenes }: VistaDashboardProps) {
     }
     acc[key].ots.push(o);
     acc[key].totalOTs++;
-    acc[key].costoTotal += o.costo || 0;
+    acc[key].costoTotal += o.costoReparacion || o.costo || 0;
     return acc;
   }, {} as Record<string, { numero: string; patente: string; ots: OrdenTrabajo[]; totalOTs: number; costoTotal: number }>);
 
@@ -1219,7 +1681,7 @@ function VistaDashboard({ ordenes }: VistaDashboardProps) {
                         <p className="text-xs text-gray-700 mb-1">{ot.descripcion}</p>
                         <div className="flex items-center justify-between text-xs text-gray-600">
                           <span>{convertirTimestampFirebase(ot.timestamp).toLocaleDateString()}</span>
-                          {ot.costo && <span className="font-semibold text-[#56ab2f]">${ot.costo.toLocaleString()}</span>}
+                          {(ot.costoReparacion || ot.costo) && <span className="font-semibold text-[#56ab2f]">${(ot.costoReparacion || ot.costo || 0).toLocaleString()}</span>}
                         </div>
                       </div>
                     ))}
@@ -1252,10 +1714,11 @@ interface ListaOrdenesActivasProps {
   ordenes: OrdenTrabajo[];
   onTomarOT: (orden: OrdenTrabajo) => void;
   onVerHistorial: (unidad: string) => void;
+  onVerDetalle: (orden: OrdenTrabajo) => void;
   tecnicoActual: string;
 }
 
-function ListaOrdenesActivas({ ordenes, onTomarOT, onVerHistorial, tecnicoActual }: ListaOrdenesActivasProps) {
+function ListaOrdenesActivas({ ordenes, onTomarOT, onVerHistorial, onVerDetalle, tecnicoActual }: ListaOrdenesActivasProps) {
   if (ordenes.length === 0) {
     return (
       <div className="bg-white rounded-xl p-12 text-center">
@@ -1278,12 +1741,16 @@ function ListaOrdenesActivas({ ordenes, onTomarOT, onVerHistorial, tecnicoActual
         );
 
         return (
-          <div key={orden.id} className="bg-white rounded-xl p-4 md:p-6 shadow-md border-2 border-gray-200 hover:shadow-lg transition-shadow">
+          <div
+            key={orden.id}
+            className="bg-white rounded-xl p-4 md:p-6 shadow-md border-2 border-gray-200 hover:shadow-lg hover:border-green-300 transition-all cursor-pointer"
+            onClick={() => onVerDetalle(orden)}
+          >
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 md:gap-3 mb-2 flex-wrap">
                   <span className="text-xl md:text-2xl font-bold text-gray-900">
-                    OT #{orden.numeroOT}
+                    OT #{String(orden.numeroOT).slice(-5)}
                   </span>
                   <span className={`px-2 md:px-3 py-1 rounded-full text-xs font-bold ${
                     orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-800' :
@@ -1302,11 +1769,17 @@ function ListaOrdenesActivas({ ordenes, onTomarOT, onVerHistorial, tecnicoActual
                   }`}>
                     {orden.tipo}
                   </span>
+                  {/* Indicador de imágenes */}
+                  {orden.fotosEvidencia && orden.fotosEvidencia.length > 0 && (
+                    <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                      📷 {orden.fotosEvidencia.length}
+                    </span>
+                  )}
                 </div>
 
                 <div className="space-y-1 mb-3">
                   <p className="text-sm md:text-base text-gray-700">
-                    <span className="font-semibold">Unidad:</span> {orden.unidad.numero} ({orden.unidad.patente})
+                    <span className="font-semibold">Unidad:</span> {orden.unidad.numero} ({obtenerPatente(orden.unidad.numero)})
                   </p>
                   <p className="text-sm md:text-base text-gray-700 line-clamp-2">
                     <span className="font-semibold">Descripción:</span> {orden.descripcion}
@@ -1323,10 +1796,10 @@ function ListaOrdenesActivas({ ordenes, onTomarOT, onVerHistorial, tecnicoActual
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {!yaAsignada && (
                 <button
-                  onClick={() => onTomarOT(orden)}
+                  onClick={(e) => { e.stopPropagation(); onTomarOT(orden); }}
                   className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-all"
                 >
                   ✋ Tomar esta OT
@@ -1338,10 +1811,16 @@ function ListaOrdenesActivas({ ordenes, onTomarOT, onVerHistorial, tecnicoActual
                 </div>
               )}
               <button
-                onClick={() => onVerHistorial(orden.unidad.numero)}
+                onClick={(e) => { e.stopPropagation(); onVerHistorial(orden.unidad.numero); }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
               >
                 📋 Historial
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onVerDetalle(orden); }}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all"
+              >
+                Ver Detalle
               </button>
             </div>
           </div>
@@ -1361,6 +1840,7 @@ interface ListaOrdenesAsignadasProps {
   onMarcarEsperando: (orden: OrdenTrabajo) => void;
   onCerrarOT: (orden: OrdenTrabajo) => void;
   onVerHistorial: (unidad: string) => void;
+  onVerDetalle: (orden: OrdenTrabajo) => void;
 }
 
 function ListaOrdenesAsignadas({
@@ -1368,7 +1848,8 @@ function ListaOrdenesAsignadas({
   onRegistrarTrabajo,
   onMarcarEsperando,
   onCerrarOT,
-  onVerHistorial
+  onVerHistorial,
+  onVerDetalle
 }: ListaOrdenesAsignadasProps) {
   if (ordenes.length === 0) {
     return (
@@ -1389,12 +1870,16 @@ function ListaOrdenesAsignadas({
         );
 
         return (
-          <div key={orden.id} className="bg-white rounded-xl p-4 md:p-6 shadow-md border-2 border-blue-200 hover:shadow-lg transition-shadow">
+          <div
+            key={orden.id}
+            className="bg-white rounded-xl p-4 md:p-6 shadow-md border-2 border-blue-200 hover:shadow-lg hover:border-blue-400 transition-all cursor-pointer"
+            onClick={() => onVerDetalle(orden)}
+          >
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 md:gap-3 mb-2 flex-wrap">
                   <span className="text-xl md:text-2xl font-bold text-gray-900">
-                    OT #{orden.numeroOT}
+                    OT #{String(orden.numeroOT).slice(-5)}
                   </span>
                   <span className={`px-2 md:px-3 py-1 rounded-full text-xs font-bold ${
                     orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-800' :
@@ -1412,11 +1897,17 @@ function ListaOrdenesAsignadas({
                   }`}>
                     {orden.estado === 'EN_PROCESO' ? '🔧 EN PROCESO' : '⏳ ESPERANDO REPUESTOS'}
                   </span>
+                  {/* Indicador de imágenes */}
+                  {orden.fotosEvidencia && orden.fotosEvidencia.length > 0 && (
+                    <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                      📷 {orden.fotosEvidencia.length}
+                    </span>
+                  )}
                 </div>
 
                 <div className="space-y-1 mb-3">
                   <p className="text-sm md:text-base text-gray-700">
-                    <span className="font-semibold">Unidad:</span> {orden.unidad.numero} ({orden.unidad.patente})
+                    <span className="font-semibold">Unidad:</span> {orden.unidad.numero} ({obtenerPatente(orden.unidad.numero)})
                   </p>
                   <p className="text-sm md:text-base text-gray-700 line-clamp-2">
                     <span className="font-semibold">Descripción:</span> {orden.descripcion}
@@ -1440,15 +1931,22 @@ function ListaOrdenesAsignadas({
 
             <div className="flex gap-2 flex-wrap">
               <button
-                onClick={() => onRegistrarTrabajo(orden)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all"
+                onClick={(e) => { e.stopPropagation(); onVerDetalle(orden); }}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all"
+              >
+                Ver Detalle
+              </button>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); onRegistrarTrabajo(orden); }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-all"
               >
                 ✏️ Registrar Trabajo
               </button>
 
               {orden.estado === 'EN_PROCESO' && (
                 <button
-                  onClick={() => onMarcarEsperando(orden)}
+                  onClick={(e) => { e.stopPropagation(); onMarcarEsperando(orden); }}
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-all"
                 >
                   ⏳ Esperando Repuestos
@@ -1456,14 +1954,14 @@ function ListaOrdenesAsignadas({
               )}
 
               <button
-                onClick={() => onCerrarOT(orden)}
+                onClick={(e) => { e.stopPropagation(); onCerrarOT(orden); }}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-all"
               >
                 ✓ Cerrar OT
               </button>
 
               <button
-                onClick={() => onVerHistorial(orden.unidad.numero)}
+                onClick={(e) => { e.stopPropagation(); onVerHistorial(orden.unidad.numero); }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
               >
                 📋 Historial
@@ -1917,15 +2415,38 @@ interface ModalRegistroTrabajoProps {
   onGuardado: () => void;
 }
 
+// Tipo para registro de trabajo individual
+interface RegistroTrabajoItem {
+  id: string;
+  fecha: any;
+  descripcion: string;
+  horasTrabajo: number;
+  costoTotal: number;
+  repuestos: { nombre: string; cantidad: number; costo: number }[];
+  fotosAntes: string[];
+  fotosDespues: string[];
+  tecnico?: string;
+}
+
 function ModalRegistroTrabajo({ orden, onClose, onGuardado }: ModalRegistroTrabajoProps) {
   const [loading, setLoading] = useState(false);
-  const [descripcion, setDescripcion] = useState(orden.descripcionTrabajo || '');
-  const [horasTrabajo, setHorasTrabajo] = useState(orden.horasTrabajo || 0);
-  const [repuestos, setRepuestos] = useState<{ nombre: string; cantidad: number; costo: number }[]>(
-    orden.repuestos || []
-  );
+  const [descripcion, setDescripcion] = useState('');
+  const [horasTrabajo, setHorasTrabajo] = useState(0);
+  const [costoManoObra, setCostoManoObra] = useState(0);
+  const [repuestos, setRepuestos] = useState<{ nombre: string; cantidad: number; costo: number }[]>([]);
   const [fotosAntes, setFotosAntes] = useState<File[]>([]);
   const [fotosDespues, setFotosDespues] = useState<File[]>([]);
+
+  // Historial de registros anteriores
+  const registrosAnteriores: RegistroTrabajoItem[] = orden.registrosTrabajo || [];
+
+  // Calcular costo de este registro
+  const costoRepuestos = repuestos.reduce((sum, r) => sum + (r.cantidad * r.costo), 0);
+  const costoEsteRegistro = costoRepuestos + costoManoObra;
+
+  // Calcular totales acumulados (anteriores + este)
+  const totalHorasAcumuladas = registrosAnteriores.reduce((sum, r) => sum + (r.horasTrabajo || 0), 0) + horasTrabajo;
+  const totalCostoAcumulado = registrosAnteriores.reduce((sum, r) => sum + (r.costoTotal || 0), 0) + costoEsteRegistro;
 
   const handleAgregarRepuesto = () => {
     setRepuestos([...repuestos, { nombre: '', cantidad: 1, costo: 0 }]);
@@ -1938,13 +2459,18 @@ function ModalRegistroTrabajo({ orden, onClose, onGuardado }: ModalRegistroTraba
   const handleGuardar = async () => {
     if (!orden.id) return;
 
+    if (!descripcion.trim()) {
+      showWarning('Por favor ingresa una descripción del trabajo');
+      return;
+    }
+
     setLoading(true);
     try {
       // Subir fotos antes
       const urlsFotosAntes: string[] = [];
       for (const foto of fotosAntes) {
         const timestamp = Date.now();
-        const nombreArchivo = `ot/${orden.numeroOT}/antes_${timestamp}_${foto.name}`;
+        const nombreArchivo = `ordenes_trabajo/${orden.unidad.numero}_antes_${timestamp}_${foto.name}`;
         const storageRef = ref(storage, nombreArchivo);
         await uploadBytes(storageRef, foto);
         const url = await getDownloadURL(storageRef);
@@ -1955,22 +2481,34 @@ function ModalRegistroTrabajo({ orden, onClose, onGuardado }: ModalRegistroTraba
       const urlsFotosDespues: string[] = [];
       for (const foto of fotosDespues) {
         const timestamp = Date.now();
-        const nombreArchivo = `ot/${orden.numeroOT}/despues_${timestamp}_${foto.name}`;
+        const nombreArchivo = `ordenes_trabajo/${orden.unidad.numero}_despues_${timestamp}_${foto.name}`;
         const storageRef = ref(storage, nombreArchivo);
         await uploadBytes(storageRef, foto);
         const url = await getDownloadURL(storageRef);
         urlsFotosDespues.push(url);
       }
 
-      // Actualizar orden
-      const ordenRef = doc(db, 'ordenes_trabajo', orden.id);
-      const costoTotal = repuestos.reduce((sum, r) => sum + (r.cantidad * r.costo), 0);
-
-      await updateDoc(ordenRef, {
-        descripcionTrabajo: descripcion,
+      // Crear nuevo registro de trabajo
+      const nuevoRegistro: RegistroTrabajoItem = {
+        id: `reg_${Date.now()}`,
+        fecha: new Date().toISOString(),
+        descripcion: descripcion,
         horasTrabajo: horasTrabajo,
-        repuestos: repuestos,
-        costo: costoTotal,
+        costoTotal: costoEsteRegistro,
+        repuestos: repuestos.filter(r => r.nombre.trim() !== ''),
+        fotosAntes: urlsFotosAntes,
+        fotosDespues: urlsFotosDespues
+      };
+
+      // Agregar al array de registros (acumulativo)
+      const nuevosRegistros = [...registrosAnteriores, nuevoRegistro];
+
+      // Actualizar orden con totales acumulados
+      const ordenRef = doc(db, 'ordenes_trabajo', orden.id);
+      await updateDoc(ordenRef, {
+        registrosTrabajo: nuevosRegistros,
+        horasTrabajo: totalHorasAcumuladas,
+        costoReparacion: totalCostoAcumulado,
         fotosEvidencia: [
           ...(orden.fotosEvidencia || []),
           ...urlsFotosAntes,
@@ -1979,7 +2517,7 @@ function ModalRegistroTrabajo({ orden, onClose, onGuardado }: ModalRegistroTraba
         ultimaActualizacion: serverTimestamp()
       });
 
-      showSuccess('Trabajo registrado correctamente');
+      showSuccess('Registro de trabajo guardado correctamente');
       onGuardado();
     } catch (error) {
       console.error('[ModalRegistroTrabajo] Error guardando:', error);
@@ -2000,32 +2538,95 @@ function ModalRegistroTrabajo({ orden, onClose, onGuardado }: ModalRegistroTraba
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Descripción del trabajo */}
-          <div>
-            <label className="block font-semibold text-gray-700 mb-2">
-              Descripción del trabajo realizado
-            </label>
-            <textarea
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              rows={4}
-              className="w-full px-4 py-3 border rounded-lg"
-              placeholder="Describe el trabajo realizado..."
-            />
+          {/* Historial de Registros Anteriores */}
+          {registrosAnteriores.length > 0 && (
+            <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4">
+              <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                <span>📋</span> Historial de Registros ({registrosAnteriores.length})
+              </h4>
+              <div className="space-y-3 max-h-48 overflow-y-auto">
+                {registrosAnteriores.map((registro, index) => (
+                  <div key={registro.id || index} className="bg-white border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between mb-2">
+                      <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                        Registro #{index + 1}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {registro.fecha ? new Date(registro.fecha).toLocaleDateString('es-AR', {
+                          day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                        }) : 'Sin fecha'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-700 mb-2">{registro.descripcion}</p>
+                    <div className="flex gap-4 text-xs text-gray-600">
+                      <span><strong>Horas:</strong> {registro.horasTrabajo}h</span>
+                      <span><strong>Costo:</strong> ${(registro.costoTotal || 0).toLocaleString('es-AR')}</span>
+                      {registro.repuestos && registro.repuestos.length > 0 && (
+                        <span><strong>Repuestos:</strong> {registro.repuestos.length}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Totales acumulados hasta ahora */}
+              <div className="mt-3 pt-3 border-t border-gray-300 flex justify-between text-sm">
+                <span className="text-gray-600">Acumulado hasta ahora:</span>
+                <span className="font-bold text-gray-800">
+                  {registrosAnteriores.reduce((sum, r) => sum + (r.horasTrabajo || 0), 0)}h |
+                  ${registrosAnteriores.reduce((sum, r) => sum + (r.costoTotal || 0), 0).toLocaleString('es-AR')}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Nuevo Registro de Trabajo */}
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+            <h4 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
+              <span>➕</span> Nuevo Registro de Trabajo
+            </h4>
+
+            {/* Descripción del trabajo */}
+            <div className="mb-4">
+              <label className="block font-semibold text-gray-700 mb-2">
+                Descripción del trabajo realizado *
+              </label>
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-3 border rounded-lg"
+                placeholder="Describe el trabajo realizado en este registro..."
+              />
+            </div>
           </div>
 
-          {/* Horas trabajadas */}
-          <div>
-            <label className="block font-semibold text-gray-700 mb-2">
-              Horas trabajadas
-            </label>
-            <input
-              type="number"
-              step="0.5"
-              value={horasTrabajo}
-              onChange={(e) => setHorasTrabajo(parseFloat(e.target.value) || 0)}
-              className="w-full px-4 py-3 border rounded-lg"
-            />
+          {/* Horas trabajadas y Costo Mano de Obra */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block font-semibold text-gray-700 mb-2">
+                Horas trabajadas
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                value={horasTrabajo}
+                onChange={(e) => setHorasTrabajo(parseFloat(e.target.value) || 0)}
+                className="w-full px-4 py-3 border rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block font-semibold text-gray-700 mb-2">
+                COSTO TOTAL ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={costoManoObra}
+                onChange={(e) => setCostoManoObra(parseFloat(e.target.value) || 0)}
+                className="w-full px-4 py-3 border rounded-lg"
+                placeholder="0.00"
+              />
+            </div>
           </div>
 
           {/* Repuestos */}
@@ -2120,14 +2721,45 @@ function ModalRegistroTrabajo({ orden, onClose, onGuardado }: ModalRegistroTraba
             )}
           </div>
 
-          {/* Costo total */}
-          {repuestos.length > 0 && (
-            <div className="bg-gray-100 p-4 rounded-lg">
-              <p className="font-bold text-gray-900">
-                Costo total de repuestos: ${repuestos.reduce((sum, r) => sum + (r.cantidad * r.costo), 0).toFixed(2)}
-              </p>
+          {/* Resumen de Costos */}
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 p-4 rounded-lg">
+            <h4 className="font-bold text-green-800 mb-3">💰 Resumen de Costos</h4>
+            <div className="space-y-2 text-sm">
+              {/* Este registro */}
+              <div className="pb-2 border-b border-green-200">
+                <p className="text-xs text-gray-500 mb-1 font-semibold">Este registro:</p>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Repuestos:</span>
+                  <span className="font-semibold">${costoRepuestos.toLocaleString('es-AR')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Costo Total:</span>
+                  <span className="font-semibold">${costoManoObra.toLocaleString('es-AR')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Horas:</span>
+                  <span className="font-semibold">{horasTrabajo}h</span>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="font-semibold text-green-700">Subtotal este registro:</span>
+                  <span className="font-bold text-green-700">${costoEsteRegistro.toLocaleString('es-AR')}</span>
+                </div>
+              </div>
+
+              {/* Totales acumulados */}
+              <div className="pt-2">
+                <p className="text-xs text-gray-500 mb-1 font-semibold">TOTALES ACUMULADOS (incluye anteriores):</p>
+                <div className="flex justify-between">
+                  <span className="font-bold text-green-800">Total Horas:</span>
+                  <span className="font-bold text-green-800">{totalHorasAcumuladas}h</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-bold text-green-800 text-lg">COSTO TOTAL OT:</span>
+                  <span className="font-bold text-green-800 text-lg">${totalCostoAcumulado.toLocaleString('es-AR')}</span>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
 
           {/* Botones */}
           <div className="flex gap-3">
@@ -2188,11 +2820,13 @@ function ModalCierreOT({ orden, tecnico, onClose, onCerrado }: ModalCierreOTProp
     try {
       const ordenRef = doc(db, 'ordenes_trabajo', orden.id);
       await updateDoc(ordenRef, {
-        estado: 'COMPLETADA',
+        estado: 'CERRADO',
         fechaCompletado: serverTimestamp(),
+        timestampCompletada: serverTimestamp(),
         firmaTecnico: firma,
         observacionesCierre: observaciones,
-        cerradoPor: tecnico
+        cerradoPor: tecnico,
+        mecanico: tecnico
       });
 
       showSuccess('Orden de trabajo cerrada exitosamente');
@@ -2350,9 +2984,9 @@ function ModalHistorialUnidad({ ordenes, onClose }: ModalHistorialUnidadProps) {
                   </p>
                 )}
 
-                {orden.costo && (
+                {(orden.costoReparacion || orden.costo) && (
                   <p className="text-xs text-gray-600">
-                    <span className="font-semibold">Costo:</span> ${orden.costo.toFixed(2)}
+                    <span className="font-semibold">Costo:</span> ${(orden.costoReparacion || orden.costo || 0).toLocaleString('es-AR')}
                   </p>
                 )}
 
@@ -2377,5 +3011,184 @@ function ModalHistorialUnidad({ ordenes, onClose }: ModalHistorialUnidadProps) {
       </div>
     </div>
 
+  );
+}
+
+// ============================================================================
+// MODAL DETALLE OT - Vista completa con imágenes
+// ============================================================================
+
+interface ModalDetalleOTProps {
+  orden: OrdenTrabajo;
+  onClose: () => void;
+  onTomarOT: () => void;
+  tecnicoActual: string;
+}
+
+function ModalDetalleOT({ orden, onClose, onTomarOT, tecnicoActual }: ModalDetalleOTProps) {
+  const [imagenAmpliada, setImagenAmpliada] = useState<string | null>(null);
+
+  const yaAsignada = orden.asignadoA && orden.asignadoA !== '';
+  const asignadoAMi = orden.asignadoA === tecnicoActual;
+
+  // Calcular días desde creación
+  const diasDesdeCreacion = Math.floor(
+    (Date.now() - convertirTimestampFirebase(orden.timestamp).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-3xl w-full my-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">OT #{String(orden.numeroOT).slice(-5)}</h2>
+              <p className="text-blue-100 mt-1">Unidad {orden.unidad.numero} - {obtenerPatente(orden.unidad.numero)}</p>
+            </div>
+            <button onClick={onClose} className="text-white/80 hover:text-white transition-colors">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+          {/* Badges */}
+          <div className="flex flex-wrap gap-2">
+            <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+              orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-800' :
+              orden.prioridad === 'MEDIA' ? 'bg-yellow-100 text-yellow-800' :
+              'bg-green-100 text-green-800'
+            }`}>
+              {orden.prioridad === 'ALTA' && '🔴 '}
+              {orden.prioridad === 'MEDIA' && '🟡 '}
+              {orden.prioridad === 'BAJA' && '🟢 '}
+              {orden.prioridad}
+            </span>
+            <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+              orden.tipo === 'URGENTE' ? 'bg-red-100 text-red-800' :
+              orden.tipo === 'CORRECTIVO' ? 'bg-orange-100 text-orange-800' :
+              'bg-blue-100 text-blue-800'
+            }`}>
+              {orden.tipo}
+            </span>
+            <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+              orden.estado === 'PENDIENTE' ? 'bg-yellow-100 text-yellow-800' :
+              orden.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-800' :
+              'bg-gray-100 text-gray-800'
+            }`}>
+              {orden.estado}
+            </span>
+          </div>
+
+          {/* Descripción */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-700 mb-2">Descripción del Problema</h4>
+            <p className="text-gray-800">{orden.descripcion}</p>
+          </div>
+
+          {/* Info adicional */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-blue-50 rounded-lg p-3">
+              <p className="text-xs text-blue-600 font-semibold">Creada</p>
+              <p className="text-blue-800 font-bold">Hace {diasDesdeCreacion} {diasDesdeCreacion === 1 ? 'día' : 'días'}</p>
+            </div>
+            {yaAsignada && (
+              <div className="bg-green-50 rounded-lg p-3">
+                <p className="text-xs text-green-600 font-semibold">Asignado a</p>
+                <p className="text-green-800 font-bold">{orden.asignadoA}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Imágenes de Evidencia */}
+          {orden.fotosEvidencia && orden.fotosEvidencia.length > 0 && (
+            <div>
+              <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <span className="text-xl">📷</span>
+                Imágenes de Evidencia ({orden.fotosEvidencia.length})
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {orden.fotosEvidencia.map((url, index) => (
+                  <div
+                    key={index}
+                    className="relative aspect-square rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity border-2 border-gray-200 hover:border-blue-400"
+                    onClick={() => setImagenAmpliada(url)}
+                  >
+                    <img
+                      src={url}
+                      alt={`Evidencia ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 text-center">
+                      Foto {index + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sin imágenes */}
+          {(!orden.fotosEvidencia || orden.fotosEvidencia.length === 0) && (
+            <div className="bg-gray-50 rounded-lg p-6 text-center">
+              <span className="text-4xl">📷</span>
+              <p className="text-gray-500 mt-2">No hay imágenes de evidencia</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t bg-gray-50 rounded-b-2xl space-y-3">
+          {!yaAsignada && (
+            <button
+              onClick={onTomarOT}
+              className="w-full py-3 px-6 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+            >
+              ✋ Tomar esta OT
+            </button>
+          )}
+          {asignadoAMi && (
+            <div className="w-full py-3 px-6 bg-blue-100 text-blue-800 font-bold rounded-xl text-center">
+              ✓ Esta OT ya está asignada a ti
+            </div>
+          )}
+          <button
+            onClick={onClose}
+            className="w-full py-3 px-6 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-xl transition-all"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+
+      {/* Visor de imagen ampliada */}
+      {imagenAmpliada && (
+        <div
+          className="fixed inset-0 bg-black/95 flex items-center justify-center z-[100]"
+          onClick={() => setImagenAmpliada(null)}
+        >
+          <div className="relative max-w-5xl max-h-[95vh] w-full h-full flex items-center justify-center p-4">
+            <button
+              onClick={() => setImagenAmpliada(null)}
+              className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-3 transition-colors z-10"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={imagenAmpliada}
+              alt="Imagen ampliada"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

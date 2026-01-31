@@ -1,6 +1,14 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { OrdenTrabajo } from '../../types/checklist';
+import { convertirTimestampFirebase } from '../../utils/dateUtils';
+import { TODAS_LAS_UNIDADES } from '../CarouselSector';
+
+// Función para obtener patente de una unidad
+const obtenerPatente = (numeroUnidad: string): string => {
+  const unidad = TODAS_LAS_UNIDADES.find(u => u.numero === numeroUnidad);
+  return unidad?.patente || 'N/A';
+};
 
 interface KanbanCardProps {
   orden: OrdenTrabajo;
@@ -26,7 +34,7 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
 
   // Calcular días desde creación
   const diasDesdeCreacion = Math.floor(
-    (Date.now() - new Date(orden.timestamp).getTime()) / (1000 * 60 * 60 * 24)
+    (Date.now() - convertirTimestampFirebase(orden.timestamp).getTime()) / (1000 * 60 * 60 * 24)
   );
 
   // Colores por prioridad
@@ -92,7 +100,7 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
 
       {/* Unidad */}
       <div className="text-sm font-semibold text-gray-700 mb-1">
-        Unidad {orden.unidad.numero} - {orden.unidad.patente}
+        Unidad {orden.unidad.numero} - {obtenerPatente(orden.unidad.numero) || orden.unidad.patente || 'N/A'}
       </div>
 
       {/* Tipo */}

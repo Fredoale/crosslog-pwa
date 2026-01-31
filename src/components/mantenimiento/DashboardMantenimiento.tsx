@@ -27,27 +27,12 @@ import { KanbanBoard } from './KanbanBoard';
 import { getAllCargasCombustible, getAlertasByUnidad, getConsumoUnidad, deleteCargaCombustible } from '../../services/combustibleService';
 import { showSuccess, showError, showWarning } from '../../utils/toast';
 import { convertirTimestampFirebase } from '../../utils/dateUtils';
+import { TODAS_LAS_UNIDADES } from '../CarouselSector';
 
-// Mapeo de patentes de unidades
-const PATENTES_UNIDADES: Record<string, string> = {
-  '45': 'LYG959',
-  '803': 'AE116AE',
-  '46': 'NBJ986',
-  '61': 'KYQ147',
-  '813': 'AE906WF',
-  '62': 'MAL538',
-  '64': 'MGY394',
-  '41': 'AB152AZ',
-  '58': 'KTJ385',
-  '54': 'HPD893',
-  '48': 'AC531CX',
-  '817': 'AH506ID',
-  '818': 'AH912GI'
-};
-
-// Función para obtener patente de una unidad
+// Función para obtener patente de una unidad usando TODAS_LAS_UNIDADES
 const obtenerPatente = (numeroUnidad: string): string => {
-  return PATENTES_UNIDADES[numeroUnidad] || 'N/A';
+  const unidad = TODAS_LAS_UNIDADES.find(u => u.numero === numeroUnidad);
+  return unidad?.patente || 'N/A';
 };
 
 interface DashboardMantenimientoProps {
@@ -93,6 +78,23 @@ const ModalCrearNovedad: React.FC<ModalCrearNovedadProps> = ({ onClose, onCreate
   });
   const [imagenesEvidencia, setImagenesEvidencia] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+
+  // Estado para filtro inteligente de unidad
+  const [unidadBusqueda, setUnidadBusqueda] = useState('');
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+
+  // Filtrar unidades según búsqueda
+  const unidadesFiltradas = TODAS_LAS_UNIDADES.filter(u =>
+    u.numero.toLowerCase().includes(unidadBusqueda.toLowerCase()) ||
+    u.patente.toLowerCase().includes(unidadBusqueda.toLowerCase())
+  ).slice(0, 8);
+
+  // Seleccionar unidad del dropdown
+  const seleccionarUnidad = (unidad: typeof TODAS_LAS_UNIDADES[0]) => {
+    setFormData({ ...formData, unidadNumero: unidad.numero, unidadPatente: unidad.patente });
+    setUnidadBusqueda(unidad.numero);
+    setMostrarSugerencias(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,19 +196,41 @@ const ModalCrearNovedad: React.FC<ModalCrearNovedadProps> = ({ onClose, onCreate
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Unidad */}
+          {/* Unidad - Filtro Inteligente */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+            <div className="relative">
               <label className="block text-sm font-semibold text-gray-700 mb-2">Unidad (Número) *</label>
               <input
                 type="text"
                 required
-                value={formData.unidadNumero}
-                onChange={(e) => setFormData({ ...formData, unidadNumero: e.target.value })}
+                value={unidadBusqueda || formData.unidadNumero}
+                onChange={(e) => {
+                  setUnidadBusqueda(e.target.value);
+                  setFormData({ ...formData, unidadNumero: e.target.value, unidadPatente: '' });
+                  setMostrarSugerencias(true);
+                }}
+                onFocus={() => setMostrarSugerencias(true)}
+                onBlur={() => setTimeout(() => setMostrarSugerencias(false), 200)}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                placeholder="Ej: 810"
+                placeholder="Buscar unidad..."
                 style={{ fontSize: '16px' }}
               />
+              {/* Dropdown de sugerencias */}
+              {mostrarSugerencias && unidadBusqueda && unidadesFiltradas.length > 0 && (
+                <div className="absolute z-20 w-full mt-1 bg-white border-2 border-amber-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {unidadesFiltradas.map((unidad) => (
+                    <button
+                      key={unidad.numero}
+                      type="button"
+                      onClick={() => seleccionarUnidad(unidad)}
+                      className="w-full px-4 py-2 text-left hover:bg-amber-50 flex justify-between items-center border-b border-gray-100 last:border-b-0"
+                    >
+                      <span className="font-semibold text-gray-800">{unidad.numero}</span>
+                      <span className="text-sm text-gray-500">{unidad.patente}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Patente *</label>
@@ -215,9 +239,10 @@ const ModalCrearNovedad: React.FC<ModalCrearNovedadProps> = ({ onClose, onCreate
                 required
                 value={formData.unidadPatente}
                 onChange={(e) => setFormData({ ...formData, unidadPatente: e.target.value })}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                placeholder="Ej: AA123BB"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-gray-50"
+                placeholder="Se autocompleta"
                 style={{ fontSize: '16px' }}
+                readOnly={!!formData.unidadPatente}
               />
             </div>
           </div>
@@ -637,6 +662,45 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
   const [prioridad, setPrioridad] = useState(novedad.prioridad);
   const [imagenViewer, setImagenViewer] = useState<string | null>(null);
 
+  // Estado para cargar datos de la OT asociada
+  const [ordenAsociada, setOrdenAsociada] = useState<OrdenTrabajo | null>(null);
+
+  // Cargar datos de la OT si existe
+  useEffect(() => {
+    const cargarOrdenAsociada = async () => {
+      if (novedad.ordenTrabajoId) {
+        try {
+          const ordenDoc = await getDocs(query(
+            collection(db, 'ordenes_trabajo'),
+            where('__name__', '==', novedad.ordenTrabajoId)
+          ));
+          if (!ordenDoc.empty) {
+            const data = ordenDoc.docs[0].data();
+            setOrdenAsociada({ id: ordenDoc.docs[0].id, ...data } as OrdenTrabajo);
+          }
+        } catch (error) {
+          console.error('[ModalDetalleNovedad] Error cargando OT:', error);
+        }
+      }
+    };
+    cargarOrdenAsociada();
+  }, [novedad.ordenTrabajoId]);
+
+  // Obtener número corto de OT
+  const getNumeroOTCorto = () => {
+    if (ordenAsociada?.numeroOT) {
+      return String(ordenAsociada.numeroOT).slice(-5);
+    }
+    if (novedad.ordenTrabajoId) {
+      // Extraer timestamp del ID: ot_1769767187856_xxx -> 87856
+      const match = novedad.ordenTrabajoId.match(/ot_(\d+)_/);
+      if (match) {
+        return match[1].slice(-5);
+      }
+    }
+    return 'N/A';
+  };
+
   const handleActualizar = async () => {
     setLoading(true);
     try {
@@ -698,7 +762,9 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
         estado: 'PENDIENTE',
         prioridad: novedad.prioridad,
         tipoMantenimiento: 'CORRECTIVO',
-        timestamp: new Date()
+        timestamp: new Date(),
+        // Transferir imágenes de la novedad a la OT
+        ...(novedad.fotosEvidencia && novedad.fotosEvidencia.length > 0 && { fotosEvidencia: novedad.fotosEvidencia })
       };
 
       const ordenTrabajoData = {
@@ -711,10 +777,10 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
       // Crear OT
       await setDoc(doc(db, 'ordenes_trabajo', ordenTrabajoId), ordenTrabajoData);
 
-      // Actualizar novedad
+      // Actualizar novedad - marcar como PROCESADA
       await updateDoc(doc(db, 'novedades', novedad.id), {
         ordenTrabajoId: ordenTrabajoId,
-        estado: 'EN_PROCESO'
+        estado: 'PROCESADA'
       });
 
       console.log('[ModalDetalleNovedad] ✅ Orden de Trabajo creada:', ordenTrabajoId);
@@ -780,7 +846,7 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
               </div>
               <div>
                 <span className="text-gray-600">Patente:</span>
-                <span className="ml-2 font-semibold text-gray-800">{novedad.unidad.patente}</span>
+                <span className="ml-2 font-semibold text-gray-800">{obtenerPatente(novedad.unidad.numero) || novedad.unidad.patente || 'N/A'}</span>
               </div>
             </div>
           </div>
@@ -874,7 +940,7 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">Orden de Trabajo Generada</label>
                 <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 inline-block">
-                  <span className="text-purple-700 font-mono font-semibold">{novedad.ordenTrabajoId}</span>
+                  <span className="text-purple-700 font-mono font-semibold">OT #{getNumeroOTCorto()}</span>
                 </div>
               </div>
             )}
@@ -897,8 +963,10 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
                   onChange={(e) => setEstado(e.target.value as any)}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   style={{ fontSize: '16px' }}
+                  disabled={novedad.ordenTrabajoId ? true : false}
                 >
                   <option value="PENDIENTE">⏳ Pendiente</option>
+                  <option value="PROCESADA">📋 Procesada (OT Generada)</option>
                   <option value="EN_PROCESO">🔧 En Proceso</option>
                   <option value="RESUELTA">✅ Resuelta</option>
                   <option value="RECHAZADA">❌ Rechazada</option>
@@ -951,7 +1019,17 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
                 <p className="text-purple-800 font-semibold">
                   ✅ Esta novedad ya tiene una orden de trabajo asignada
                 </p>
-                <p className="text-purple-600 text-sm mt-1">OT: {novedad.ordenTrabajoId}</p>
+                <p className="text-purple-600 text-sm mt-1 font-mono">OT #{getNumeroOTCorto()}</p>
+                {ordenAsociada?.asignadoA && (
+                  <p className="text-green-700 text-sm mt-2 font-semibold">
+                    👤 Tomada por: {ordenAsociada.asignadoA}
+                  </p>
+                )}
+                {ordenAsociada && !ordenAsociada.asignadoA && (
+                  <p className="text-amber-600 text-sm mt-2">
+                    ⏳ Sin asignar todavía
+                  </p>
+                )}
               </div>
             )}
 
@@ -1046,14 +1124,23 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
   const handleActualizar = async () => {
     setLoading(true);
     try {
+      // Determinar estado automático basado en asignación
+      let estadoFinal = estado;
+
+      // Si se asigna técnico y estado es PENDIENTE, cambiar automáticamente a EN_PROCESO
+      if (asignadoA && !orden.asignadoA && estado === 'PENDIENTE') {
+        estadoFinal = 'EN_PROCESO';
+        setEstado('EN_PROCESO');
+      }
+
       const updateData: any = {
-        estado,
+        estado: estadoFinal,
         prioridad,
         asignadoA: asignadoA || null,
         comentarioFin: comentarioFin || null,
       };
 
-      if (estado === 'COMPLETADA' && !orden.timestampCompletada) {
+      if (estadoFinal === 'COMPLETADA' && !orden.timestampCompletada) {
         updateData.timestampCompletada = serverTimestamp();
       }
 
@@ -1143,7 +1230,7 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
               </div>
               <div>
                 <span className="text-gray-600">Patente:</span>
-                <span className="ml-2 font-semibold text-gray-800">{orden.unidad.patente}</span>
+                <span className="ml-2 font-semibold text-gray-800">{obtenerPatente(orden.unidad.numero) || orden.unidad.patente || 'N/A'}</span>
               </div>
               <div>
                 <span className="text-gray-600">Tipo:</span>
@@ -1151,6 +1238,157 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
               </div>
             </div>
           </div>
+
+          {/* Resumen de OT Completada - Solo si está CERRADO/COMPLETADA */}
+          {(orden.estado === 'CERRADO' || orden.estado === 'COMPLETADA') && (
+            <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-4 border-2 border-emerald-200">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-bold text-emerald-800 text-lg">Trabajo Completado</h3>
+                  <p className="text-emerald-600 text-sm">Resumen del trabajo realizado</p>
+                </div>
+              </div>
+
+              {/* Tiempo de resolución y Costo */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Tiempo de resolución</p>
+                      <p className="text-2xl font-bold text-emerald-700">
+                        {(() => {
+                          try {
+                            const fechaCreacion = convertirTimestampFirebase(orden.timestamp);
+                            const fechaCierre = orden.timestampCompletada ? convertirTimestampFirebase(orden.timestampCompletada) : new Date();
+                            const dias = Math.ceil((fechaCierre.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24));
+                            return dias <= 0 ? 'Mismo día' : `${dias} ${dias === 1 ? 'día' : 'días'}`;
+                          } catch {
+                            return 'N/A';
+                          }
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Costo de reparación</p>
+                      <p className="text-2xl font-bold text-amber-700">
+                        {orden.costoReparacion ? `$${orden.costoReparacion.toLocaleString('es-AR')}` : 'No registrado'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline */}
+              <div className="bg-white rounded-lg p-4 mb-4 border border-emerald-200">
+                <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Timeline
+                </h4>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                      <span className="text-xs text-gray-500">Creada</span>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700 ml-5">
+                      {(() => {
+                        try {
+                          return convertirTimestampFirebase(orden.timestamp).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+                        } catch {
+                          return 'N/A';
+                        }
+                      })()}
+                    </p>
+                  </div>
+                  <div className="flex-shrink-0 w-16 h-0.5 bg-gradient-to-r from-blue-500 to-emerald-500"></div>
+                  <div className="flex-1 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="text-xs text-gray-500">Cerrada</span>
+                      <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700 mr-5">
+                      {(() => {
+                        try {
+                          return orden.timestampCompletada ? convertirTimestampFirebase(orden.timestampCompletada).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+                        } catch {
+                          return 'N/A';
+                        }
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Personal, Tipo y Prioridad */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-white rounded-lg p-3 border border-emerald-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    <span className="text-xs text-gray-500">Personal asignado</span>
+                  </div>
+                  <p className="font-semibold text-gray-800">{orden.asignadoA || orden.mecanico || 'No especificado'}</p>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-emerald-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                    <span className="text-xs text-gray-500">Tipo de trabajo</span>
+                  </div>
+                  <p className="font-semibold text-gray-800">{orden.tipo}</p>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-emerald-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span className="text-xs text-gray-500">Prioridad</span>
+                  </div>
+                  <p className={`font-semibold ${
+                    orden.prioridad === 'ALTA' ? 'text-red-600' :
+                    orden.prioridad === 'MEDIA' ? 'text-amber-600' :
+                    'text-green-600'
+                  }`}>{orden.prioridad}</p>
+                </div>
+              </div>
+
+              {/* Trabajo realizado (si hay comentario) */}
+              {orden.comentarioFin && (
+                <div className="bg-white rounded-lg p-4 mt-3 border border-emerald-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="text-sm font-semibold text-gray-700">Trabajo realizado</span>
+                  </div>
+                  <p className="text-gray-600 text-sm leading-relaxed">{orden.comentarioFin}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Descripción */}
           <div>
@@ -1192,75 +1430,77 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
             </div>
           )}
 
-          {/* Gestión - Estado, Prioridad, Asignación */}
-          <div className="border-t border-gray-200 pt-6">
-            <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-              </svg>
-              Gestión de la Orden
-            </h3>
+          {/* Gestión - Estado, Prioridad, Asignación - Solo si NO está completada */}
+          {orden.estado !== 'CERRADO' && orden.estado !== 'COMPLETADA' && (
+            <div className="border-t border-gray-200 pt-6">
+              <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                Gestión de la Orden
+              </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Estado</label>
-                <select
-                  value={estado}
-                  onChange={(e) => setEstado(e.target.value as any)}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  style={{ fontSize: '16px' }}
-                >
-                  <option value="PENDIENTE">⏳ Pendiente</option>
-                  <option value="EN_PROCESO">🔧 En Proceso</option>
-                  <option value="COMPLETADA">✅ Completada</option>
-                  <option value="CANCELADA">❌ Cancelada</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Estado</label>
+                  <select
+                    value={estado}
+                    onChange={(e) => setEstado(e.target.value as any)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    style={{ fontSize: '16px' }}
+                  >
+                    <option value="PENDIENTE">⏳ Pendiente</option>
+                    <option value="EN_PROCESO">🔧 En Proceso</option>
+                    <option value="COMPLETADA">✅ Completada</option>
+                    <option value="CANCELADA">❌ Cancelada</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Prioridad</label>
+                  <select
+                    value={prioridad}
+                    onChange={(e) => setPrioridad(e.target.value as any)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    style={{ fontSize: '16px' }}
+                  >
+                    <option value="ALTA">🔴 Alta - Urgente</option>
+                    <option value="MEDIA">🟡 Media - Normal</option>
+                    <option value="BAJA">🟢 Baja - Puede esperar</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Prioridad</label>
-                <select
-                  value={prioridad}
-                  onChange={(e) => setPrioridad(e.target.value as any)}
+              {/* Asignación */}
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Asignado a (Técnico/Mecánico)</label>
+                <input
+                  type="text"
+                  value={asignadoA}
+                  onChange={(e) => setAsignadoA(e.target.value)}
+                  placeholder="Nombre del técnico o taller"
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   style={{ fontSize: '16px' }}
-                >
-                  <option value="ALTA">🔴 Alta - Urgente</option>
-                  <option value="MEDIA">🟡 Media - Normal</option>
-                  <option value="BAJA">🟢 Baja - Puede esperar</option>
-                </select>
+                />
+              </div>
+
+              {/* Comentario Final */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Comentarios / Trabajo Realizado</label>
+                <textarea
+                  value={comentarioFin}
+                  onChange={(e) => setComentarioFin(e.target.value)}
+                  rows={4}
+                  placeholder="Descripción del trabajo realizado, repuestos utilizados, observaciones..."
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                  style={{ fontSize: '16px' }}
+                />
               </div>
             </div>
+          )}
 
-            {/* Asignación */}
-            <div className="mb-4">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Asignado a (Técnico/Mecánico)</label>
-              <input
-                type="text"
-                value={asignadoA}
-                onChange={(e) => setAsignadoA(e.target.value)}
-                placeholder="Nombre del técnico o taller"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                style={{ fontSize: '16px' }}
-              />
-            </div>
-
-            {/* Comentario Final */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Comentarios / Trabajo Realizado</label>
-              <textarea
-                value={comentarioFin}
-                onChange={(e) => setComentarioFin(e.target.value)}
-                rows={4}
-                placeholder="Descripción del trabajo realizado, repuestos utilizados, observaciones..."
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
-                style={{ fontSize: '16px' }}
-              />
-            </div>
-          </div>
-
-          {/* Fechas */}
-          {(orden.fechaAsignacion || orden.timestampCompletada) && (
+          {/* Fechas - Solo mostrar para OTs no completadas */}
+          {orden.estado !== 'CERRADO' && orden.estado !== 'COMPLETADA' && (orden.fechaAsignacion || orden.timestampCompletada) && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="font-semibold text-blue-900 mb-2">Información de Seguimiento</h4>
               <div className="space-y-1 text-sm text-blue-800">
@@ -1280,45 +1520,58 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
 
           {/* Botones de Acción */}
           <div className="space-y-3 pt-4 border-t border-gray-200">
-            <div className="flex gap-3">
+            {/* Para OTs completadas, solo mostrar botón Cerrar */}
+            {(orden.estado === 'CERRADO' || orden.estado === 'COMPLETADA') ? (
               <button
                 type="button"
                 onClick={onClose}
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-[#1a2332] text-white font-semibold rounded-lg hover:bg-[#252f42] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-6 py-3 bg-gradient-to-r from-[#56ab2f] to-[#a8e063] text-white font-semibold rounded-lg hover:from-[#4a9428] hover:to-[#96d055] active:scale-95 transition-all"
               >
                 Cerrar
               </button>
-              <button
-                onClick={handleActualizar}
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-[#1a2332] text-white font-semibold rounded-lg hover:bg-[#252f42] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Guardando...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Guardar Cambios
-                  </>
-                )}
-              </button>
-            </div>
-            <button
-              onClick={handleEliminar}
-              disabled={loading}
-              className="w-full px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-lg hover:from-red-600 hover:to-red-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Eliminar Orden de Trabajo
-            </button>
+            ) : (
+              <>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    disabled={loading}
+                    className="flex-1 px-6 py-3 bg-[#1a2332] text-white font-semibold rounded-lg hover:bg-[#252f42] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    onClick={handleActualizar}
+                    disabled={loading}
+                    className="flex-1 px-6 py-3 bg-[#1a2332] text-white font-semibold rounded-lg hover:bg-[#252f42] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                        Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Guardar Cambios
+                      </>
+                    )}
+                  </button>
+                </div>
+                <button
+                  onClick={handleEliminar}
+                  disabled={loading}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-lg hover:from-red-600 hover:to-red-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Eliminar Orden de Trabajo
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1709,7 +1962,7 @@ const ModalCompletarOrden: React.FC<ModalCompletarOrdenProps> = ({ orden, onClos
         repuestos: repuestos.length > 0 ? repuestos : null,
         costoManoObra: costoManoObra || 0,
         costoRepuestos: costoRepuestos || 0,
-        costo: costoTotal || 0,
+        costoReparacion: costoTotal || 0,
         timestampCompletada: Timestamp.now()
       };
 
@@ -2191,6 +2444,9 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
     prioridad: '',
     estado: ''
   });
+
+  // Estado separado para el input de búsqueda de unidad (sugerencias sin filtrar)
+  const [unidadBusqueda, setUnidadBusqueda] = useState('');
 
   const [selectedItem, setSelectedItem] = useState<ChecklistRegistro | Novedad | OrdenTrabajo | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -2859,22 +3115,71 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                           </select>
                         </div>
 
-                        <div>
+                        <div className="relative">
                           <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Unidad</label>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            value={filtros.unidad}
-                            onChange={(e) => setFiltros({ ...filtros, unidad: e.target.value })}
-                            placeholder="Ej: 810"
-                            className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#56ab2f] focus:border-[#56ab2f] bg-white touch-target-48"
-                            style={{ fontSize: '16px' }}
-                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={unidadBusqueda}
+                              onChange={(e) => setUnidadBusqueda(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  setFiltros({ ...filtros, unidad: unidadBusqueda });
+                                  setUnidadBusqueda('');
+                                }
+                              }}
+                              placeholder={filtros.unidad ? `Filtrado: INT-${filtros.unidad}` : "Buscar INT..."}
+                              className="flex-1 px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#56ab2f] focus:border-[#56ab2f] bg-white touch-target-48"
+                              style={{ fontSize: '16px' }}
+                            />
+                            {filtros.unidad && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFiltros({ ...filtros, unidad: '' });
+                                  setUnidadBusqueda('');
+                                }}
+                                className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-semibold text-sm"
+                                title="Quitar filtro"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          {/* Dropdown de sugerencias - solo mientras escribe */}
+                          {unidadBusqueda && (
+                            <div className="absolute z-50 w-full mt-1 bg-white border-2 border-[#56ab2f] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                              {TODAS_LAS_UNIDADES
+                                .filter(u => u.numero.includes(unidadBusqueda) || u.patente.toLowerCase().includes(unidadBusqueda.toLowerCase()))
+                                .slice(0, 8)
+                                .map(u => (
+                                  <button
+                                    key={u.numero}
+                                    type="button"
+                                    onClick={() => {
+                                      setFiltros({ ...filtros, unidad: u.numero });
+                                      setUnidadBusqueda('');
+                                    }}
+                                    className="w-full px-3 py-2 text-left hover:bg-[#f0f9e8] transition-colors flex justify-between items-center"
+                                  >
+                                    <span className="font-semibold text-gray-800">INT-{u.numero}</span>
+                                    <span className="text-sm text-gray-500">{u.patente}</span>
+                                  </button>
+                                ))}
+                              {TODAS_LAS_UNIDADES.filter(u => u.numero.includes(unidadBusqueda) || u.patente.toLowerCase().includes(unidadBusqueda.toLowerCase())).length === 0 && (
+                                <div className="px-3 py-2 text-gray-500 text-sm">No se encontraron unidades</div>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-end">
                           <button
-                            onClick={limpiarFiltros}
+                            onClick={() => {
+                              limpiarFiltros();
+                              setUnidadBusqueda('');
+                            }}
                             className="w-full px-3 md:px-4 py-2.5 md:py-2 bg-gradient-to-r from-gray-200 to-gray-300 text-gray-800 font-semibold rounded-lg hover:from-gray-300 hover:to-gray-400 active:scale-95 transition-all shadow-sm touch-target-48 text-sm md:text-base"
                           >
                             🔄 Limpiar
@@ -2885,7 +3190,19 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
 
                     {/* Lista de Checklists - Optimizada móvil */}
                     <div className="space-y-3 md:space-y-4">
-                      {checklists.length === 0 ? (
+                      {(() => {
+                        // Aplicar filtros a checklists
+                        const checklistsFiltrados = checklists.filter(checklist => {
+                          // Filtro por sector
+                          if (filtros.sector && checklist.sector !== filtros.sector) return false;
+                          // Filtro por resultado
+                          if (filtros.resultado && checklist.resultado !== filtros.resultado) return false;
+                          // Filtro por unidad
+                          if (filtros.unidad && !checklist.unidad.numero.includes(filtros.unidad)) return false;
+                          return true;
+                        });
+
+                        return checklistsFiltrados.length === 0 ? (
                         <div className="text-center py-12 md:py-16">
                           <svg className="w-12 h-12 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 md:mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -2894,7 +3211,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                           <p className="text-gray-400 text-sm mt-2">Intenta ajustar los filtros o completa un nuevo checklist</p>
                         </div>
                       ) : (
-                        checklists.map((checklist) => (
+                        checklistsFiltrados.map((checklist) => (
                           <div
                             key={checklist.id}
                             className="bg-white border-2 border-gray-200 rounded-xl p-4 md:p-6 hover:shadow-lg hover:border-[#a8e063] transition-all"
@@ -3004,7 +3321,8 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                             </div>
                           </div>
                         ))
-                      )}
+                      );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -3174,8 +3492,8 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                 }}
                               >
                                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                  <h3 className="text-sm md:text-base font-bold text-gray-800 font-mono">
-                                    {orden.id}
+                                  <h3 className="text-sm md:text-base font-bold text-gray-800">
+                                    OT #{orden.numeroOT || orden.id?.slice(-6)}
                                   </h3>
                                   <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-bold ${
                                     orden.prioridad === 'ALTA'
@@ -3203,18 +3521,24 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
 
                                 <p className="text-sm md:text-base text-gray-800 font-medium mb-3 leading-relaxed">{orden.descripcion}</p>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-3 text-xs md:text-sm text-gray-600">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3 text-xs md:text-sm text-gray-600">
                                   <div className="flex items-center gap-2">
                                     <svg className="w-4 h-4 flex-shrink-0 text-[#56ab2f]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
                                     </svg>
-                                    <span className="font-semibold">Unidad:</span> INT-{orden.unidad.numero}
+                                    <span className="font-semibold">INT-{orden.unidad.numero}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z" />
+                                    </svg>
+                                    <span className="font-semibold">{obtenerPatente(orden.unidad.numero) || orden.unidad.patente || 'N/A'}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <svg className="w-4 h-4 flex-shrink-0 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                                     </svg>
-                                    <span className="font-semibold">Tipo:</span> {orden.tipo}
+                                    <span className="font-semibold">{orden.tipo}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <svg className="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3282,16 +3606,63 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                         Historial de Trabajos Completados
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-                        <div>
+                        <div className="relative">
                           <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Unidad</label>
-                          <input
-                            type="text"
-                            placeholder="Número de unidad"
-                            value={filtros.unidad}
-                            onChange={(e) => setFiltros({ ...filtros, unidad: e.target.value })}
-                            className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white touch-target-48"
-                            style={{ fontSize: '16px' }}
-                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder={filtros.unidad ? `Filtrado: INT-${filtros.unidad}` : "Buscar INT..."}
+                              value={unidadBusqueda}
+                              onChange={(e) => setUnidadBusqueda(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  setFiltros({ ...filtros, unidad: unidadBusqueda });
+                                  setUnidadBusqueda('');
+                                }
+                              }}
+                              className="flex-1 px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white touch-target-48"
+                              style={{ fontSize: '16px' }}
+                            />
+                            {filtros.unidad && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFiltros({ ...filtros, unidad: '' });
+                                  setUnidadBusqueda('');
+                                }}
+                                className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-semibold text-sm"
+                                title="Quitar filtro"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          {/* Dropdown de sugerencias - solo mientras escribe */}
+                          {unidadBusqueda && (
+                            <div className="absolute z-50 w-full mt-1 bg-white border-2 border-emerald-500 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                              {TODAS_LAS_UNIDADES
+                                .filter(u => u.numero.includes(unidadBusqueda) || u.patente.toLowerCase().includes(unidadBusqueda.toLowerCase()))
+                                .slice(0, 8)
+                                .map(u => (
+                                  <button
+                                    key={u.numero}
+                                    type="button"
+                                    onClick={() => {
+                                      setFiltros({ ...filtros, unidad: u.numero });
+                                      setUnidadBusqueda('');
+                                    }}
+                                    className="w-full px-3 py-2 text-left hover:bg-emerald-50 transition-colors flex justify-between items-center"
+                                  >
+                                    <span className="font-semibold text-gray-800">INT-{u.numero}</span>
+                                    <span className="text-sm text-gray-500">{u.patente}</span>
+                                  </button>
+                                ))}
+                              {TODAS_LAS_UNIDADES.filter(u => u.numero.includes(unidadBusqueda) || u.patente.toLowerCase().includes(unidadBusqueda.toLowerCase())).length === 0 && (
+                                <div className="px-3 py-2 text-gray-500 text-sm">No se encontraron unidades</div>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div>
                           <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Fecha Desde</label>
@@ -3359,10 +3730,10 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                 </div>
                                 <div>
                                   <div className="font-bold text-base md:text-lg text-gray-800">
-                                    OT #{orden.id.slice(-6).toUpperCase()}
+                                    OT #{orden.numeroOT || orden.id?.slice(-6)}
                                   </div>
                                   <div className="text-sm md:text-base text-gray-600">
-                                    Unidad {orden.unidad.numero} - {orden.unidad.patente}
+                                    Unidad {orden.unidad.numero} - {obtenerPatente(orden.unidad.numero) || orden.unidad.patente || 'N/A'}
                                   </div>
                                 </div>
                               </div>
