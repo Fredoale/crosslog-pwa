@@ -9,24 +9,62 @@ import {
 import { saveChecklist } from '../services/checklistService';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
+import { showSuccess, showError, showWarning } from '../utils/toast';
+import { UNIDADES_VRAC, CISTERNAS_VRAC } from './CarouselSector';
+
+// ============================================================================
+// CHOFERES DE VRAC (15 choferes)
+// ============================================================================
+export const CHOFERES_VRAC = [
+  'Boada Damian',
+  'Brandt Marcelo',
+  'Castro Gaston',
+  'Gayoso Luis',
+  'Gonzalez Retamar Martin',
+  'Juarez Pablo',
+  'Levita Gustavo',
+  'Lopez Cristian',
+  'Noval Ezequiel',
+  'Papa Juan',
+  'Peña Jonatan',
+  'Saganias Santiago',
+  'Scavone Marcelo',
+  'Solis Ariel',
+  'Tognetti Ariel',
+  'Zabala Gabriel',
+];
 
 interface ChecklistVRACProps {
-  unidad: {
+  unidad?: {
     numero: string;
     patente: string;
   };
-  cisterna: {
+  cisterna?: {
     numero: string;
     patente: string;
   };
-  chofer: string;
+  chofer?: string;
   onComplete: (checklist: ChecklistRegistro) => void;
   onCancel: () => void;
 }
 
-export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }: ChecklistVRACProps) {
-  const [currentStep, setCurrentStep] = useState<'odometro' | 'items' | 'resumen'>('odometro');
+export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chofer: choferProp, onComplete, onCancel }: ChecklistVRACProps) {
+  // Determinar paso inicial basado en si se proporcionaron props
+  const tienePropsCompletas = unidadProp && cisternaProp && choferProp;
+
+  // Estados para selección interna
+  const [unidadSeleccionada, setUnidadSeleccionada] = useState(unidadProp || { numero: '', patente: '' });
+  const [cisternaSeleccionada, setCisternaSeleccionada] = useState(cisternaProp || { numero: '', patente: '' });
+  const [choferSeleccionado, setChoferSeleccionado] = useState(choferProp || '');
+
+  // Filtros de búsqueda
+  const [filtroUnidad, setFiltroUnidad] = useState('');
+  const [filtroCisterna, setFiltroCisterna] = useState('');
+  const [filtroChofer, setFiltroChofer] = useState('');
+
+  const [currentStep, setCurrentStep] = useState<'seleccion-unidad' | 'seleccion-cisterna' | 'seleccion-chofer' | 'odometro' | 'items' | 'resumen'>(
+    tienePropsCompletas ? 'odometro' : 'seleccion-unidad'
+  );
   const [odometro, setOdometro] = useState('');
   const [items, setItems] = useState<ItemChecklist[]>(
     ITEMS_CHECKLIST.map(item => ({
@@ -47,6 +85,26 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
   const [capturandoFotoNovedadModal, setCapturandoFotoNovedadModal] = useState(false);
   const [showConfirmacionSinEvidencia, setShowConfirmacionSinEvidencia] = useState(false);
   const [capturandoFoto, setCapturandoFoto] = useState(false);
+
+  // Valores finales (de props o seleccionados)
+  const unidad = unidadProp || unidadSeleccionada;
+  const cisterna = cisternaProp || cisternaSeleccionada;
+  const chofer = choferProp || choferSeleccionado;
+
+  // Filtrar listas según búsqueda
+  const unidadesFiltradas = UNIDADES_VRAC.filter(u =>
+    u.numero.toLowerCase().includes(filtroUnidad.toLowerCase()) ||
+    u.patente.toLowerCase().includes(filtroUnidad.toLowerCase())
+  );
+
+  const cisternasFiltradas = CISTERNAS_VRAC.filter(c =>
+    c.numero.toLowerCase().includes(filtroCisterna.toLowerCase()) ||
+    c.patente.toLowerCase().includes(filtroCisterna.toLowerCase())
+  );
+
+  const choferesFiltrados = CHOFERES_VRAC.filter(c =>
+    c.toLowerCase().includes(filtroChofer.toLowerCase())
+  );
 
   const currentItem = items[currentItemIndex];
   const totalItems = items.length;
@@ -76,7 +134,6 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     } else {
       setShowComentario(false);
       setComentarioTemp('');
-      // Avanzar automáticamente si es CONFORME o NO_APLICA
       if (currentItemIndex < totalItems - 1) {
         setTimeout(() => {
           setCurrentItemIndex(currentItemIndex + 1);
@@ -93,15 +150,12 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
       return;
     }
 
-    // Verificar si es ítem crítico sin foto
     const itemActual = items[currentItemIndex];
     if (itemActual.esCritico && !itemActual.fotoUrl) {
-      // Mostrar modal de confirmación
       setShowConfirmacionSinEvidencia(true);
       return;
     }
 
-    // Si no es crítico o ya tiene foto, proceder normalmente
     procederSinEvidencia();
   };
 
@@ -116,7 +170,6 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     setComentarioTemp('');
     setShowConfirmacionSinEvidencia(false);
 
-    // Avanzar al siguiente ítem
     if (currentItemIndex < totalItems - 1) {
       setCurrentItemIndex(currentItemIndex + 1);
     } else {
@@ -220,10 +273,8 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
   };
 
   const handleFinalizar = async () => {
-    // Calcular resultado
     const itemsRechazados = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
-    // Si hay novedades extras, también es NO_APTO
     const resultado = (itemsRechazados > 0 || novedades.length > 0) ? 'NO_APTO' : 'APTO';
 
     const checklistData: ChecklistRegistro = {
@@ -255,12 +306,10 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     };
 
     try {
-      // Guardar en Firebase Firestore
       console.log('[ChecklistVRAC] Guardando checklist en Firebase...');
       await saveChecklist(checklistData);
       console.log('[ChecklistVRAC] Checklist guardado exitosamente');
 
-      // Guardar novedades del botón flotante 🚨 (si existen)
       if (novedades.length > 0) {
         console.log('[ChecklistVRAC] Guardando novedades del botón flotante:', novedades.length);
 
@@ -292,13 +341,11 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
 
           const novedadRef = doc(db, 'novedades', novedadId);
           await setDoc(novedadRef, novedadData);
-          console.log('[ChecklistVRAC] ✅ Novedad flotante guardada:', novedadId);
+          console.log('[ChecklistVRAC] Novedad flotante guardada:', novedadId);
         }
       }
 
-      // Notificar éxito
       showSuccess('Checklist guardado exitosamente');
-
       onComplete(checklistData);
     } catch (error) {
       console.error('[ChecklistVRAC] Error guardando checklist:', error);
@@ -306,8 +353,7 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     }
   };
 
-
-  // Botón flotante de Novedad (solo en paso items)
+  // Botón flotante de Novedad
   const FloatingNovedadButton = () => (
     <button
       onClick={() => setShowNovedadModal(true)}
@@ -323,7 +369,283 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     </button>
   );
 
-  // Render: Paso de Odómetro
+  // ============================================================================
+  // RENDER: PASO SELECCIÓN UNIDAD
+  // ============================================================================
+  if (currentStep === 'seleccion-unidad') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+        <div className="max-w-md mx-auto">
+          {/* Header */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            <div className="text-center mb-4">
+              <div className="text-5xl mb-3">🚛</div>
+              <h1 className="text-2xl font-bold text-gray-800">Seleccionar Unidad</h1>
+              <p className="text-sm text-gray-600 mt-1">VRAC - Air Liquide</p>
+            </div>
+
+            {/* Barra de progreso */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 h-2 rounded-full bg-cyan-500"></div>
+              <div className="flex-1 h-2 rounded-full bg-gray-200"></div>
+              <div className="flex-1 h-2 rounded-full bg-gray-200"></div>
+            </div>
+            <p className="text-xs text-center text-gray-500">Paso 1 de 3</p>
+          </div>
+
+          {/* Filtro inteligente de búsqueda */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            <label className="block text-base font-bold text-gray-800 mb-3">
+              Buscar Unidad
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={filtroUnidad}
+                onChange={(e) => setFiltroUnidad(e.target.value)}
+                placeholder="Buscar por INT o patente..."
+                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                style={{ fontSize: '16px' }}
+              />
+              {filtroUnidad && (
+                <button
+                  onClick={() => setFiltroUnidad('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  type="button"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Escribe para buscar entre las {UNIDADES_VRAC.length} unidades
+            </p>
+
+            {/* Dropdown de resultados - solo aparece al escribir */}
+            {filtroUnidad.length > 0 && (
+              <div className="mt-3 max-h-60 overflow-y-auto rounded-xl border-2 border-gray-200">
+                {unidadesFiltradas.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {unidadesFiltradas.map((u) => (
+                      <button
+                        key={u.numero}
+                        onClick={() => {
+                          setUnidadSeleccionada(u);
+                          setFiltroUnidad('');
+                          setCurrentStep('seleccion-cisterna');
+                        }}
+                        className="w-full p-4 text-left hover:bg-cyan-50 transition-all flex justify-between items-center"
+                      >
+                        <span className="font-bold text-gray-800">INT-{u.numero}</span>
+                        <span className="text-gray-500">{u.patente}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 py-4">No se encontraron unidades</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Botón Volver */}
+          <button
+            onClick={onCancel}
+            className="w-full py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 transition-all"
+          >
+            ← Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // RENDER: PASO SELECCIÓN CISTERNA
+  // ============================================================================
+  if (currentStep === 'seleccion-cisterna') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+        <div className="max-w-md mx-auto">
+          {/* Header */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            <div className="text-center mb-4">
+              <div className="text-5xl mb-3">🛢️</div>
+              <h1 className="text-2xl font-bold text-gray-800">Seleccionar Cisterna</h1>
+              <p className="text-sm text-gray-600 mt-1">Unidad INT-{unidadSeleccionada.numero} seleccionada</p>
+            </div>
+
+            {/* Barra de progreso */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 h-2 rounded-full bg-cyan-500"></div>
+              <div className="flex-1 h-2 rounded-full bg-cyan-500"></div>
+              <div className="flex-1 h-2 rounded-full bg-gray-200"></div>
+            </div>
+            <p className="text-xs text-center text-gray-500">Paso 2 de 3</p>
+          </div>
+
+          {/* Filtro inteligente de búsqueda */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            <label className="block text-base font-bold text-gray-800 mb-3">
+              Buscar Cisterna
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={filtroCisterna}
+                onChange={(e) => setFiltroCisterna(e.target.value)}
+                placeholder="Buscar por número o patente..."
+                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                style={{ fontSize: '16px' }}
+              />
+              {filtroCisterna && (
+                <button
+                  onClick={() => setFiltroCisterna('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  type="button"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Escribe para buscar entre las {CISTERNAS_VRAC.length} cisternas
+            </p>
+
+            {/* Dropdown de resultados - solo aparece al escribir */}
+            {filtroCisterna.length > 0 && (
+              <div className="mt-3 max-h-60 overflow-y-auto rounded-xl border-2 border-gray-200">
+                {cisternasFiltradas.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {cisternasFiltradas.map((c) => (
+                      <button
+                        key={c.numero}
+                        onClick={() => {
+                          setCisternaSeleccionada(c);
+                          setFiltroCisterna('');
+                          setCurrentStep('seleccion-chofer');
+                        }}
+                        className="w-full p-4 text-left hover:bg-cyan-50 transition-all flex justify-between items-center"
+                      >
+                        <span className="font-bold text-gray-800">Cisterna {c.numero}</span>
+                        <span className="text-gray-500">{c.patente}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 py-4">No se encontraron cisternas</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Botón Volver */}
+          <button
+            onClick={() => setCurrentStep('seleccion-unidad')}
+            className="w-full py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 transition-all"
+          >
+            ← Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // RENDER: PASO SELECCIÓN CHOFER
+  // ============================================================================
+  if (currentStep === 'seleccion-chofer') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+        <div className="max-w-md mx-auto">
+          {/* Header */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            <div className="text-center mb-4">
+              <div className="text-5xl mb-3">👤</div>
+              <h1 className="text-2xl font-bold text-gray-800">Seleccionar Chofer</h1>
+              <p className="text-sm text-gray-600 mt-1">
+                INT-{unidadSeleccionada.numero} • Cisterna {cisternaSeleccionada.numero}
+              </p>
+            </div>
+
+            {/* Barra de progreso */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex-1 h-2 rounded-full bg-cyan-500"></div>
+              <div className="flex-1 h-2 rounded-full bg-cyan-500"></div>
+              <div className="flex-1 h-2 rounded-full bg-cyan-500"></div>
+            </div>
+            <p className="text-xs text-center text-gray-500">Paso 3 de 3</p>
+          </div>
+
+          {/* Filtro inteligente de búsqueda */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            <label className="block text-base font-bold text-gray-800 mb-3">
+              Buscar Chofer
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={filtroChofer}
+                onChange={(e) => setFiltroChofer(e.target.value)}
+                placeholder="Buscar por nombre..."
+                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                style={{ fontSize: '16px' }}
+              />
+              {filtroChofer && (
+                <button
+                  onClick={() => setFiltroChofer('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  type="button"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Escribe para buscar entre los {CHOFERES_VRAC.length} choferes
+            </p>
+
+            {/* Dropdown de resultados - solo aparece al escribir */}
+            {filtroChofer.length > 0 && (
+              <div className="mt-3 max-h-60 overflow-y-auto rounded-xl border-2 border-gray-200">
+                {choferesFiltrados.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {choferesFiltrados.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => {
+                          setChoferSeleccionado(c);
+                          setFiltroChofer('');
+                          setCurrentStep('odometro');
+                        }}
+                        className="w-full p-4 text-left hover:bg-cyan-50 transition-all font-semibold text-gray-800"
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 py-4">No se encontraron choferes</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Botón Volver */}
+          <button
+            onClick={() => setCurrentStep('seleccion-cisterna')}
+            className="w-full py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 transition-all"
+          >
+            ← Volver
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // RENDER: PASO ODÓMETRO
+  // ============================================================================
   if (currentStep === 'odometro') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
@@ -389,10 +711,16 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
             {/* Botones */}
             <div className="flex gap-3 mt-6">
               <button
-                onClick={onCancel}
+                onClick={() => {
+                  if (tienePropsCompletas) {
+                    onCancel();
+                  } else {
+                    setCurrentStep('seleccion-chofer');
+                  }
+                }}
                 className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
               >
-                Cancelar
+                {tienePropsCompletas ? 'Cancelar' : '← Volver'}
               </button>
               <button
                 onClick={handleOdometroSubmit}
@@ -411,118 +739,121 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     );
   }
 
-  // Render: Items del Checklist
+  // ============================================================================
+  // RENDER: ITEMS DEL CHECKLIST
+  // ============================================================================
   if (currentStep === 'items') {
-    // Si está mostrando el modal de comentario
-    if (showComentario) {
-      // Modal de Confirmación Sin Evidencia
-      const ConfirmacionSinEvidenciaModal = () => (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="text-center mb-4">
-              <div className="text-5xl mb-3">📸</div>
-              <h2 className="text-xl font-bold text-gray-800 mb-2">¿Continuar sin evidencia?</h2>
-              <p className="text-sm text-gray-600">
-                Este ítem es crítico y no has agregado evidencia fotográfica.
-              </p>
-            </div>
+    // Modal de Confirmación Sin Evidencia
+    const ConfirmacionSinEvidenciaModal = () => (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="text-center mb-4">
+            <div className="text-5xl mb-3">📸</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">¿Continuar sin evidencia?</h2>
+            <p className="text-sm text-gray-600">
+              Este ítem es crítico y no has agregado evidencia fotográfica.
+            </p>
+          </div>
 
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowConfirmacionSinEvidencia(false)}
-                className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={procederSinEvidencia}
-                className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
-                }}
-              >
-                Continuar sin foto
-              </button>
-            </div>
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={() => setShowConfirmacionSinEvidencia(false)}
+              className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={procederSinEvidencia}
+              className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
+              }}
+            >
+              Continuar sin foto
+            </button>
           </div>
         </div>
-      );
+      </div>
+    );
 
+    // Modal de Novedad
+    const NovedadModal = () => (
+      <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="text-center mb-4">
+            <div className="text-5xl mb-3">🚨</div>
+            <p className="text-lg font-bold text-sky-600 mb-1">INT-{unidad.numero} • {unidad.patente}</p>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Novedad Encontrada</h2>
+            <p className="text-sm text-gray-600">
+              Describe la novedad crítica que requiere atención inmediata
+            </p>
+          </div>
+
+          <textarea
+            value={novedadTemp}
+            onChange={(e) => setNovedadTemp(e.target.value)}
+            placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
+            className="w-full px-4 py-3 text-base border-2 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-32 resize-none"
+            style={{ borderColor: '#e5e7eb' }}
+          />
+
+          <button
+            onClick={handleCapturarFotoNovedad}
+            disabled={capturandoFotoNovedadModal}
+            className="w-full mt-3 py-3 px-6 text-gray-700 text-sm font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {capturandoFotoNovedadModal ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span>Procesando...</span>
+              </>
+            ) : fotoNovedadTemp ? (
+              <>
+                <span className="text-xl">✅</span>
+                <span>Foto Guardada - Tomar Otra</span>
+              </>
+            ) : (
+              <>
+                <span className="text-xl">📸</span>
+                <span>Agregar Foto (Opcional)</span>
+              </>
+            )}
+          </button>
+
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={() => {
+                setShowNovedadModal(false);
+                setNovedadTemp('');
+                setFotoNovedadTemp(null);
+              }}
+              className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleAgregarNovedad}
+              disabled={!novedadTemp.trim()}
+              className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
+              }}
+            >
+              Registrar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+
+    // Vista de comentario para NO_CONFORME
+    if (showComentario) {
       return (
         <>
-          {/* Modal de Novedad Encontrada */}
-          {showNovedadModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-                <div className="text-center mb-4">
-                  <div className="text-5xl mb-3">🚨</div>
-                  <p className="text-lg font-bold text-sky-600 mb-1">INT-{unidad.numero} • {unidad.patente}</p>
-                  <h2 className="text-xl font-bold text-gray-800 mb-2">Novedad Encontrada</h2>
-                  <p className="text-sm text-gray-600">
-                    Describe la novedad crítica que requiere atención inmediata
-                  </p>
-                </div>
-
-                <textarea
-                  value={novedadTemp}
-                  onChange={(e) => setNovedadTemp(e.target.value)}
-                  placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
-                  className="w-full px-4 py-3 text-base border-2 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-32 resize-none"
-                  style={{ borderColor: '#e5e7eb' }}
-                />
-
-                {/* Botón de captura de foto */}
-                <button
-                  onClick={handleCapturarFotoNovedad}
-                  disabled={capturandoFotoNovedadModal}
-                  className="w-full mt-3 py-3 px-6 text-gray-700 text-sm font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {capturandoFotoNovedadModal ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      <span>Procesando...</span>
-                    </>
-                  ) : fotoNovedadTemp ? (
-                    <>
-                      <span className="text-xl">✅</span>
-                      <span>Foto Guardada - Tomar Otra</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xl">📸</span>
-                      <span>Agregar Foto (Opcional)</span>
-                    </>
-                  )}
-                </button>
-
-                <div className="flex gap-3 mt-4">
-                  <button
-                    onClick={() => {
-                      setShowNovedadModal(false);
-                      setNovedadTemp('');
-                      setFotoNovedadTemp(null);
-                    }}
-                    className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleAgregarNovedad}
-                    disabled={!novedadTemp.trim()}
-                    className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                    style={{
-                      background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
-                    }}
-                  >
-                    Registrar
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {showNovedadModal && <NovedadModal />}
           {showConfirmacionSinEvidencia && <ConfirmacionSinEvidenciaModal />}
           <FloatingNovedadButton />
 
@@ -559,9 +890,7 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
                   onChange={(e) => setComentarioTemp(e.target.value)}
                   placeholder="Ejemplo: Neumático delantero derecho con baja presión"
                   className="w-full px-4 py-3 text-base border-2 rounded-xl focus:outline-none min-h-32"
-                  style={{
-                    borderColor: '#e5e7eb'
-                  }}
+                  style={{ borderColor: '#e5e7eb' }}
                   onFocus={(e) => {
                     e.currentTarget.style.borderColor = '#f59e0b';
                     e.currentTarget.style.boxShadow = '0 0 0 4px rgba(245, 158, 11, 0.1)';
@@ -573,7 +902,6 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
                   autoFocus
                 />
 
-                {/* Botón de foto */}
                 {currentItem.esCritico && (
                   <button
                     onClick={handleCapturarFoto}
@@ -602,13 +930,11 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
                   </button>
                 )}
 
-                {/* Botones */}
                 <div className="flex gap-3 mt-4">
                   <button
                     onClick={() => {
                       setShowComentario(false);
                       setComentarioTemp('');
-                      // Volver a estado conforme
                       const updatedItems = [...items];
                       updatedItems[currentItemIndex] = {
                         ...updatedItems[currentItemIndex],
@@ -642,79 +968,7 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     // Vista normal de ítems
     return (
       <>
-        {/* Modal de Novedad Encontrada */}
-          {showNovedadModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-                <div className="text-center mb-4">
-                  <div className="text-5xl mb-3">🚨</div>
-                  <p className="text-lg font-bold text-sky-600 mb-1">INT-{unidad.numero} • {unidad.patente}</p>
-                  <h2 className="text-xl font-bold text-gray-800 mb-2">Novedad Encontrada</h2>
-                  <p className="text-sm text-gray-600">
-                    Describe la novedad crítica que requiere atención inmediata
-                  </p>
-                </div>
-
-                <textarea
-                  value={novedadTemp}
-                  onChange={(e) => setNovedadTemp(e.target.value)}
-                  placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
-                  className="w-full px-4 py-3 text-base border-2 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-32 resize-none"
-                  style={{ borderColor: '#e5e7eb' }}
-                />
-
-                {/* Botón de captura de foto */}
-                <button
-                  onClick={handleCapturarFotoNovedad}
-                  disabled={capturandoFotoNovedadModal}
-                  className="w-full mt-3 py-3 px-6 text-gray-700 text-sm font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {capturandoFotoNovedadModal ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      <span>Procesando...</span>
-                    </>
-                  ) : fotoNovedadTemp ? (
-                    <>
-                      <span className="text-xl">✅</span>
-                      <span>Foto Guardada - Tomar Otra</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xl">📸</span>
-                      <span>Agregar Foto (Opcional)</span>
-                    </>
-                  )}
-                </button>
-
-                <div className="flex gap-3 mt-4">
-                  <button
-                    onClick={() => {
-                      setShowNovedadModal(false);
-                      setNovedadTemp('');
-                      setFotoNovedadTemp(null);
-                    }}
-                    className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleAgregarNovedad}
-                    disabled={!novedadTemp.trim()}
-                    className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                    style={{
-                      background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
-                    }}
-                  >
-                    Registrar
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+        {showNovedadModal && <NovedadModal />}
         <FloatingNovedadButton />
 
         <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
@@ -826,7 +1080,9 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     );
   }
 
-  // Render: Resumen Final
+  // ============================================================================
+  // RENDER: RESUMEN FINAL
+  // ============================================================================
   if (currentStep === 'resumen') {
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
     const itemsNoConformes = items.filter(i => i.estado === 'NO_CONFORME').length;
@@ -837,10 +1093,9 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4 pb-20">
         <div className="max-w-2xl mx-auto">
-          {/* Header tipo Manual de Mantenimiento */}
+          {/* Header */}
           <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
             <div className="flex items-center gap-4 mb-4">
-              {/* Imagen de camión */}
               <div className="w-24 h-24 rounded-full flex items-center justify-center text-6xl" style={{
                 backgroundColor: '#f0f9e8'
               }}>
@@ -1014,7 +1269,6 @@ export function ChecklistVRAC({ unidad, cisterna, chofer, onComplete, onCancel }
             <button
               onClick={() => {
                 setCurrentStep('items');
-                // NO resetear currentItemIndex, mantener el último ítem visitado
               }}
               className="w-full py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
             >

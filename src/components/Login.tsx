@@ -144,50 +144,40 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
         setError('Por favor ingresa un HDR');
         return;
       }
+    } else if (selectedSector === 'vrac') {
+      // VRAC - la selección de unidad, cisterna y chofer se hace dentro del modal
+      setChecklistData({
+        sector: 'vrac',
+        unidad: { numero: '', patente: '' },
+        cisterna: { numero: '', patente: '' },
+        chofer: ''
+      });
+      setShowChecklist(true);
+      return;
     } else {
-      // VRAC or Vital Aire - need unit selection
+      // Vital Aire - need unit selection
       if (!unidadSeleccionada) {
         setError('Por favor selecciona una unidad');
         return;
       }
 
-      // VRAC also needs cisterna selection
-      if (selectedSector === 'vrac' && !cisternaSeleccionada) {
-        setError('Por favor selecciona una cisterna');
-        return;
-      }
-
       // Preparar datos para el checklist
-      const unidadData = selectedSector === 'vrac'
-        ? UNIDADES_VRAC.find(u => u.numero === unidadSeleccionada)
-        : UNIDADES_VITAL_AIRE.find(u => u.numero === unidadSeleccionada);
+      const unidadData = UNIDADES_VITAL_AIRE.find(u => u.numero === unidadSeleccionada);
 
       if (!unidadData) {
         setError('Error: Unidad no encontrada');
         return;
       }
 
-      const cisternaData = selectedSector === 'vrac' && cisternaSeleccionada
-        ? CISTERNAS_VRAC.find(c => c.numero === cisternaSeleccionada)
-        : undefined;
-
-      if (selectedSector === 'vrac' && !cisternaData) {
-        setError('Error: Cisterna no encontrada');
-        return;
-      }
-
       // Mostrar checklist
       setChecklistData({
-        sector: selectedSector as 'vrac' | 'vital-aire',
+        sector: 'vital-aire',
         unidad: {
           numero: unidadData.numero,
           patente: unidadData.patente
         },
-        cisterna: cisternaData ? {
-          numero: cisternaData.numero,
-          patente: cisternaData.patente
-        } : undefined,
-        chofer: selectedSector === 'vrac' ? 'Chofer VRAC' : 'Chofer Vital Aire' // TODO: Obtener nombre real del chofer
+        cisterna: undefined,
+        chofer: 'Chofer Vital Aire'
       });
       setShowChecklist(true);
       return;
@@ -513,11 +503,9 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
   if (showChecklist && checklistData) {
     // Renderizar checklist según sector
     if (checklistData.sector === 'vrac') {
+      // VRAC: nuevo flujo con pantalla inicial y selección interna
       return (
         <ChecklistVRAC
-          unidad={checklistData.unidad}
-          cisterna={checklistData.cisterna!}
-          chofer={checklistData.chofer}
           onComplete={handleChecklistComplete}
           onCancel={handleChecklistCancel}
         />
@@ -770,6 +758,13 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
               </a>
             </div>
           )}
+
+            {/* Texto informativo para VRAC */}
+            {selectedSector === 'vrac' && (
+              <p className="text-center text-gray-600 text-sm mb-2">
+                Checklist diario preventivo - toca el botón para comenzar
+              </p>
+            )}
 
             {/* Submit Button */}
             <button
