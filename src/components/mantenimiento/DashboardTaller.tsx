@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { showSuccess, showError, showWarning, showInfo } from '../../utils/toast';
+import { generateOrdenTrabajoPDF } from '../../utils/pdfGenerator';
 import { convertirTimestampFirebase } from '../../utils/dateUtils';
 import {
   collection,
@@ -28,34 +29,22 @@ import type { OrdenTrabajo, ConsumoCombustible, ChecklistRegistro } from '../../
 import { getAllCargasCombustible } from '../../services/combustibleService';
 import { ModalCrearOrden } from '../modals/ModalCrearOrden';
 import { TODAS_LAS_UNIDADES } from '../CarouselSector';
+import AlertasTrenRodante, { type DatosOTTrenRodante } from '../trenRodante/AlertasTrenRodante';
+import ChecklistTrenRodante40K from '../trenRodante/ChecklistTrenRodante40K';
+import ChecklistTrenRodante80K from '../trenRodante/ChecklistTrenRodante80K';
+import ChecklistTrenRodante160K from '../trenRodante/ChecklistTrenRodante160K';
 
-// Mapeo de patentes de unidades
-const PATENTES_UNIDADES: Record<string, string> = {
-  '45': 'LYG959',
-  '803': 'AE116AE',
-  '46': 'NBJ986',
-  '61': 'KYQ147',
-  '813': 'AE906WF',
-  '62': 'MAL538',
-  '64': 'MGY394',
-  '41': 'AB152AZ',
-  '58': 'KTJ385',
-  '54': 'HPD893',
-  '48': 'AC531CX',
-  '817': 'AH506ID',
-  '818': 'AH912GI'
-};
-
-// Función para obtener patente de una unidad
+// Función para obtener patente de una unidad (usa TODAS_LAS_UNIDADES de CarouselSector)
 const obtenerPatente = (numeroUnidad: string): string => {
-  return PATENTES_UNIDADES[numeroUnidad] || 'N/A';
+  const unidad = TODAS_LAS_UNIDADES.find(u => u.numero === numeroUnidad);
+  return unidad?.patente || 'N/A';
 };
 
 interface DashboardTallerProps {
   onLogout: () => void;
 }
 
-type VistaType = 'dashboard' | 'activas' | 'asignadas' | 'checklists' | 'historial';
+type VistaType = 'dashboard' | 'activas' | 'asignadas' | 'checklists' | 'historial' | 'trenRodante';
 
 interface Filtros {
   prioridad: '' | 'ALTA' | 'MEDIA' | 'BAJA';
@@ -119,6 +108,11 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
   const [checklistSeleccionado, setChecklistSeleccionado] = useState<ChecklistRegistro | null>(null);
   const [mostrarDetalleChecklist, setMostrarDetalleChecklist] = useState(false);
   const [mostrarModalDetalleOT, setMostrarModalDetalleOT] = useState(false);
+
+  // Estados para Tren Rodante VRAC
+  const [showChecklistTR, setShowChecklistTR] = useState<'40K' | '80K' | '160K' | null>(null);
+  const [unidadTRSeleccionada, setUnidadTRSeleccionada] = useState<string | null>(null);
+  const [datosOTTR, setDatosOTTR] = useState<DatosOTTrenRodante | null>(null);
 
   // Cargar datos con listeners en tiempo real
   useEffect(() => {
@@ -259,7 +253,7 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       // Cargar checklists de los choferes
       console.log('[DashboardTaller] 📋 Cargando checklists...');
       const checklistsRef = collection(db, 'checklists');
-      const q = query(checklistsRef, orderBy('timestamp', 'desc'), limit(50));
+      const q = query(checklistsRef, orderBy('timestamp', 'desc'), limit(1000));
 
       unsubscribe = onSnapshot(q, (snapshot) => {
         const data = snapshot.docs.map(doc => {
@@ -301,11 +295,11 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       });
 
     } else if (vista === 'historial') {
-      // Cargar órdenes cerradas para el historial
+      // Cargar órdenes cerradas para el historial (incluye CERRADO y COMPLETADA legacy)
       console.log('[DashboardTaller] 📋 Cargando historial de órdenes cerradas...');
       const q = query(
         ordenesRef,
-        where('estado', '==', 'CERRADO')
+        where('estado', 'in', ['CERRADO', 'COMPLETADA'])
       );
 
       unsubscribe = onSnapshot(q, (snapshot) => {
@@ -335,6 +329,10 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
         console.error('[DashboardTaller] ❌ Error cargando historial:', error);
         setLoading(false);
       });
+    } else if (vista === 'trenRodante') {
+      // Tren Rodante: El componente AlertasTrenRodante maneja su propio loading
+      console.log('[DashboardTaller] 🚛 Vista Tren Rodante - loading manejado por componente');
+      setLoading(false);
     }
 
     // Cleanup: Desuscribirse cuando cambie la vista o el componente se desmonte
@@ -650,12 +648,29 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                 <span className="text-[10px] sm:text-xs">Hist</span>
               </div>
             </button>
+
+            {/* Tab Tren Rodante */}
+            <button
+              onClick={() => setVista('trenRodante')}
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
+                vista === 'trenRodante'
+                  ? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
+                  : 'text-gray-500 hover:text-blue-600 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="flex items-center gap-1">
+                  <span className="text-base">🚛</span>
+                </div>
+                <span className="text-[10px] sm:text-xs">T.Rod</span>
+              </div>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Filtros - Solo mostrar si no es dashboard, checklists o historial */}
-      {vista !== 'dashboard' && vista !== 'checklists' && vista !== 'historial' && (
+      {/* Filtros - Solo mostrar si no es dashboard, checklists, historial o trenRodante */}
+      {vista !== 'dashboard' && vista !== 'checklists' && vista !== 'historial' && vista !== 'trenRodante' && (
         <div className="bg-gradient-to-br from-green-50 to-gray-50 border-b border-green-200 p-3 md:p-4">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
@@ -1037,6 +1052,19 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                             <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs md:text-sm font-semibold">
                               COMPLETADO
                             </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                generateOrdenTrabajoPDF(orden);
+                                showSuccess('PDF generado correctamente');
+                              }}
+                              className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
+                              title="Descargar PDF"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </button>
                           </div>
                         </div>
 
@@ -1141,9 +1169,76 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                 </div>
               </div>
             )}
+
+            {/* Tab Tren Rodante VRAC */}
+            {vista === 'trenRodante' && (
+              <AlertasTrenRodante
+                onSeleccionarUnidad={(unidad, tipo) => {
+                  setUnidadTRSeleccionada(unidad);
+                  console.log('[DashboardTaller] Unidad seleccionada:', unidad, tipo);
+                }}
+                onGenerarOT={(datos) => {
+                  console.log('[DashboardTaller] Generando OT Tren Rodante:', datos);
+                  setDatosOTTR(datos);
+                  setMostrarModalCrearOT(true);
+                }}
+              />
+            )}
           </div>
         )}
       </div>
+
+      {/* Modales Tren Rodante */}
+      {showChecklistTR === '40K' && (
+        <div className="fixed inset-0 z-50">
+          <ChecklistTrenRodante40K
+            unidadNumero={unidadTRSeleccionada || undefined}
+            onComplete={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+              showSuccess('Inspección 40K completada');
+            }}
+            onBack={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+            }}
+          />
+        </div>
+      )}
+
+      {showChecklistTR === '80K' && (
+        <div className="fixed inset-0 z-50">
+          <ChecklistTrenRodante80K
+            unidadNumero={unidadTRSeleccionada || undefined}
+            onComplete={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+              showSuccess('Mantenimiento 80K completado');
+            }}
+            onBack={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+            }}
+          />
+        </div>
+      )}
+
+      {showChecklistTR === '160K' && (
+        <div className="fixed inset-0 z-50">
+          <ChecklistTrenRodante160K
+            unidadNumero={unidadTRSeleccionada || undefined}
+            onComplete={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+              showSuccess('Mantenimiento 160K completado');
+            }}
+            onBack={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+            }}
+          />
+        </div>
+      )}
 
       {/* Modales */}
       {mostrarModalRegistro && ordenSeleccionada && (
@@ -1190,10 +1285,22 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       {/* Modal Crear Orden de Trabajo */}
       {mostrarModalCrearOT && (
         <ModalCrearOrden
-          onClose={() => setMostrarModalCrearOT(false)}
+          onClose={() => {
+            setMostrarModalCrearOT(false);
+            setDatosOTTR(null);
+          }}
           onCreated={() => {
             setMostrarModalCrearOT(false);
+            setDatosOTTR(null);
           }}
+          datosIniciales={datosOTTR ? {
+            unidadNumero: datosOTTR.unidadNumero,
+            unidadPatente: obtenerPatente(datosOTTR.unidadNumero),
+            tipo: 'PREVENTIVO',
+            prioridad: datosOTTR.estado === 'VENCIDO' ? 'ALTA' : datosOTTR.estado === 'PROXIMO' ? 'MEDIA' : 'BAJA',
+            tipoMantenimientoTR: datosOTTR.tipo,
+            kilometrajeActual: datosOTTR.kilometrajeActual,
+          } : undefined}
         />
       )}
 
@@ -1730,7 +1837,7 @@ function ListaOrdenesActivas({ ordenes, onTomarOT, onVerHistorial, onVerDetalle,
   }
 
   return (
-    <div className="overflow-y-auto space-y-4" style={{ maxHeight: '500px' }}>
+    <div className="overflow-y-auto space-y-2" style={{ maxHeight: '600px' }}>
       {ordenes.map((orden) => {
         const yaAsignada = orden.asignadoA && orden.asignadoA !== '';
         const asignadoAMi = orden.asignadoA === tecnicoActual;
@@ -1743,82 +1850,75 @@ function ListaOrdenesActivas({ ordenes, onTomarOT, onVerHistorial, onVerDetalle,
         return (
           <div
             key={orden.id}
-            className="bg-white rounded-xl p-4 md:p-6 shadow-md border-2 border-gray-200 hover:shadow-lg hover:border-green-300 transition-all cursor-pointer"
+            className="bg-white rounded-lg p-3 shadow-sm border border-gray-200 hover:shadow-md hover:border-green-300 transition-all cursor-pointer"
             onClick={() => onVerDetalle(orden)}
           >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 md:gap-3 mb-2 flex-wrap">
-                  <span className="text-xl md:text-2xl font-bold text-gray-900">
-                    OT #{String(orden.numeroOT).slice(-5)}
+            {/* Header compacto */}
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-base font-bold text-gray-900">
+                  OT #{String(orden.numeroOT).slice(-5)}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                  orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-800' :
+                  orden.prioridad === 'MEDIA' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-green-100 text-green-800'
+                }`}>
+                  {orden.prioridad === 'ALTA' ? '🔴' : orden.prioridad === 'MEDIA' ? '🟡' : '🟢'} {orden.prioridad}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                  orden.tipo === 'URGENTE' ? 'bg-red-100 text-red-800' :
+                  orden.tipo === 'CORRECTIVO' ? 'bg-orange-100 text-orange-800' :
+                  'bg-blue-100 text-blue-800'
+                }`}>
+                  {orden.tipo}
+                </span>
+                {orden.fotosEvidencia && orden.fotosEvidencia.length > 0 && (
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                    📷 {orden.fotosEvidencia.length}
                   </span>
-                  <span className={`px-2 md:px-3 py-1 rounded-full text-xs font-bold ${
-                    orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-800' :
-                    orden.prioridad === 'MEDIA' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {orden.prioridad === 'ALTA' && '🔴'}
-                    {orden.prioridad === 'MEDIA' && '🟡'}
-                    {orden.prioridad === 'BAJA' && '🟢'}
-                    {orden.prioridad}
-                  </span>
-                  <span className={`px-2 md:px-3 py-1 rounded-full text-xs font-bold ${
-                    orden.tipo === 'URGENTE' ? 'bg-red-100 text-red-800' :
-                    orden.tipo === 'CORRECTIVO' ? 'bg-orange-100 text-orange-800' :
-                    'bg-blue-100 text-blue-800'
-                  }`}>
-                    {orden.tipo}
-                  </span>
-                  {/* Indicador de imágenes */}
-                  {orden.fotosEvidencia && orden.fotosEvidencia.length > 0 && (
-                    <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
-                      📷 {orden.fotosEvidencia.length}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-1 mb-3">
-                  <p className="text-sm md:text-base text-gray-700">
-                    <span className="font-semibold">Unidad:</span> {orden.unidad.numero} ({obtenerPatente(orden.unidad.numero)})
-                  </p>
-                  <p className="text-sm md:text-base text-gray-700 line-clamp-2">
-                    <span className="font-semibold">Descripción:</span> {orden.descripcion}
-                  </p>
-                  {yaAsignada && (
-                    <p className="text-sm md:text-base text-gray-700">
-                      <span className="font-semibold">Asignado a:</span> {orden.asignadoA}
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    📅 Hace {diasDesdeCreacion} {diasDesdeCreacion === 1 ? 'día' : 'días'}
-                  </p>
-                </div>
+                )}
               </div>
+              <span className="text-xs text-gray-500 whitespace-nowrap">
+                📅 {diasDesdeCreacion}d
+              </span>
             </div>
 
+            {/* Info en una línea */}
+            <div className="flex items-center gap-3 text-sm text-gray-700 mb-1">
+              <span><strong>🚛 {orden.unidad.numero}</strong> ({obtenerPatente(orden.unidad.numero)})</span>
+              {yaAsignada && <span className="text-blue-600">👤 {orden.asignadoA}</span>}
+            </div>
+
+            {/* Descripción compacta */}
+            <p className="text-sm text-gray-600 line-clamp-1 mb-2">
+              {orden.descripcion}
+            </p>
+
+            {/* Botones compactos */}
             <div className="flex gap-2 flex-wrap">
               {!yaAsignada && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onTomarOT(orden); }}
-                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-all"
+                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-all"
                 >
-                  ✋ Tomar esta OT
+                  ✋ Tomar OT
                 </button>
               )}
               {asignadoAMi && (
-                <div className="px-6 py-2 bg-blue-100 text-blue-800 font-semibold rounded-lg">
-                  ✓ Ya asignada a ti
-                </div>
+                <span className="px-3 py-1.5 bg-blue-100 text-blue-800 text-sm font-semibold rounded-lg">
+                  ✓ Asignada
+                </span>
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); onVerHistorial(orden.unidad.numero); }}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-all"
               >
-                📋 Historial
+                📋 Hist
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onVerDetalle(orden); }}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all"
+                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-all"
               >
                 Ver Detalle
               </button>
@@ -1862,7 +1962,7 @@ function ListaOrdenesAsignadas({
   }
 
   return (
-    <div className="overflow-y-auto space-y-4" style={{ maxHeight: '500px' }}>
+    <div className="overflow-y-auto space-y-2" style={{ maxHeight: '600px' }}>
       {ordenes.map((orden) => {
         // Calcular días desde creación
         const diasDesdeCreacion = Math.floor(
@@ -1872,99 +1972,84 @@ function ListaOrdenesAsignadas({
         return (
           <div
             key={orden.id}
-            className="bg-white rounded-xl p-4 md:p-6 shadow-md border-2 border-blue-200 hover:shadow-lg hover:border-blue-400 transition-all cursor-pointer"
+            className="bg-white rounded-lg p-3 shadow-sm border border-blue-200 hover:shadow-md hover:border-blue-400 transition-all cursor-pointer"
             onClick={() => onVerDetalle(orden)}
           >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 md:gap-3 mb-2 flex-wrap">
-                  <span className="text-xl md:text-2xl font-bold text-gray-900">
-                    OT #{String(orden.numeroOT).slice(-5)}
+            {/* Header compacto */}
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-base font-bold text-gray-900">
+                  OT #{String(orden.numeroOT).slice(-5)}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                  orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-800' :
+                  orden.prioridad === 'MEDIA' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-green-100 text-green-800'
+                }`}>
+                  {orden.prioridad === 'ALTA' ? '🔴' : orden.prioridad === 'MEDIA' ? '🟡' : '🟢'} {orden.prioridad}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                  orden.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-800' :
+                  'bg-amber-100 text-amber-800'
+                }`}>
+                  {orden.estado === 'EN_PROCESO' ? '🔧 EN PROCESO' : '⏳ ESPERANDO'}
+                </span>
+                {orden.fotosEvidencia && orden.fotosEvidencia.length > 0 && (
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                    📷 {orden.fotosEvidencia.length}
                   </span>
-                  <span className={`px-2 md:px-3 py-1 rounded-full text-xs font-bold ${
-                    orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-800' :
-                    orden.prioridad === 'MEDIA' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {orden.prioridad === 'ALTA' && '🔴'}
-                    {orden.prioridad === 'MEDIA' && '🟡'}
-                    {orden.prioridad === 'BAJA' && '🟢'}
-                    {orden.prioridad}
-                  </span>
-                  <span className={`px-2 md:px-3 py-1 rounded-full text-xs font-bold ${
-                    orden.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-800' :
-                    'bg-amber-100 text-amber-800'
-                  }`}>
-                    {orden.estado === 'EN_PROCESO' ? '🔧 EN PROCESO' : '⏳ ESPERANDO REPUESTOS'}
-                  </span>
-                  {/* Indicador de imágenes */}
-                  {orden.fotosEvidencia && orden.fotosEvidencia.length > 0 && (
-                    <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
-                      📷 {orden.fotosEvidencia.length}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-1 mb-3">
-                  <p className="text-sm md:text-base text-gray-700">
-                    <span className="font-semibold">Unidad:</span> {orden.unidad.numero} ({obtenerPatente(orden.unidad.numero)})
-                  </p>
-                  <p className="text-sm md:text-base text-gray-700 line-clamp-2">
-                    <span className="font-semibold">Descripción:</span> {orden.descripcion}
-                  </p>
-                  {orden.horasTrabajo && (
-                    <p className="text-sm md:text-base text-gray-700">
-                      <span className="font-semibold">Horas trabajadas:</span> {orden.horasTrabajo}h
-                    </p>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    📅 Hace {diasDesdeCreacion} {diasDesdeCreacion === 1 ? 'día' : 'días'}
-                  </p>
-                  {orden.repuestos && orden.repuestos.length > 0 && (
-                    <p className="text-sm md:text-base text-gray-700">
-                      <span className="font-semibold">Repuestos:</span> {orden.repuestos.length} registrados
-                    </p>
-                  )}
-                </div>
+                )}
               </div>
+              <span className="text-xs text-gray-500 whitespace-nowrap">
+                📅 {diasDesdeCreacion}d
+              </span>
             </div>
 
+            {/* Info en una línea */}
+            <div className="flex items-center gap-3 text-sm text-gray-700 mb-1">
+              <span><strong>🚛 {orden.unidad.numero}</strong> ({obtenerPatente(orden.unidad.numero)})</span>
+              {orden.horasTrabajo && <span>⏱️ {orden.horasTrabajo}h</span>}
+              {orden.repuestos && orden.repuestos.length > 0 && <span>🔧 {orden.repuestos.length} rep</span>}
+            </div>
+
+            {/* Descripción compacta */}
+            <p className="text-sm text-gray-600 line-clamp-1 mb-2">
+              {orden.descripcion}
+            </p>
+
+            {/* Botones compactos */}
             <div className="flex gap-2 flex-wrap">
               <button
                 onClick={(e) => { e.stopPropagation(); onVerDetalle(orden); }}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all"
+                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-all"
               >
                 Ver Detalle
               </button>
-
               <button
                 onClick={(e) => { e.stopPropagation(); onRegistrarTrabajo(orden); }}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-all"
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-all"
               >
-                ✏️ Registrar Trabajo
+                ✏️ Registrar
               </button>
-
               {orden.estado === 'EN_PROCESO' && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onMarcarEsperando(orden); }}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg transition-all"
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-all"
                 >
-                  ⏳ Esperando Repuestos
+                  ⏳ Esperando
                 </button>
               )}
-
               <button
                 onClick={(e) => { e.stopPropagation(); onCerrarOT(orden); }}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-all"
+                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-all"
               >
-                ✓ Cerrar OT
+                ✓ Cerrar
               </button>
-
               <button
                 onClick={(e) => { e.stopPropagation(); onVerHistorial(orden.unidad.numero); }}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all"
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-all"
               >
-                📋 Historial
+                📋 Hist
               </button>
             </div>
           </div>

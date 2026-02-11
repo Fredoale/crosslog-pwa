@@ -26,8 +26,14 @@ import type { ChecklistRegistro, Novedad, OrdenTrabajo, CargaCombustible, Alerta
 import { KanbanBoard } from './KanbanBoard';
 import { getAllCargasCombustible, getAlertasByUnidad, getConsumoUnidad, deleteCargaCombustible } from '../../services/combustibleService';
 import { showSuccess, showError, showWarning } from '../../utils/toast';
+import { generateOrdenTrabajoPDF } from '../../utils/pdfGenerator';
 import { convertirTimestampFirebase } from '../../utils/dateUtils';
+import { generarNumeroOT, inicializarContadorOT, obtenerContadorActual } from '../../services/ordenTrabajoService';
 import { TODAS_LAS_UNIDADES } from '../CarouselSector';
+import AlertasTrenRodante, { type DatosOTTrenRodante } from '../trenRodante/AlertasTrenRodante';
+import ChecklistTrenRodante40K from '../trenRodante/ChecklistTrenRodante40K';
+import ChecklistTrenRodante80K from '../trenRodante/ChecklistTrenRodante80K';
+import ChecklistTrenRodante160K from '../trenRodante/ChecklistTrenRodante160K';
 
 // Función para obtener patente de una unidad usando TODAS_LAS_UNIDADES
 const obtenerPatente = (numeroUnidad: string): string => {
@@ -39,7 +45,7 @@ interface DashboardMantenimientoProps {
   onBack: () => void;
 }
 
-type TabType = 'checklists' | 'novedades' | 'ordenes' | 'kanban' | 'historial' | 'combustible';
+type TabType = 'checklists' | 'novedades' | 'ordenes' | 'kanban' | 'historial' | 'combustible' | 'trenRodante';
 
 interface Filtros {
   sector: '' | 'vrac' | 'vital-aire';
@@ -49,6 +55,11 @@ interface Filtros {
   resultado: '' | 'APTO' | 'NO_APTO' | 'PENDIENTE';
   prioridad: '' | 'ALTA' | 'MEDIA' | 'BAJA';
   estado: '' | 'PENDIENTE' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS' | 'CERRADO';
+  // Filtros para Novedades
+  novedadEstado: '' | 'PENDIENTE' | 'EN_PROCESO' | 'RESUELTA' | 'RECHAZADA';
+  novedadUnidad: string;
+  novedadFechaDesde: string;
+  novedadFechaHasta: string;
 }
 
 interface Estadisticas {
@@ -366,19 +377,47 @@ const ModalCrearNovedad: React.FC<ModalCrearNovedadProps> = ({ onClose, onCreate
 // ============================================================================
 // MODAL CREAR ORDEN DE TRABAJO
 // ============================================================================
+interface DatosInicialesOT {
+  unidadNumero?: string;
+  unidadPatente?: string;
+  tipo?: 'PREVENTIVO' | 'CORRECTIVO' | 'URGENTE';
+  descripcion?: string;
+  prioridad?: 'ALTA' | 'MEDIA' | 'BAJA';
+  tipoMantenimientoTR?: '40K' | '80K' | '160K';
+  kilometrajeActual?: number;
+}
+
 interface ModalCrearOrdenProps {
   onClose: () => void;
   onCreated: () => void;
+  datosIniciales?: DatosInicialesOT;
 }
 
-const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated }) => {
+const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated, datosIniciales }) => {
   const [loading, setLoading] = useState(false);
+
+  // Generar descripción automática si viene de Tren Rodante
+  const generarDescripcionTR = () => {
+    if (datosIniciales?.tipoMantenimientoTR && datosIniciales?.kilometrajeActual) {
+      const tipo = datosIniciales.tipoMantenimientoTR;
+      const km = datosIniciales.kilometrajeActual.toLocaleString('es-AR');
+      if (tipo === '40K') {
+        return `TREN RODANTE - Inspección Ligera 40K\nKilometraje actual: ${km} km\n\nRealizar inspección según procedimiento NG-PR-TRN-021-CK-005:\n- Sistema de enganche\n- Varios (rueda auxilio, paragolpes, guardabarros, luces)\n- Frenos (inspección visual, espesor cinta)\n- Suspensión (fugas neumáticas, elásticos)\n- Registro de neumáticos`;
+      } else if (tipo === '80K') {
+        return `TREN RODANTE - Mantenimiento Corto Plazo 80K\nKilometraje actual: ${km} km\n\nRealizar mantenimiento según procedimiento NG-PR-TRN-017-FR-01:\n- Accesorios\n- Sistema Anti Arrastre (ABS)\n- Ejes completos (3 ejes)\n- Sistema de frenos\n- Suspensión`;
+      } else if (tipo === '160K') {
+        return `TREN RODANTE - Mantenimiento Mediano Plazo 160K\nKilometraje actual: ${km} km\n\nRealizar mantenimiento según procedimiento NG-PR-TRN-017-FR-03:\n- Todo lo incluido en 80K\n- Ensayo ND sistema de enganche (OBLIGATORIO)\n- Rectificación de campanas/discos\n- Ensayo ND puntas de eje (OBLIGATORIO)\n- Alineación de ejes`;
+      }
+    }
+    return datosIniciales?.descripcion || '';
+  };
+
   const [formData, setFormData] = useState({
-    unidadNumero: '',
-    unidadPatente: '',
-    tipo: 'CORRECTIVO' as 'PREVENTIVO' | 'CORRECTIVO' | 'URGENTE',
-    descripcion: '',
-    prioridad: 'MEDIA' as 'ALTA' | 'MEDIA' | 'BAJA',
+    unidadNumero: datosIniciales?.unidadNumero || '',
+    unidadPatente: datosIniciales?.unidadPatente || '',
+    tipo: datosIniciales?.tipo || 'CORRECTIVO' as 'PREVENTIVO' | 'CORRECTIVO' | 'URGENTE',
+    descripcion: generarDescripcionTR(),
+    prioridad: datosIniciales?.prioridad || 'MEDIA' as 'ALTA' | 'MEDIA' | 'BAJA',
   });
   const [imagenesEvidencia, setImagenesEvidencia] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -400,11 +439,8 @@ const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated })
         urlsImagenes.push(url);
       }
 
-      // Generar número de OT
-      const ordersRef = collection(db, 'ordenes_trabajo');
-      const ordersSnap = await getDocs(query(ordersRef, orderBy('numeroOT', 'desc'), limit(1)));
-      const ultimoNumero = ordersSnap.empty ? 0 : ordersSnap.docs[0].data().numeroOT || 0;
-      const nuevoNumero = ultimoNumero + 1;
+      // Generar número de OT correlativo usando el servicio
+      const nuevoNumero = await generarNumeroOT();
 
       const orden: Omit<OrdenTrabajo, 'id'> = {
         numeroOT: nuevoNumero,
@@ -747,11 +783,13 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
 
     setLoading(true);
     try {
-      const ordenTrabajoId = `ot_${Date.now()}_${novedad.id}`;
+      // Generar número correlativo de OT
+      const nuevoNumeroOT = await generarNumeroOT();
+      const ordenTrabajoId = `ot_${nuevoNumeroOT}_${novedad.id}`;
 
       const ordenTrabajo: OrdenTrabajo = {
         id: ordenTrabajoId,
-        numeroOT: Date.now(),
+        numeroOT: nuevoNumeroOT,
         novedadId: novedad.id,
         checklistId: novedad.checklistId,
         fecha: new Date(),
@@ -1451,8 +1489,8 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
                   >
                     <option value="PENDIENTE">⏳ Pendiente</option>
                     <option value="EN_PROCESO">🔧 En Proceso</option>
-                    <option value="COMPLETADA">✅ Completada</option>
-                    <option value="CANCELADA">❌ Cancelada</option>
+                    <option value="ESPERANDO_REPUESTOS">📦 Esperando Repuestos</option>
+                    <option value="CERRADO">✅ Completada</option>
                   </select>
                 </div>
 
@@ -1903,8 +1941,27 @@ interface ModalCompletarOrdenProps {
 const ModalCompletarOrden: React.FC<ModalCompletarOrdenProps> = ({ orden, onClose, onCompletado }) => {
   const [loading, setLoading] = useState(false);
   const [mecanico, setMecanico] = useState('');
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
+
+  // Formatear fecha para input datetime-local (YYYY-MM-DDTHH:mm)
+  const formatDateTimeLocal = (date: Date | any): string => {
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  // Pre-cargar fecha inicio con la fecha de creación de la OT
+  const fechaCreacionOT = orden.fechaCreacion || orden.fecha || orden.timestamp;
+  const [fechaInicio, setFechaInicio] = useState(() => formatDateTimeLocal(fechaCreacionOT));
+
+  // Pre-cargar fecha fin con la fecha/hora actual
+  const [fechaFin, setFechaFin] = useState(() => formatDateTimeLocal(new Date()));
+
   const [comentarioFin, setComentarioFin] = useState('');
   const [costoManoObra, setCostoManoObra] = useState(0);
 
@@ -2442,11 +2499,17 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
     fechaHasta: '',
     resultado: '',
     prioridad: '',
-    estado: ''
+    estado: '',
+    // Filtros para Novedades
+    novedadEstado: '',
+    novedadUnidad: '',
+    novedadFechaDesde: '',
+    novedadFechaHasta: ''
   });
 
   // Estado separado para el input de búsqueda de unidad (sugerencias sin filtrar)
   const [unidadBusqueda, setUnidadBusqueda] = useState('');
+  const [unidadBusquedaNov, setUnidadBusquedaNov] = useState('');
 
   const [selectedItem, setSelectedItem] = useState<ChecklistRegistro | Novedad | OrdenTrabajo | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -2471,6 +2534,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   const [showDetalleCombustible, setShowDetalleCombustible] = useState(false);
   const [unidadCombustibleSeleccionada, setUnidadCombustibleSeleccionada] = useState<string | null>(null);
 
+  // Estados para Tren Rodante VRAC
+  const [showChecklistTR, setShowChecklistTR] = useState<'40K' | '80K' | '160K' | null>(null);
+  const [unidadTRSeleccionada, setUnidadTRSeleccionada] = useState<string | null>(null);
+  const [datosOTTR, setDatosOTTR] = useState<DatosOTTrenRodante | null>(null);
+
   // Cargar datos al montar - cargar todo para las estadísticas
   useEffect(() => {
     cargarDatosIniciales();
@@ -2480,6 +2548,48 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   useEffect(() => {
     cargarDatos();
   }, [filtros, activeTab]);
+
+  // 🛠️ Exponer funciones de administración para consola del navegador
+  useEffect(() => {
+    // Funciones de administración accesibles desde la consola
+    (window as any).adminOT = {
+      // Inicializar contador de OT (resetear a 0)
+      resetearContador: async () => {
+        if (confirm('¿Seguro que deseas resetear el contador de OT a 0? Las próximas OT empezarán desde 000001.')) {
+          try {
+            await inicializarContadorOT(0);
+            showSuccess('Contador de OT reseteado a 0. La próxima OT será #000001');
+            return 'OK';
+          } catch (error) {
+            showError('Error al resetear contador');
+            return error;
+          }
+        }
+        return 'Cancelado';
+      },
+      // Ver contador actual
+      verContador: async () => {
+        const actual = await obtenerContadorActual();
+        console.log('Contador actual de OT:', actual);
+        return actual;
+      },
+      // Establecer contador a un valor específico
+      setContador: async (valor: number) => {
+        if (confirm(`¿Establecer el contador de OT a ${valor}? La próxima OT será #${String(valor + 1).padStart(6, '0')}`)) {
+          try {
+            await inicializarContadorOT(valor);
+            showSuccess(`Contador establecido a ${valor}. La próxima OT será #${String(valor + 1).padStart(6, '0')}`);
+            return 'OK';
+          } catch (error) {
+            showError('Error al establecer contador');
+            return error;
+          }
+        }
+        return 'Cancelado';
+      }
+    };
+    console.log('🛠️ Funciones de administración disponibles. Usa: adminOT.resetearContador(), adminOT.verContador(), adminOT.setContador(n)');
+  }, []);
 
   // 🔥 REAL-TIME LISTENER para Órdenes de Trabajo (Kanban y Tab Órdenes)
   useEffect(() => {
@@ -2495,11 +2605,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
 
     // Query simplificada SIN orderBy para evitar necesidad de índices compuestos
     if (filtros.estado) {
-      q = query(ordenesRef, where('estado', '==', filtros.estado), limit(50));
+      q = query(ordenesRef, where('estado', '==', filtros.estado), limit(1000));
     } else if (filtros.prioridad) {
-      q = query(ordenesRef, where('prioridad', '==', filtros.prioridad), limit(50));
+      q = query(ordenesRef, where('prioridad', '==', filtros.prioridad), limit(1000));
     } else {
-      q = query(ordenesRef, limit(50));
+      q = query(ordenesRef, limit(1000));
     }
 
     // Configurar listener en tiempo real
@@ -2553,11 +2663,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
 
     // Query simplificada SIN orderBy para evitar necesidad de índices compuestos
     if (filtros.sector) {
-      q = query(checklistsRef, where('sector', '==', filtros.sector), limit(50));
+      q = query(checklistsRef, where('sector', '==', filtros.sector), limit(1000));
     } else if (filtros.resultado) {
-      q = query(checklistsRef, where('resultado', '==', filtros.resultado), limit(50));
+      q = query(checklistsRef, where('resultado', '==', filtros.resultado), limit(1000));
     } else {
-      q = query(checklistsRef, limit(50));
+      q = query(checklistsRef, limit(1000));
     }
 
     // Configurar listener en tiempo real
@@ -2653,14 +2763,14 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
 
   const cargarChecklists = async () => {
     const checklistsRef = collection(db, 'checklists');
-    let q = query(checklistsRef, orderBy('timestamp', 'desc'), limit(50));
+    let q = query(checklistsRef, orderBy('timestamp', 'desc'), limit(1000));
 
     // Aplicar filtros
     if (filtros.sector) {
-      q = query(checklistsRef, where('sector', '==', filtros.sector), orderBy('timestamp', 'desc'), limit(50));
+      q = query(checklistsRef, where('sector', '==', filtros.sector), orderBy('timestamp', 'desc'), limit(1000));
     }
     if (filtros.resultado) {
-      q = query(checklistsRef, where('resultado', '==', filtros.resultado), orderBy('timestamp', 'desc'), limit(50));
+      q = query(checklistsRef, where('resultado', '==', filtros.resultado), orderBy('timestamp', 'desc'), limit(1000));
     }
 
     const snapshot = await getDocs(q);
@@ -2712,14 +2822,14 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   const cargarNovedades = async () => {
     // Cargar novedades desde la colección 'novedades'
     const novedadesRef = collection(db, 'novedades');
-    let q = query(novedadesRef, orderBy('timestamp', 'desc'), limit(50));
+    let q = query(novedadesRef, orderBy('timestamp', 'desc'), limit(1000));
 
     // Aplicar filtros
     if (filtros.prioridad) {
-      q = query(novedadesRef, where('prioridad', '==', filtros.prioridad), orderBy('timestamp', 'desc'), limit(50));
+      q = query(novedadesRef, where('prioridad', '==', filtros.prioridad), orderBy('timestamp', 'desc'), limit(1000));
     }
     if (filtros.estado) {
-      q = query(novedadesRef, where('estado', '==', filtros.estado), orderBy('timestamp', 'desc'), limit(50));
+      q = query(novedadesRef, where('estado', '==', filtros.estado), orderBy('timestamp', 'desc'), limit(1000));
     }
 
     const snapshot = await getDocs(q);
@@ -2789,14 +2899,14 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
 
   const cargarOrdenes = async () => {
     const ordenesRef = collection(db, 'ordenes_trabajo');
-    let q = query(ordenesRef, orderBy('timestamp', 'desc'), limit(50));
+    let q = query(ordenesRef, orderBy('timestamp', 'desc'), limit(1000));
 
     // Aplicar filtros
     if (filtros.estado) {
-      q = query(ordenesRef, where('estado', '==', filtros.estado), orderBy('timestamp', 'desc'), limit(50));
+      q = query(ordenesRef, where('estado', '==', filtros.estado), orderBy('timestamp', 'desc'), limit(1000));
     }
     if (filtros.prioridad) {
-      q = query(ordenesRef, where('prioridad', '==', filtros.prioridad), orderBy('timestamp', 'desc'), limit(50));
+      q = query(ordenesRef, where('prioridad', '==', filtros.prioridad), orderBy('timestamp', 'desc'), limit(1000));
     }
 
     const snapshot = await getDocs(q);
@@ -2857,7 +2967,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       fechaHasta: '',
       resultado: '',
       prioridad: '',
-      estado: ''
+      estado: '',
+      novedadEstado: '',
+      novedadUnidad: '',
+      novedadFechaDesde: '',
+      novedadFechaHasta: ''
     });
   };
 
@@ -3045,7 +3159,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                   </svg>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                     activeTab === 'historial' ? 'bg-emerald-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{ordenes.filter(o => o.estado === 'CERRADO').length}</span>
+                  }`}>{ordenes.filter(o => o.estado === 'CERRADO' || o.estado === 'COMPLETADA').length}</span>
                 </div>
                 <span className="hidden sm:inline text-[11px] sm:text-xs">Hist</span>
               </div>
@@ -3067,6 +3181,22 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                   }`}>{cargas.length}</span>
                 </div>
                 <span className="hidden sm:inline text-[11px] sm:text-xs">Comb</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('trenRodante')}
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
+                activeTab === 'trenRodante'
+                  ? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
+                  : 'text-gray-500 hover:text-blue-600 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="flex items-center gap-1">
+                  <span className="text-base">🚛</span>
+                </div>
+                <span className="hidden sm:inline text-[11px] sm:text-xs">T.Rod</span>
               </div>
             </button>
           </div>
@@ -3330,8 +3460,127 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                 {/* Tab Novedades - Optimizado móvil */}
                 {activeTab === 'novedades' && (
                   <div>
+                    {/* Filtros para Novedades */}
+                    <div className="bg-gradient-to-br from-amber-50 to-gray-50 rounded-xl p-3 md:p-4 mb-4 md:mb-6 border border-amber-200">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
+                        <div>
+                          <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Estado</label>
+                          <select
+                            value={filtros.novedadEstado}
+                            onChange={(e) => setFiltros({ ...filtros, novedadEstado: e.target.value as any })}
+                            className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white touch-target-48"
+                            style={{ fontSize: '16px' }}
+                          >
+                            <option value="">Todos los estados</option>
+                            <option value="PENDIENTE">⏳ PENDIENTE</option>
+                            <option value="EN_PROCESO">🔧 EN PROCESO</option>
+                            <option value="RESUELTA">✅ RESUELTA</option>
+                            <option value="RECHAZADA">❌ RECHAZADA</option>
+                          </select>
+                        </div>
+
+                        <div className="relative">
+                          <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Unidad</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={unidadBusquedaNov}
+                              onChange={(e) => setUnidadBusquedaNov(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  setFiltros({ ...filtros, novedadUnidad: unidadBusquedaNov });
+                                  setUnidadBusquedaNov('');
+                                }
+                              }}
+                              placeholder={filtros.novedadUnidad ? `INT-${filtros.novedadUnidad}` : "Buscar INT..."}
+                              className="flex-1 px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white touch-target-48"
+                              style={{ fontSize: '16px' }}
+                            />
+                            {filtros.novedadUnidad && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFiltros({ ...filtros, novedadUnidad: '' });
+                                  setUnidadBusquedaNov('');
+                                }}
+                                className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-semibold text-sm"
+                                title="Quitar filtro"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          {unidadBusquedaNov && (
+                            <div className="absolute z-50 w-full mt-1 bg-white border-2 border-amber-500 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                              {TODAS_LAS_UNIDADES
+                                .filter(u => u.numero.includes(unidadBusquedaNov) || u.patente.toLowerCase().includes(unidadBusquedaNov.toLowerCase()))
+                                .slice(0, 8)
+                                .map(u => (
+                                  <button
+                                    key={u.numero}
+                                    type="button"
+                                    onClick={() => {
+                                      setFiltros({ ...filtros, novedadUnidad: u.numero });
+                                      setUnidadBusquedaNov('');
+                                    }}
+                                    className="w-full px-3 py-2 text-left hover:bg-amber-50 transition-colors flex justify-between items-center"
+                                  >
+                                    <span className="font-semibold text-gray-800">INT-{u.numero}</span>
+                                    <span className="text-sm text-gray-500">{u.patente}</span>
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Fecha Desde</label>
+                          <input
+                            type="date"
+                            value={filtros.novedadFechaDesde}
+                            onChange={(e) => setFiltros({ ...filtros, novedadFechaDesde: e.target.value })}
+                            className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white touch-target-48"
+                            style={{ fontSize: '16px' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Fecha Hasta</label>
+                          <input
+                            type="date"
+                            value={filtros.novedadFechaHasta}
+                            onChange={(e) => setFiltros({ ...filtros, novedadFechaHasta: e.target.value })}
+                            className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white touch-target-48"
+                            style={{ fontSize: '16px' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="space-y-3 md:space-y-4">
-                      {novedades.length === 0 ? (
+                      {novedades
+                        .filter(novedad => {
+                          // Filtro por estado
+                          if (filtros.novedadEstado && novedad.estado !== filtros.novedadEstado) return false;
+                          // Filtro por unidad
+                          if (filtros.novedadUnidad && novedad.unidad?.numero !== filtros.novedadUnidad) return false;
+                          // Filtro por fecha desde
+                          if (filtros.novedadFechaDesde) {
+                            const fechaNovedad = convertirTimestampFirebase(novedad.timestamp);
+                            const fechaDesde = new Date(filtros.novedadFechaDesde);
+                            if (fechaNovedad < fechaDesde) return false;
+                          }
+                          // Filtro por fecha hasta
+                          if (filtros.novedadFechaHasta) {
+                            const fechaNovedad = convertirTimestampFirebase(novedad.timestamp);
+                            const fechaHasta = new Date(filtros.novedadFechaHasta);
+                            fechaHasta.setHours(23, 59, 59);
+                            if (fechaNovedad > fechaHasta) return false;
+                          }
+                          return true;
+                        })
+                        .length === 0 ? (
                         <div className="text-center py-12 md:py-16">
                           <svg className="w-12 h-12 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 md:mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -3340,7 +3589,24 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                           <p className="text-gray-400 text-sm mt-2">Las novedades críticas aparecerán aquí</p>
                         </div>
                       ) : (
-                        novedades.map((novedad, index) => (
+                        novedades
+                        .filter(novedad => {
+                          if (filtros.novedadEstado && novedad.estado !== filtros.novedadEstado) return false;
+                          if (filtros.novedadUnidad && novedad.unidad?.numero !== filtros.novedadUnidad) return false;
+                          if (filtros.novedadFechaDesde) {
+                            const fechaNovedad = convertirTimestampFirebase(novedad.timestamp);
+                            const fechaDesde = new Date(filtros.novedadFechaDesde);
+                            if (fechaNovedad < fechaDesde) return false;
+                          }
+                          if (filtros.novedadFechaHasta) {
+                            const fechaNovedad = convertirTimestampFirebase(novedad.timestamp);
+                            const fechaHasta = new Date(filtros.novedadFechaHasta);
+                            fechaHasta.setHours(23, 59, 59);
+                            if (fechaNovedad > fechaHasta) return false;
+                          }
+                          return true;
+                        })
+                        .map((novedad, index) => (
                           <div
                             key={`${novedad.checklistId}-${index}`}
                             className="bg-white border-l-4 border-amber-500 rounded-lg p-4 md:p-6 shadow-md hover:shadow-lg hover:border-amber-600 transition-all"
@@ -3544,7 +3810,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                     <svg className="w-4 h-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                     </svg>
-                                    <span className="truncate">{formatearFecha(orden.fechaCreacion)}</span>
+                                    <span className="truncate">{formatearFecha(orden.fecha || orden.fechaCreacion || orden.timestamp)}</span>
                                   </div>
                                 </div>
                               </div>
@@ -3691,8 +3957,8 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                     <div className="space-y-3 md:space-y-4">
                       {ordenes
                         .filter(orden => {
-                          // Solo mostrar órdenes cerradas
-                          if (orden.estado !== 'CERRADO') return false;
+                          // Solo mostrar órdenes cerradas o completadas
+                          if (orden.estado !== 'CERRADO' && orden.estado !== 'COMPLETADA') return false;
 
                           // Filtro por unidad
                           if (filtros.unidad && !orden.unidad.numero.includes(filtros.unidad)) return false;
@@ -3741,6 +4007,19 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                 <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs md:text-sm font-semibold">
                                   ✅ COMPLETADO
                                 </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    generateOrdenTrabajoPDF(orden);
+                                    showSuccess('PDF generado correctamente');
+                                  }}
+                                  className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
+                                  title="Descargar PDF"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </button>
                               </div>
                             </div>
 
@@ -3783,7 +4062,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                           </div>
                         ))}
 
-                      {ordenes.filter(o => o.estado === 'CERRADO').length === 0 && (
+                      {ordenes.filter(o => o.estado === 'CERRADO' || o.estado === 'COMPLETADA').length === 0 && (
                         <div className="text-center py-12 md:py-16">
                           <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 bg-emerald-100 rounded-full mb-4">
                             <svg className="w-8 h-8 md:w-10 md:h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3952,11 +4231,78 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                     </div>
                   </div>
                 )}
+
+                {/* Tab Tren Rodante VRAC */}
+                {activeTab === 'trenRodante' && (
+                  <AlertasTrenRodante
+                    onSeleccionarUnidad={(unidad, tipo) => {
+                      setUnidadTRSeleccionada(unidad);
+                      console.log('[DashboardMant] Unidad seleccionada:', unidad, tipo);
+                    }}
+                    onGenerarOT={(datos) => {
+                      console.log('[DashboardMant] Generando OT Tren Rodante:', datos);
+                      setDatosOTTR(datos);
+                      setShowCrearOrden(true);
+                    }}
+                  />
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Modales Tren Rodante */}
+      {showChecklistTR === '40K' && (
+        <div className="fixed inset-0 z-50">
+          <ChecklistTrenRodante40K
+            unidadNumero={unidadTRSeleccionada || undefined}
+            onComplete={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+              showSuccess('Inspección 40K completada');
+            }}
+            onBack={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+            }}
+          />
+        </div>
+      )}
+
+      {showChecklistTR === '80K' && (
+        <div className="fixed inset-0 z-50">
+          <ChecklistTrenRodante80K
+            unidadNumero={unidadTRSeleccionada || undefined}
+            onComplete={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+              showSuccess('Mantenimiento 80K completado');
+            }}
+            onBack={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+            }}
+          />
+        </div>
+      )}
+
+      {showChecklistTR === '160K' && (
+        <div className="fixed inset-0 z-50">
+          <ChecklistTrenRodante160K
+            unidadNumero={unidadTRSeleccionada || undefined}
+            onComplete={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+              showSuccess('Mantenimiento 160K completado');
+            }}
+            onBack={() => {
+              setShowChecklistTR(null);
+              setUnidadTRSeleccionada(null);
+            }}
+          />
+        </div>
+      )}
 
       {/* Botones flotantes de creación - Responsive */}
       {activeTab === 'novedades' && (
@@ -4125,11 +4471,23 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       {/* Modal Crear Orden de Trabajo */}
       {showCrearOrden && (
         <ModalCrearOrden
-          onClose={() => setShowCrearOrden(false)}
+          onClose={() => {
+            setShowCrearOrden(false);
+            setDatosOTTR(null);
+          }}
           onCreated={() => {
             setShowCrearOrden(false);
+            setDatosOTTR(null);
             cargarDatos();
           }}
+          datosIniciales={datosOTTR ? {
+            unidadNumero: datosOTTR.unidadNumero,
+            unidadPatente: obtenerPatente(datosOTTR.unidadNumero),
+            tipo: 'PREVENTIVO',
+            prioridad: datosOTTR.estado === 'VENCIDO' ? 'ALTA' : datosOTTR.estado === 'PROXIMO' ? 'MEDIA' : 'BAJA',
+            tipoMantenimientoTR: datosOTTR.tipo,
+            kilometrajeActual: datosOTTR.kilometrajeActual,
+          } : undefined}
         />
       )}
 

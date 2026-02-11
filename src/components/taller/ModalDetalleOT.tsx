@@ -4,6 +4,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../config/firebase';
 import type { OrdenTrabajo } from '../../types/checklist';
 import { showSuccess, showError, showWarning } from '../../utils/toast';
+import { formatearNumeroOT } from '../../services/ordenTrabajoService';
 
 interface ModalDetalleOTProps {
   orden: OrdenTrabajo;
@@ -133,7 +134,7 @@ export function ModalDetalleOT({ orden, onClose }: ModalDetalleOTProps) {
         {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-4 rounded-t-2xl flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-white">Orden de Trabajo #{String(orden.numeroOT).padStart(4, '0')}</h2>
+            <h2 className="text-2xl font-bold text-white">Orden de Trabajo # {formatearNumeroOT(orden.numeroOT)}</h2>
             <p className="text-indigo-100 text-sm">Unidad {orden.unidad.numero} - {orden.unidad.patente}</p>
           </div>
           <button

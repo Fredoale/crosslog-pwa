@@ -1,4 +1,5 @@
 import type { OrdenTrabajo } from '../../types/checklist';
+import { formatearNumeroOT } from '../../services/ordenTrabajoService';
 
 interface OrdenTrabajoCardProps {
   orden: OrdenTrabajo;
@@ -46,12 +47,14 @@ export function OrdenTrabajoCard({ orden, onVerDetalle, onCambiarEstado }: Orden
       case 'EN_PROCESO':
         return [
           { label: '📦 Esperando Repuestos', valor: 'ESPERANDO_REPUESTOS' as const },
-          { label: '✅ Completar', valor: 'COMPLETADA' as const },
+          { label: '✅ Completar', valor: 'CERRADO' as const },
         ];
       case 'ESPERANDO_REPUESTOS':
         return [
           { label: '🔧 Reanudar Trabajo', valor: 'EN_PROCESO' as const },
+          { label: '✅ Completar', valor: 'CERRADO' as const },
         ];
+      case 'CERRADO':
       case 'COMPLETADA':
         return [];
       default:
@@ -68,7 +71,7 @@ export function OrdenTrabajoCard({ orden, onVerDetalle, onCambiarEstado }: Orden
         <div className="flex items-center gap-2">
           <span className="text-lg">{getIconoTipo(orden.tipo)}</span>
           <div>
-            <p className="font-bold text-gray-800 text-sm">OT-{String(orden.numeroOT).padStart(4, '0')}</p>
+            <p className="font-bold text-gray-800 text-sm">OT # {formatearNumeroOT(orden.numeroOT)}</p>
             <p className="text-xs text-gray-500">Unidad {orden.unidad.numero}</p>
           </div>
         </div>

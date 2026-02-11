@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ITEMS_CHECKLIST,
   type EstadoItem,
@@ -7,10 +7,11 @@ import {
   type Novedad
 } from '../types/checklist';
 import { saveChecklist } from '../services/checklistService';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning } from '../utils/toast';
 import { UNIDADES_VRAC, CISTERNAS_VRAC } from './CarouselSector';
+import { useGPSTracking } from '../hooks/useGPSTracking';
 
 // ============================================================================
 // CHOFERES DE VRAC (15 choferes)
@@ -62,9 +63,29 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
   const [filtroCisterna, setFiltroCisterna] = useState('');
   const [filtroChofer, setFiltroChofer] = useState('');
 
-  const [currentStep, setCurrentStep] = useState<'seleccion-unidad' | 'seleccion-cisterna' | 'seleccion-chofer' | 'odometro' | 'items' | 'resumen'>(
+  const [currentStep, setCurrentStep] = useState<'seleccion-unidad' | 'seleccion-cisterna' | 'seleccion-chofer' | 'odometro' | 'items' | 'resumen' | 'activar-gps' | 'tracking-activo'>(
     tienePropsCompletas ? 'odometro' : 'seleccion-unidad'
   );
+
+  // GPS Tracking
+  const gpsTracking = useGPSTracking();
+  const [checklistGuardado, setChecklistGuardado] = useState<ChecklistRegistro | null>(null);
+  const [gpsHabilitadoConfig, setGpsHabilitadoConfig] = useState<boolean>(false);
+
+  // Cargar configuración de GPS al montar
+  useEffect(() => {
+    const cargarConfigGPS = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, 'configuracion', 'gps_tracking'));
+        if (configDoc.exists()) {
+          setGpsHabilitadoConfig(configDoc.data().habilitado || false);
+        }
+      } catch (error) {
+        console.error('[ChecklistVRAC] Error cargando config GPS:', error);
+      }
+    };
+    cargarConfigGPS();
+  }, []);
   const [odometro, setOdometro] = useState('');
   const [items, setItems] = useState<ItemChecklist[]>(
     ITEMS_CHECKLIST.map(item => ({
@@ -85,6 +106,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
   const [capturandoFotoNovedadModal, setCapturandoFotoNovedadModal] = useState(false);
   const [showConfirmacionSinEvidencia, setShowConfirmacionSinEvidencia] = useState(false);
   const [capturandoFoto, setCapturandoFoto] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Valores finales (de props o seleccionados)
   const unidad = unidadProp || unidadSeleccionada;
@@ -273,6 +295,10 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
   };
 
   const handleFinalizar = async () => {
+    // Evitar múltiples clicks
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     const itemsRechazados = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
     const resultado = (itemsRechazados > 0 || novedades.length > 0) ? 'NO_APTO' : 'APTO';
@@ -310,11 +336,13 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
       await saveChecklist(checklistData);
       console.log('[ChecklistVRAC] Checklist guardado exitosamente');
 
+      // Guardar novedades si existen
       if (novedades.length > 0) {
         console.log('[ChecklistVRAC] Guardando novedades del botón flotante:', novedades.length);
 
-        for (const novedadObj of novedades) {
-          const novedadId = `novedad_flotante_vrac_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        for (let i = 0; i < novedades.length; i++) {
+          const novedadObj = novedades[i];
+          const novedadId = `novedad_flotante_vrac_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
 
           const novedad: Novedad = {
             id: novedadId,
@@ -322,7 +350,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
             itemId: '',
             fecha: new Date(),
             unidad: checklistData.unidad,
-            descripcion: `VRAC ${unidad.numero} - NOVEDAD CRÍTICA: ${novedadObj.descripcion}`,
+            descripcion: `VRAC ${unidad.numero} - NOVEDAD NO-GO: ${novedadObj.descripcion}`,
             comentarioChofer: novedadObj.descripcion,
             fotoUrl: novedadObj.fotoUrl,
             prioridad: 'ALTA',
@@ -346,10 +374,33 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
       }
 
       showSuccess('Checklist guardado exitosamente');
-      onComplete(checklistData);
+      setChecklistGuardado(checklistData);
+
+      // Verificar si GPS está habilitado en la configuración
+      if (gpsHabilitadoConfig) {
+        setCurrentStep('activar-gps');
+      } else {
+        // GPS deshabilitado - finalizar directamente
+        onComplete(checklistData);
+      }
     } catch (error) {
       console.error('[ChecklistVRAC] Error guardando checklist:', error);
       showError('Error al guardar checklist. Intenta nuevamente.');
+      setIsSubmitting(false); // Permitir reintentar en caso de error
+    }
+  };
+
+  // Manejar activación de GPS
+  const handleActivarGPS = async () => {
+    const success = await gpsTracking.startTracking({
+      unidad: unidad.numero,
+      patente: unidad.patente,
+      chofer: chofer,
+      checklistId: checklistGuardado?.id,
+    });
+
+    if (success) {
+      setCurrentStep('tracking-activo');
     }
   };
 
@@ -776,84 +827,88 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
       </div>
     );
 
-    // Modal de Novedad
-    const NovedadModal = () => (
-      <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-          <div className="text-center mb-4">
-            <div className="text-5xl mb-3">🚨</div>
-            <p className="text-lg font-bold text-sky-600 mb-1">INT-{unidad.numero} • {unidad.patente}</p>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">Novedad Encontrada</h2>
-            <p className="text-sm text-gray-600">
-              Describe la novedad crítica que requiere atención inmediata
-            </p>
-          </div>
+    // Modal de Novedad - Renderizado condicional directo (no como componente para evitar pérdida de foco)
+    const renderNovedadModal = () => {
+      if (!showNovedadModal) return null;
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="text-center mb-4">
+              <div className="text-5xl mb-3">🚨</div>
+              <p className="text-lg font-bold text-sky-600 mb-1">INT-{unidad.numero} • {unidad.patente}</p>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">Novedad Encontrada</h2>
+              <p className="text-sm text-gray-600">
+                Describe la novedad crítica que requiere atención inmediata
+              </p>
+            </div>
 
-          <textarea
-            value={novedadTemp}
-            onChange={(e) => setNovedadTemp(e.target.value)}
-            placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
-            className="w-full px-4 py-3 text-base border-2 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-32 resize-none"
-            style={{ borderColor: '#e5e7eb' }}
-          />
+            <textarea
+              value={novedadTemp}
+              onChange={(e) => setNovedadTemp(e.target.value)}
+              placeholder="Ejemplo: Pérdida de líquido en la cisterna, requiere revisión urgente"
+              className="w-full px-4 py-3 text-base border-2 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 min-h-32 resize-none"
+              style={{ borderColor: '#e5e7eb' }}
+              autoFocus
+            />
 
-          <button
-            onClick={handleCapturarFotoNovedad}
-            disabled={capturandoFotoNovedadModal}
-            className="w-full mt-3 py-3 px-6 text-gray-700 text-sm font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {capturandoFotoNovedadModal ? (
-              <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <span>Procesando...</span>
-              </>
-            ) : fotoNovedadTemp ? (
-              <>
-                <span className="text-xl">✅</span>
-                <span>Foto Guardada - Tomar Otra</span>
-              </>
-            ) : (
-              <>
-                <span className="text-xl">📸</span>
-                <span>Agregar Foto (Opcional)</span>
-              </>
-            )}
-          </button>
-
-          <div className="flex gap-3 mt-4">
             <button
-              onClick={() => {
-                setShowNovedadModal(false);
-                setNovedadTemp('');
-                setFotoNovedadTemp(null);
-              }}
-              className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
+              onClick={handleCapturarFotoNovedad}
+              disabled={capturandoFotoNovedadModal}
+              className="w-full mt-3 py-3 px-6 text-gray-700 text-sm font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancelar
+              {capturandoFotoNovedadModal ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Procesando...</span>
+                </>
+              ) : fotoNovedadTemp ? (
+                <>
+                  <span className="text-xl">✅</span>
+                  <span>Foto Guardada - Tomar Otra</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xl">📸</span>
+                  <span>Agregar Foto (Opcional)</span>
+                </>
+              )}
             </button>
-            <button
-              onClick={handleAgregarNovedad}
-              disabled={!novedadTemp.trim()}
-              className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-              style={{
-                background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
-              }}
-            >
-              Registrar
-            </button>
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => {
+                  setShowNovedadModal(false);
+                  setNovedadTemp('');
+                  setFotoNovedadTemp(null);
+                }}
+                className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAgregarNovedad}
+                disabled={!novedadTemp.trim()}
+                className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                style={{
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
+                }}
+              >
+                Registrar
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    );
+      );
+    };
 
     // Vista de comentario para NO_CONFORME
     if (showComentario) {
       return (
         <>
-          {showNovedadModal && <NovedadModal />}
+          {renderNovedadModal()}
           {showConfirmacionSinEvidencia && <ConfirmacionSinEvidenciaModal />}
           <FloatingNovedadButton />
 
@@ -968,7 +1023,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
     // Vista normal de ítems
     return (
       <>
-        {showNovedadModal && <NovedadModal />}
+        {renderNovedadModal()}
         <FloatingNovedadButton />
 
         <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
@@ -1000,9 +1055,12 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
                 <h2 className="text-xl font-bold text-gray-800 mb-2">
                   {currentItem.descripcion}
                 </h2>
+                {currentItem.detalle && (
+                  <p className="text-sm text-gray-600 mb-2">{currentItem.detalle}</p>
+                )}
                 {currentItem.esCritico && (
                   <div className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold">
-                    🚨 CRÍTICO
+                    ⛔ NO-GO
                   </div>
                 )}
               </div>
@@ -1220,7 +1278,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
                           )}
                           {item.esCritico && (
                             <span className="inline-block mt-2 px-2 py-1 bg-red-200 text-red-800 rounded text-xs font-bold">
-                              CRÍTICO
+                              NO-GO
                             </span>
                           )}
                         </div>
@@ -1259,12 +1317,23 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
           <div className="space-y-3">
             <button
               onClick={handleFinalizar}
-              className="w-full py-5 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+              disabled={isSubmitting}
+              className="w-full py-5 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               style={{
                 background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
               }}
             >
-              Finalizar y Guardar Checklist
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Guardando...
+                </>
+              ) : (
+                'Finalizar y Guardar Checklist'
+              )}
             </button>
             <button
               onClick={() => {
@@ -1275,6 +1344,237 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
               ← Revisar Ítems
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // RENDER: ACTIVAR GPS
+  // ============================================================================
+  if (currentStep === 'activar-gps') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="p-6 text-center" style={{
+              background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'
+            }}>
+              <div className="text-6xl mb-3">📍</div>
+              <h1 className="text-2xl font-bold text-white">Activar Seguimiento GPS</h1>
+              <p className="text-cyan-100 mt-2">Para tu seguridad y control de ruta</p>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6 space-y-4">
+              <div className="bg-cyan-50 rounded-xl p-4">
+                <p className="text-sm text-cyan-800">
+                  <strong>✅ Checklist completado</strong><br />
+                  Unidad INT-{unidad.numero} • {chofer}
+                </p>
+              </div>
+
+              <div className="space-y-2 text-sm text-gray-600">
+                <p className="flex items-center gap-2">
+                  <span>🔒</span>
+                  <span>Tu ubicación se comparte solo con supervisores</span>
+                </p>
+                <p className="flex items-center gap-2">
+                  <span>📱</span>
+                  <span>Mantén la app abierta durante el recorrido</span>
+                </p>
+                <p className="flex items-center gap-2">
+                  <span>🔋</span>
+                  <span>La pantalla permanecerá activa</span>
+                </p>
+              </div>
+
+              {gpsTracking.error && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-sm text-red-700 font-semibold">⚠️ {gpsTracking.error}</p>
+                  <p className="text-xs text-red-600 mt-1">
+                    Verifica que la ubicación esté activada en tu dispositivo
+                  </p>
+                </div>
+              )}
+
+              {/* Botón Activar */}
+              <button
+                onClick={handleActivarGPS}
+                className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+                style={{
+                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
+                }}
+              >
+                Activar Ubicación
+              </button>
+
+              <p className="text-xs text-center text-gray-400">
+                Al activar, aceptas compartir tu ubicación durante la ruta
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // RENDER: TRACKING ACTIVO
+  // ============================================================================
+  if (currentStep === 'tracking-activo') {
+    // Si llegó a la base, mostrar pantalla de llegada
+    if (gpsTracking.arrivedAtBase) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col p-4">
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="max-w-md w-full text-center">
+              {/* Indicador de llegada */}
+              <div className="mb-8">
+                <div className="relative inline-block">
+                  <div className="w-32 h-32 rounded-full bg-blue-500 flex items-center justify-center">
+                    <span className="text-6xl">🏠</span>
+                  </div>
+                  <div className="absolute -top-2 -right-2 w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                    <span className="text-xl">✓</span>
+                  </div>
+                </div>
+              </div>
+
+              <h1 className="text-3xl font-bold text-white mb-2">¡Llegaste a Base!</h1>
+              <p className="text-blue-400 text-lg mb-8">Base Los Cardales</p>
+
+              {/* Info de la unidad */}
+              <div className="bg-white/10 backdrop-blur rounded-2xl p-6 mb-6">
+                <div className="grid grid-cols-2 gap-4 text-left">
+                  <div>
+                    <p className="text-gray-400 text-xs">UNIDAD</p>
+                    <p className="text-white font-bold text-lg">INT-{unidad.numero}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-xs">CISTERNA</p>
+                    <p className="text-white font-bold text-lg">{cisterna.numero}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-gray-400 text-xs">CHOFER</p>
+                    <p className="text-white font-bold">{chofer}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mensaje de éxito */}
+              <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-4 mb-6">
+                <p className="text-green-300 text-sm font-semibold">
+                  ✅ Viaje completado
+                </p>
+                <p className="text-green-200/80 text-xs mt-1">
+                  El tracking se detuvo automáticamente
+                </p>
+              </div>
+
+              {/* Botón para nuevo checklist */}
+              <button
+                onClick={() => {
+                  setCurrentStep('seleccion-unidad');
+                  setChecklistGuardado(null);
+                }}
+                className="w-full py-4 rounded-xl font-bold text-white transition-all"
+                style={{ background: 'linear-gradient(135deg, #BFCE2A 0%, #a3b824 100%)' }}
+              >
+                Nuevo Viaje
+              </button>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="text-center pb-4">
+            <p className="text-gray-500 text-xs">
+              Crosslog PWA • Viaje Finalizado
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Tracking activo normal
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col p-4">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="max-w-md w-full text-center">
+            {/* Indicador de tracking */}
+            <div className="mb-8">
+              <div className="relative inline-block">
+                <div className="w-32 h-32 rounded-full bg-green-500 flex items-center justify-center animate-pulse">
+                  <span className="text-6xl">📍</span>
+                </div>
+                <div className="absolute -top-2 -right-2 w-8 h-8 bg-green-400 rounded-full animate-ping"></div>
+              </div>
+            </div>
+
+            <h1 className="text-3xl font-bold text-white mb-2">Ubicación Activa</h1>
+            <p className="text-green-400 text-lg mb-8">Tu supervisor puede ver tu ubicación</p>
+
+            {/* Info de la unidad */}
+            <div className="bg-white/10 backdrop-blur rounded-2xl p-6 mb-6">
+              <div className="grid grid-cols-2 gap-4 text-left">
+                <div>
+                  <p className="text-gray-400 text-xs">UNIDAD</p>
+                  <p className="text-white font-bold text-lg">INT-{unidad.numero}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-xs">CISTERNA</p>
+                  <p className="text-white font-bold text-lg">{cisterna.numero}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-gray-400 text-xs">CHOFER</p>
+                  <p className="text-white font-bold">{chofer}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Estado de conexión */}
+            {gpsTracking.error ? (
+              <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 mb-6">
+                <p className="text-red-300 text-sm font-semibold">
+                  ❌ Error de conexión
+                </p>
+                <p className="text-red-200/80 text-xs mt-1">
+                  {gpsTracking.error}
+                </p>
+              </div>
+            ) : gpsTracking.lastUpdate ? (
+              <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-3 mb-6">
+                <p className="text-green-300 text-sm">
+                  ✅ Última actualización: {gpsTracking.lastUpdate.toLocaleTimeString('es-AR')}
+                </p>
+              </div>
+            ) : (
+              <p className="text-gray-400 text-sm mb-6">
+                Conectando con el servidor...
+              </p>
+            )}
+
+            {/* Mensaje importante */}
+            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 mb-6">
+              <p className="text-yellow-300 text-sm font-semibold">
+                ⚠️ No cierres esta app
+              </p>
+              <p className="text-yellow-200/80 text-xs mt-1">
+                Puedes minimizar pero no cerrar para mantener el seguimiento activo
+              </p>
+            </div>
+
+            {/* Botón de finalizar (oculto para el chofer según requerimiento) */}
+            {/* El tracking solo se detiene si cierra la app o llega a base */}
+          </div>
+        </div>
+
+        {/* Footer con info */}
+        <div className="text-center pb-4">
+          <p className="text-gray-500 text-xs">
+            Crosslog PWA • Tracking GPS Activo
+          </p>
         </div>
       </div>
     );

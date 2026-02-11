@@ -7,10 +7,11 @@ import {
   CategoriaItem
 } from '../types/checklist';
 import { saveChecklistDistribucion, checkChecklistExists } from '../services/checklistService';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
 import { TODAS_LAS_UNIDADES } from './CarouselSector';
+import { useGPSTracking } from '../hooks/useGPSTracking';
 
 interface ChecklistDistribucionProps {
   hdr: string;
@@ -146,9 +147,37 @@ const ITEMS_DISTRIBUCION: Omit<ItemChecklist, 'estado' | 'timestamp'>[] = [
 ];
 
 export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCancel }: ChecklistDistribucionProps) {
-  const [currentStep, setCurrentStep] = useState<'odometro' | 'items' | 'resumen'>('odometro');
+  const [currentStep, setCurrentStep] = useState<'odometro' | 'items' | 'resumen' | 'gps'>('odometro');
   const [checking, setChecking] = useState(true);
   const [odometro, setOdometro] = useState('');
+  const [checklistSaved, setChecklistSaved] = useState(false);
+  const [gpsHabilitadoConfig, setGpsHabilitadoConfig] = useState<boolean>(false);
+
+  // Cargar configuración de GPS al montar
+  useEffect(() => {
+    const cargarConfigGPS = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, 'configuracion', 'gps_tracking'));
+        if (configDoc.exists()) {
+          setGpsHabilitadoConfig(configDoc.data().habilitado || false);
+        }
+      } catch (error) {
+        console.error('[ChecklistDistribucion] Error cargando config GPS:', error);
+      }
+    };
+    cargarConfigGPS();
+  }, []);
+
+  // GPS Tracking
+  const {
+    isTracking,
+    hasPermission,
+    error: gpsError,
+    lastUpdate,
+    arrivedAtBase,
+    startTracking,
+    stopTracking
+  } = useGPSTracking();
   const [items, setItems] = useState<ItemChecklist[]>(
     ITEMS_DISTRIBUCION.map(item => ({
       ...item,
@@ -168,19 +197,48 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
   const [capturandoFotoNovedadModal, setCapturandoFotoNovedadModal] = useState(false);
   const [showConfirmacionSinEvidencia, setShowConfirmacionSinEvidencia] = useState(false);
   const [capturandoFoto, setCapturandoFoto] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Protección contra doble-click
 
   const currentItem = items[currentItemIndex];
   const totalItems = items.length;
   const progress = ((currentItemIndex + 1) / totalItems) * 100;
 
   // Check if checklist already exists for this HDR on mount
+  // Also check if GPS is already active for this HDR and reactivate it
   useEffect(() => {
     const checkExisting = async () => {
       try {
         const exists = await checkChecklistExists(hdr);
         if (exists) {
           console.log('[ChecklistDistribucion] Checklist ya existe para HDR:', hdr);
-          // Skip checklist
+
+          // Verificar si el GPS ya estaba activo para este HDR
+          const gpsDoc = await getDoc(doc(db, 'gps_activos', hdr));
+          if (gpsDoc.exists() && gpsDoc.data().activo) {
+            console.log('[ChecklistDistribucion] GPS activo encontrado para HDR, reactivando...');
+            const data = gpsDoc.data();
+
+            // Reactivar GPS automáticamente
+            const patente = TODAS_LAS_UNIDADES.find(u => u.numero === unidad)?.patente || data.patente || 'N/A';
+            const success = await startTracking({
+              unidad: data.unidad || unidad,
+              patente,
+              chofer: data.chofer || chofer,
+              checklistId: `checklist_dist_${hdr}`,
+              sector: 'distribucion',
+              hdr
+            });
+
+            if (success) {
+              showInfo('GPS reactivado automáticamente');
+              setChecklistSaved(true);
+              setCurrentStep('gps');
+              setChecking(false);
+              return;
+            }
+          }
+
+          // Si no hay GPS activo, simplemente continuar
           onComplete();
           return;
         }
@@ -192,7 +250,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
       }
     };
     checkExisting();
-  }, [hdr, onComplete]);
+  }, [hdr, onComplete, startTracking, unidad, chofer]);
 
   // Handlers
   const handleOdometroSubmit = () => {
@@ -371,6 +429,10 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
   };
 
   const handleFinalizar = async () => {
+    // Evitar múltiples clicks
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     // Calcular resultado
     const itemsRechazados = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
@@ -412,8 +474,10 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
       if (novedades.length > 0) {
         console.log('[ChecklistDistribucion] Guardando novedades del botón flotante:', novedades.length);
 
-        for (const novedadObj of novedades) {
-          const novedadId = `novedad_flotante_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        for (let i = 0; i < novedades.length; i++) {
+          const novedadObj = novedades[i];
+          // ID determinístico para evitar duplicados
+          const novedadId = `novedad_flotante_${hdr}_${i}`;
 
           const novedad: Novedad = {
             id: novedadId,
@@ -447,11 +511,19 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
 
       // Notificar éxito
       showSuccess('Checklist guardado exitosamente');
+      setChecklistSaved(true);
 
-      onComplete();
+      // Verificar si GPS está habilitado en la configuración
+      if (gpsHabilitadoConfig) {
+        setCurrentStep('gps');
+      } else {
+        // GPS deshabilitado - finalizar directamente
+        onComplete();
+      }
     } catch (error) {
       console.error('[ChecklistDistribucion] Error guardando checklist:', error);
       showError('Error al guardar checklist. Intenta nuevamente.');
+      setIsSubmitting(false); // Permitir reintentar en caso de error
     }
   };
 
@@ -1170,12 +1242,23 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
           <div className="space-y-3">
             <button
               onClick={handleFinalizar}
-              className="w-full py-5 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+              disabled={isSubmitting}
+              className={`w-full py-5 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'}`}
               style={{
                 background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
               }}
             >
-              Finalizar y Guardar Checklist
+              {isSubmitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Guardando...
+                </span>
+              ) : (
+                'Finalizar y Guardar Checklist'
+              )}
             </button>
             <button
               onClick={() => {
@@ -1186,6 +1269,219 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
             >
               ← Revisar Ítems
             </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render: Paso de GPS
+  if (currentStep === 'gps') {
+    const patente = TODAS_LAS_UNIDADES.find(u => u.numero === unidad)?.patente || 'N/A';
+
+    // Handler para activar GPS
+    const handleActivarGPS = async () => {
+      const config = {
+        unidad,
+        patente,
+        chofer,
+        checklistId: `checklist_dist_${hdr}`,
+        sector: 'distribucion' as const,
+        hdr
+      };
+
+      const success = await startTracking(config);
+
+      if (success) {
+        // Guardar en Firebase que este HDR ya activó GPS
+        try {
+          await setDoc(doc(db, 'gps_activos', hdr), {
+            hdr,
+            unidad,
+            chofer,
+            patente,
+            activadoEn: Timestamp.now(),
+            activo: true
+          });
+          console.log('[GPS] ✅ HDR registrado con GPS activo:', hdr);
+        } catch (error) {
+          console.error('[GPS] Error guardando estado HDR:', error);
+        }
+
+        showSuccess('GPS activado correctamente');
+      }
+    };
+
+    // Handler para continuar sin GPS
+    const handleContinuarSinGPS = () => {
+      showInfo('Puedes activar el GPS desde el menú principal si lo necesitas');
+      onComplete();
+    };
+
+    // Si ya está trackeando, mostrar estado activo
+    if (isTracking) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+          <div className="max-w-md mx-auto">
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <div className="text-center mb-6">
+                <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse" style={{
+                  background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+                }}>
+                  <span className="text-5xl">📍</span>
+                </div>
+                <h1 className="text-2xl font-bold text-gray-800 mb-2">GPS Activo</h1>
+                <p className="text-gray-600">Tu ubicación está siendo compartida</p>
+              </div>
+
+              {/* Info de la unidad */}
+              <div className="space-y-2 rounded-xl p-4 border-2 mb-6" style={{
+                backgroundColor: '#f0f9e8',
+                borderColor: '#a8e063'
+              }}>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>📋 HDR:</span>
+                  <span className="text-sm font-bold text-gray-800">{hdr}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>🚛 UNIDAD:</span>
+                  <span className="text-sm font-bold text-gray-800">INT-{unidad}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>👤 CHOFER:</span>
+                  <span className="text-sm font-bold text-gray-800">{chofer}</span>
+                </div>
+                {lastUpdate && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>⏱️ ÚLTIMA ACT:</span>
+                    <span className="text-sm font-bold text-gray-800">
+                      {lastUpdate.toLocaleTimeString('es-AR')}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Nota importante */}
+              <div className="bg-blue-50 border-l-4 border-blue-500 rounded p-3 mb-6">
+                <p className="text-sm text-blue-800">
+                  ℹ️ El GPS se apagará automáticamente al llegar a la base.
+                  Mantén la aplicación abierta para el seguimiento.
+                </p>
+              </div>
+
+              <button
+                onClick={onComplete}
+                className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+                style={{
+                  background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+                }}
+              >
+                Continuar con las entregas
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Si llegó a la base por geofence
+    if (arrivedAtBase) {
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+          <div className="max-w-md mx-auto">
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <div className="text-center mb-6">
+                <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center bg-blue-100">
+                  <span className="text-5xl">🏠</span>
+                </div>
+                <h1 className="text-2xl font-bold text-gray-800 mb-2">¡Llegaste a la Base!</h1>
+                <p className="text-gray-600">El GPS se ha detenido automáticamente</p>
+              </div>
+
+              <button
+                onClick={onComplete}
+                className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+                style={{
+                  background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+                }}
+              >
+                Finalizar
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Pantalla inicial para activar GPS
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <div className="text-center mb-6">
+              <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center" style={{
+                background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+              }}>
+                <span className="text-5xl">📍</span>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">Activar GPS</h1>
+              <p className="text-gray-600">
+                ¿Deseas activar el seguimiento GPS para este viaje?
+              </p>
+            </div>
+
+            {/* Info de la unidad */}
+            <div className="space-y-2 rounded-xl p-4 border-2 mb-6" style={{
+              backgroundColor: '#f0f9e8',
+              borderColor: '#a8e063'
+            }}>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>📋 HDR:</span>
+                <span className="text-sm font-bold text-gray-800">{hdr}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>🚛 UNIDAD:</span>
+                <span className="text-sm font-bold text-gray-800">INT-{unidad} • {patente}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>👤 CHOFER:</span>
+                <span className="text-sm font-bold text-gray-800">{chofer}</span>
+              </div>
+            </div>
+
+            {/* Error de GPS si hay */}
+            {gpsError && (
+              <div className="bg-red-50 border-l-4 border-red-500 rounded p-3 mb-4">
+                <p className="text-sm text-red-800">❌ {gpsError}</p>
+              </div>
+            )}
+
+            {/* Nota importante */}
+            <div className="bg-blue-50 border-l-4 border-blue-500 rounded p-3 mb-6">
+              <p className="text-sm text-blue-800">
+                ℹ️ <strong>Beneficios:</strong> El GPS permite monitorear tu recorrido en tiempo real
+                y se desactiva automáticamente al llegar a la base.
+              </p>
+            </div>
+
+            {/* Botones */}
+            <div className="space-y-3">
+              <button
+                onClick={handleActivarGPS}
+                className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+                style={{
+                  background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+                }}
+              >
+                📍 Activar GPS
+              </button>
+              <button
+                onClick={handleContinuarSinGPS}
+                className="w-full py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
+              >
+                Continuar sin GPS
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -75,21 +75,33 @@ export const UNIDADES_DISTRIBUCION = [
   { numero: '816', patente: 'AH506IC' },
 ];
 
-// Todas las unidades para Carga de Combustible (VRAC + VITAL_AIRE + DISTRIBUCION)
+// Todas las unidades para Carga de Combustible (VRAC + VITAL_AIRE + DISTRIBUCION + CISTERNAS)
 // Nota: Se combinan eliminando duplicados (41, 816, 817 están en múltiples listas)
 export const TODAS_LAS_UNIDADES = [
-  // VRAC
+  // VRAC TRACTORES
   { numero: '40', patente: 'AB934JF' },
   { numero: '41', patente: 'AB152AZ' },
   { numero: '48', patente: 'AC531CX' },
   { numero: '50', patente: 'AD611OK' },
   { numero: '802', patente: 'AE069SN' },
-  { numero: '805', patente: 'AE936JF' },
+  { numero: '805', patente: 'AE936FJ' },
   { numero: '806', patente: 'AF254MJ' },
   { numero: '810', patente: 'AF894TS' },
   { numero: '812', patente: 'AG835OX' },
   { numero: '814', patente: 'AG994AW' },
   { numero: '815', patente: 'AH676AV' },
+  // VRAC CISTERNAS (Semirremolques)
+  { numero: '532', patente: 'STF788' },
+  { numero: '535', patente: 'STF787' },
+  { numero: '537', patente: 'SMZ040' },
+  { numero: '548', patente: 'SJU171' },
+  { numero: '552', patente: 'BML932' },
+  { numero: '603', patente: 'FQQ503' },
+  { numero: '703', patente: 'CLD321' },
+  { numero: '711', patente: 'PKY856' },
+  { numero: '712', patente: 'PKY880' },
+  { numero: '715', patente: 'AD179PC' },
+  { numero: '721', patente: 'AG831SJ' },
   // VITAL AIRE
   { numero: '52', patente: 'AA279FE' },
   { numero: '53', patente: 'AC823TK' },

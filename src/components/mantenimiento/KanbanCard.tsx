@@ -3,6 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { OrdenTrabajo } from '../../types/checklist';
 import { convertirTimestampFirebase } from '../../utils/dateUtils';
 import { TODAS_LAS_UNIDADES } from '../CarouselSector';
+import { formatearNumeroOT } from '../../services/ordenTrabajoService';
 
 // Función para obtener patente de una unidad
 const obtenerPatente = (numeroUnidad: string): string => {
@@ -51,8 +52,8 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
     URGENTE: 'bg-red-100 text-red-700',
   };
 
-  // Generar número corto de OT (últimos 4-5 dígitos)
-  const numeroCorto = String(orden.numeroOT).slice(-5);
+  // Formatear número de OT (soporta legacy y nuevo formato)
+  const numeroFormateado = formatearNumeroOT(orden.numeroOT);
 
   return (
     <div
@@ -70,7 +71,7 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-[#56ab2f] bg-[#f0f9e8] px-2 py-1 rounded">
-            OT-{numeroCorto}
+            OT # {numeroFormateado}
           </span>
           <span
             className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${

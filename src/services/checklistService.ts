@@ -687,7 +687,8 @@ async function generarNovedadesDistribucion(hdr: string, checklist: ChecklistReg
     console.log('[ChecklistService] 📋 Items NO_CONFORME encontrados:', itemsNoConformes.length);
 
     for (const item of itemsNoConformes) {
-      const novedadId = `novedad_dist_${Date.now()}_${item.id}`;
+      // ID determinístico basado en HDR + itemId para evitar duplicados
+      const novedadId = `novedad_dist_${hdr}_${item.id}`;
 
       const novedad: Novedad = {
         id: novedadId,

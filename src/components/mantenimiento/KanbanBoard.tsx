@@ -69,9 +69,15 @@ export function KanbanBoard({ ordenes, onOrdenClick, onEstadoChange, onEliminar 
   };
 
   // Agrupar órdenes por estado
+  // NOTA: Las OTs con estado 'COMPLETADA' (legacy) se muestran en la columna 'CERRADO'
   const ordenesPorEstado = ESTADOS.reduce(
     (acc, estado) => {
-      acc[estado] = ordenes.filter((orden) => orden.estado === estado);
+      if (estado === 'CERRADO') {
+        // Incluir tanto CERRADO como COMPLETADA en la columna Cerrado
+        acc[estado] = ordenes.filter((orden) => orden.estado === 'CERRADO' || orden.estado === 'COMPLETADA');
+      } else {
+        acc[estado] = ordenes.filter((orden) => orden.estado === estado);
+      }
       return acc;
     },
     {} as Record<OrdenTrabajo['estado'], OrdenTrabajo[]>

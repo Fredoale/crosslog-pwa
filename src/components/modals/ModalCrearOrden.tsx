@@ -6,10 +6,6 @@
 import React, { useState } from 'react';
 import {
   collection,
-  query,
-  getDocs,
-  orderBy,
-  limit,
   addDoc,
   serverTimestamp
 } from 'firebase/firestore';
@@ -18,20 +14,51 @@ import { db, storage } from '../../config/firebase';
 import type { OrdenTrabajo } from '../../types/checklist';
 import { showSuccess, showError, showWarning } from '../../utils/toast';
 import { TODAS_LAS_UNIDADES } from '../CarouselSector';
+import { generarNumeroOT } from '../../services/ordenTrabajoService';
+
+// Datos iniciales para pre-llenar el formulario (ej: desde Tren Rodante)
+interface DatosInicialesOT {
+  unidadNumero?: string;
+  unidadPatente?: string;
+  tipo?: 'PREVENTIVO' | 'CORRECTIVO' | 'URGENTE';
+  descripcion?: string;
+  prioridad?: 'ALTA' | 'MEDIA' | 'BAJA';
+  // Datos específicos de Tren Rodante
+  tipoMantenimientoTR?: '40K' | '80K' | '160K';
+  kilometrajeActual?: number;
+}
 
 interface ModalCrearOrdenProps {
   onClose: () => void;
   onCreated: () => void;
+  datosIniciales?: DatosInicialesOT;
 }
 
-export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated }) => {
+export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated, datosIniciales }) => {
   const [loading, setLoading] = useState(false);
+
+  // Generar descripción automática si viene de Tren Rodante
+  const generarDescripcionTR = () => {
+    if (datosIniciales?.tipoMantenimientoTR && datosIniciales?.kilometrajeActual) {
+      const tipo = datosIniciales.tipoMantenimientoTR;
+      const km = datosIniciales.kilometrajeActual.toLocaleString('es-AR');
+      if (tipo === '40K') {
+        return `TREN RODANTE - Inspección Ligera 40K\nKilometraje actual: ${km} km\n\nRealizar inspección según procedimiento NG-PR-TRN-021-CK-005:\n- Sistema de enganche\n- Varios (rueda auxilio, paragolpes, guardabarros, luces)\n- Frenos (inspección visual, espesor cinta)\n- Suspensión (fugas neumáticas, elásticos)\n- Registro de neumáticos`;
+      } else if (tipo === '80K') {
+        return `TREN RODANTE - Mantenimiento Corto Plazo 80K\nKilometraje actual: ${km} km\n\nRealizar mantenimiento según procedimiento NG-PR-TRN-017-FR-01:\n- Accesorios\n- Sistema Anti Arrastre (ABS)\n- Ejes completos (3 ejes)\n- Sistema de frenos\n- Suspensión`;
+      } else if (tipo === '160K') {
+        return `TREN RODANTE - Mantenimiento Mediano Plazo 160K\nKilometraje actual: ${km} km\n\nRealizar mantenimiento según procedimiento NG-PR-TRN-017-FR-03:\n- Todo lo incluido en 80K\n- Ensayo ND sistema de enganche (OBLIGATORIO)\n- Rectificación de campanas/discos\n- Ensayo ND puntas de eje (OBLIGATORIO)\n- Alineación de ejes`;
+      }
+    }
+    return datosIniciales?.descripcion || '';
+  };
+
   const [formData, setFormData] = useState({
-    unidadNumero: '',
-    unidadPatente: '',
-    tipo: 'CORRECTIVO' as 'PREVENTIVO' | 'CORRECTIVO' | 'URGENTE',
-    descripcion: '',
-    prioridad: 'MEDIA' as 'ALTA' | 'MEDIA' | 'BAJA',
+    unidadNumero: datosIniciales?.unidadNumero || '',
+    unidadPatente: datosIniciales?.unidadPatente || '',
+    tipo: datosIniciales?.tipo || 'PREVENTIVO' as 'PREVENTIVO' | 'CORRECTIVO' | 'URGENTE',
+    descripcion: generarDescripcionTR(),
+    prioridad: datosIniciales?.prioridad || 'MEDIA' as 'ALTA' | 'MEDIA' | 'BAJA',
   });
   const [imagenesEvidencia, setImagenesEvidencia] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -70,11 +97,8 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
         urlsImagenes.push(url);
       }
 
-      // Generar número de OT
-      const ordersRef = collection(db, 'ordenes_trabajo');
-      const ordersSnap = await getDocs(query(ordersRef, orderBy('numeroOT', 'desc'), limit(1)));
-      const ultimoNumero = ordersSnap.empty ? 0 : ordersSnap.docs[0].data().numeroOT || 0;
-      const nuevoNumero = ultimoNumero + 1;
+      // Generar número de OT correlativo usando el servicio
+      const nuevoNumero = await generarNumeroOT();
 
       const orden: Omit<OrdenTrabajo, 'id'> = {
         numeroOT: nuevoNumero,

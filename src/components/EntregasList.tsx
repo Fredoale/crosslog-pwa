@@ -5,7 +5,8 @@ import type { Entrega } from '../types';
 import { useDocumentosStore } from '../stores/documentosStore';
 import { DocumentosModal } from './documentos/DocumentosModal';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../config/firebase';
 import type { Novedad } from '../types/checklist';
 import { showSuccess, showError, showWarning } from '../utils/toast';
 
@@ -186,7 +187,17 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
 
     setGuardandoNovedad(true);
     try {
-      const novedadId = `novedad_remitos_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const novedadId = `novedad_remitos_${currentHDR}_${Date.now()}`;
+      let fotoUrl: string | null = null;
+
+      // Si hay foto, subirla a Firebase Storage primero
+      if (fotoNovedad) {
+        console.log('[EntregasList] Subiendo foto a Storage...');
+        const fotoRef = ref(storage, `novedades/${novedadId}.jpg`);
+        await uploadString(fotoRef, fotoNovedad, 'data_url');
+        fotoUrl = await getDownloadURL(fotoRef);
+        console.log('[EntregasList] ✅ Foto subida:', fotoUrl);
+      }
 
       const novedad: Novedad = {
         id: novedadId,
@@ -199,7 +210,7 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
         },
         descripcion: `HDR ${currentHDR} - ${descripcionNovedad.trim()}`,
         comentarioChofer: descripcionNovedad.trim(),
-        fotoUrl: fotoNovedad ?? undefined,
+        fotoUrl: fotoUrl ?? undefined,
         prioridad: 'ALTA', // Novedades de remitos son ALTA prioridad
         estado: 'PENDIENTE',
         timestamp: new Date()
@@ -211,12 +222,12 @@ export function EntregasList({ onSelectEntrega, onLogout }: EntregasListProps) {
         chofer: chofer,
         fecha: Timestamp.fromDate(novedad.fecha),
         timestamp: Timestamp.fromDate(novedad.timestamp),
-        fotoUrl: fotoNovedad || null,
+        fotoUrl: fotoUrl,
         fotosEvidencia: [],
         ordenTrabajoId: null
       };
 
-      console.log('[EntregasList] Guardando novedad en Firebase:', novedadData);
+      console.log('[EntregasList] Guardando novedad en Firebase...');
       const novedadRef = doc(db, 'novedades', novedadId);
       await setDoc(novedadRef, novedadData);
       console.log('[EntregasList] ✅ Novedad guardada en Firebase:', novedadId);
