@@ -198,7 +198,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
           posicion: posicionSeleccionada.posicion.id,
           fecha: new Date(),
           profundidadMm: profundidad,
-          presionBar: presionBar ? parseFloat(presionBar) : null,
+          presionBar: presionBar ? parseFloat(presionBar) : undefined,
           estadoDesgaste: calcularEstadoDesgaste(profundidad),
           tecnico,
           observaciones: observaciones || '',

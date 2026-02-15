@@ -11,6 +11,7 @@ import { ChecklistVRAC } from './ChecklistVRAC';
 import { ChecklistVitalAire } from './ChecklistVitalAire';
 import { ChecklistDistribucion } from './ChecklistDistribucion';
 import { FormularioCargaCombustible } from './combustible/FormularioCargaCombustible';
+import { PanelFlota } from './PanelFlota';
 import type { ChecklistRegistro } from '../types/checklist';
 import { checkChecklistExists } from '../services/checklistService';
 import { showSuccess } from '../utils/toast';
@@ -86,6 +87,39 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
   } | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [tempHDRData, setTempHDRData] = useState<any>(null);
+
+  // Panel de Flota (acceso secreto)
+  const [logoClickCount, setLogoClickCount] = useState(0);
+  const [showAccesoFlota, setShowAccesoFlota] = useState(false);
+  const [codigoFlota, setCodigoFlota] = useState('');
+  const [errorFlota, setErrorFlota] = useState('');
+  const [showPanelFlota, setShowPanelFlota] = useState(false);
+
+  // Manejar clicks en logo para acceso secreto
+  const handleLogoClick = () => {
+    const newCount = logoClickCount + 1;
+    setLogoClickCount(newCount);
+
+    if (newCount >= 5) {
+      setShowAccesoFlota(true);
+      setLogoClickCount(0);
+    }
+
+    // Reset counter after 2 seconds of no clicks
+    setTimeout(() => setLogoClickCount(0), 2000);
+  };
+
+  // Validar código de acceso a flota
+  const handleAccesoFlota = () => {
+    if (codigoFlota === 'crosslog2026') {
+      setShowAccesoFlota(false);
+      setShowPanelFlota(true);
+      setCodigoFlota('');
+      setErrorFlota('');
+    } else {
+      setErrorFlota('Código incorrecto');
+    }
+  };
 
   const { setHDR, setEntregas, setClientInfo } = useEntregasStore();
   const { login: loginTaller } = useTallerStore();
@@ -522,8 +556,66 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
     }
   }
 
+  // Render Panel de Flota si está activo
+  if (showPanelFlota) {
+    return <PanelFlota onClose={() => setShowPanelFlota(false)} />;
+  }
+
   return (
     <>
+      {/* Modal Acceso Personal Autorizado */}
+      {showAccesoFlota && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+            <div className="p-6">
+              <div className="text-center mb-6">
+                <div className="text-4xl mb-2">🔐</div>
+                <h2 className="text-xl font-bold text-gray-800">Acceso Personal Autorizado</h2>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <input
+                    type="password"
+                    value={codigoFlota}
+                    onChange={(e) => {
+                      setCodigoFlota(e.target.value);
+                      setErrorFlota('');
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAccesoFlota()}
+                    placeholder="Código de acceso"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-green-500 text-center text-lg"
+                    autoFocus
+                  />
+                  {errorFlota && (
+                    <p className="text-red-500 text-sm text-center mt-2">{errorFlota}</p>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowAccesoFlota(false);
+                      setCodigoFlota('');
+                      setErrorFlota('');
+                    }}
+                    className="flex-1 py-3 px-4 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleAccesoFlota}
+                    className="flex-1 py-3 px-4 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
+                  >
+                    Ingresar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Welcome Modal */}
       {welcomeData && (
         <WelcomeModal
@@ -657,10 +749,14 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
               />
             </svg>
           </div>
-          <h1 className="text-4xl font-bold mb-2 tracking-wider" style={{
-            color: '#ffffff',
-            textShadow: '0 2px 10px rgba(0, 0, 0, 0.3)'
-          }}>
+          <h1
+            onClick={handleLogoClick}
+            className="text-4xl font-bold mb-2 tracking-wider cursor-pointer select-none"
+            style={{
+              color: '#ffffff',
+              textShadow: '0 2px 10px rgba(0, 0, 0, 0.3)'
+            }}
+          >
             CROSSLOG
           </h1>
           <p className="text-xs font-semibold tracking-wide" style={{

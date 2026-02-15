@@ -605,3 +605,373 @@ export async function prepareChartsForPDF(): Promise<ReportData['chartsElements'
     return undefined;
   }
 }
+
+// ==========================================
+// ORDEN DE TRABAJO PDF GENERATION
+// ==========================================
+
+export interface OrdenTrabajoPDFData {
+  id: string;
+  numeroOT: number;
+  fecha: Date | any;
+  unidad: { numero: string; patente: string };
+  tipo: string;
+  descripcion: string;
+  estado: string;
+  prioridad: string;
+  asignadoA?: string;
+  mecanico?: string;
+  fechaInicio?: Date | any;
+  fechaFin?: Date | any;
+  horasTrabajo?: number;
+  costoRepuestos?: number;
+  costoManoObra?: number;
+  costoReparacion?: number;
+  repuestos?: { nombre: string; cantidad: number; costo: number }[];
+  registrosTrabajo?: {
+    fecha: any;
+    descripcion: string;
+    horasTrabajo: number;
+    costoTotal: number;
+    tecnico?: string;
+    repuestos?: { nombre: string; cantidad: number; costo: number }[];
+  }[];
+  descripcionTrabajo?: string;
+  comentarioInicio?: string;
+  comentarioFin?: string;
+}
+
+/**
+ * Formatear fecha para PDF
+ */
+function formatearFechaPDF(fecha: any): string {
+  if (!fecha) return 'N/A';
+
+  let date: Date;
+  if (fecha?.toDate) {
+    date = fecha.toDate();
+  } else if (fecha instanceof Date) {
+    date = fecha;
+  } else if (typeof fecha === 'string') {
+    date = new Date(fecha);
+  } else {
+    return 'N/A';
+  }
+
+  return date.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+export interface PDFResult {
+  blob: Blob;
+  url: string;
+  fileName: string;
+}
+
+/**
+ * Generar PDF de una Orden de Trabajo (retorna blob para previsualización)
+ */
+export async function generateOrdenTrabajoPDF(orden: OrdenTrabajoPDFData): Promise<PDFResult> {
+  console.log('[PDF] Generando PDF para OT #' + orden.numeroOT);
+
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 15;
+  const contentWidth = pageWidth - (margin * 2);
+  let yPosition = margin;
+
+  // === HEADER ===
+  // Background rectangle for header
+  pdf.setFillColor(26, 35, 50); // #1a2332 Crosslog dark blue
+  pdf.rect(0, 0, pageWidth, 45, 'F');
+
+  // Title
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(22);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('ORDEN DE TRABAJO', margin, 20);
+
+  // OT Number
+  pdf.setFontSize(14);
+  pdf.text(`OT #${orden.numeroOT.toString().padStart(4, '0')}`, margin, 32);
+
+  // Estado badge
+  const estadoColors: Record<string, [number, number, number]> = {
+    'PENDIENTE': [245, 158, 11],   // amber
+    'EN_PROCESO': [59, 130, 246],   // blue
+    'ESPERANDO_REPUESTOS': [249, 115, 22], // orange
+    'CERRADO': [34, 197, 94],       // green
+    'COMPLETADA': [34, 197, 94]     // green
+  };
+  const estadoColor = estadoColors[orden.estado] || [107, 114, 128]; // gray default
+  pdf.setFillColor(estadoColor[0], estadoColor[1], estadoColor[2]);
+  const estadoText = orden.estado.replace('_', ' ');
+  const estadoWidth = pdf.getTextWidth(estadoText) + 10;
+  pdf.roundedRect(pageWidth - margin - estadoWidth - 5, 12, estadoWidth + 10, 10, 2, 2, 'F');
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(10);
+  pdf.text(estadoText, pageWidth - margin - estadoWidth, 19);
+
+  // Fecha de generación
+  pdf.setFontSize(8);
+  pdf.setTextColor(200, 200, 200);
+  pdf.text(`Generado: ${new Date().toLocaleDateString('es-AR')}`, pageWidth - margin - 35, 38);
+
+  yPosition = 55;
+  pdf.setTextColor(0, 0, 0);
+
+  // === INFORMACIÓN PRINCIPAL ===
+  pdf.setFillColor(240, 240, 240);
+  pdf.rect(margin, yPosition, contentWidth, 35, 'F');
+
+  yPosition += 8;
+  pdf.setFontSize(11);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('INFORMACIÓN DE LA UNIDAD', margin + 5, yPosition);
+
+  yPosition += 8;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(10);
+  pdf.text(`Unidad: ${orden.unidad.numero}`, margin + 5, yPosition);
+  pdf.text(`Patente: ${orden.unidad.patente}`, margin + 70, yPosition);
+  pdf.text(`Tipo: ${orden.tipo}`, margin + 130, yPosition);
+
+  yPosition += 7;
+  pdf.text(`Fecha Creación: ${formatearFechaPDF(orden.fecha)}`, margin + 5, yPosition);
+  pdf.text(`Prioridad: ${orden.prioridad}`, margin + 70, yPosition);
+  if (orden.asignadoA || orden.mecanico) {
+    pdf.text(`Técnico: ${orden.mecanico || orden.asignadoA || 'Sin asignar'}`, margin + 130, yPosition);
+  }
+
+  yPosition += 15;
+
+  // === MOTIVO INGRESO ===
+  pdf.setFillColor(26, 35, 50); // #1a2332 Crosslog dark blue (mismo que header)
+  pdf.rect(margin, yPosition, contentWidth, 8, 'F');
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(11);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('MOTIVO INGRESO', margin + 5, yPosition + 6);
+
+  yPosition += 12;
+  pdf.setTextColor(0, 0, 0);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9);
+  const descripcionLines = pdf.splitTextToSize(orden.descripcion || 'Sin descripción', contentWidth - 10);
+  pdf.text(descripcionLines, margin + 5, yPosition);
+  yPosition += descripcionLines.length * 4 + 10;
+
+  // === NOVEDADES ADICIONALES RESUELTAS ===
+  // Combina descripcionTrabajo + registrosTrabajo en una sola sección
+  const tieneNovedadesAdicionales = orden.descripcionTrabajo || (orden.registrosTrabajo && orden.registrosTrabajo.length > 0);
+
+  if (tieneNovedadesAdicionales) {
+    // Check if we need a new page
+    if (yPosition > pageHeight - 60) {
+      pdf.addPage();
+      yPosition = margin;
+    }
+
+    pdf.setFillColor(26, 35, 50); // #1a2332 Crosslog dark blue (mismo que header)
+    pdf.rect(margin, yPosition, contentWidth, 8, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('NOVEDADES ADICIONALES RESUELTAS', margin + 5, yPosition + 6);
+
+    yPosition += 12;
+    pdf.setTextColor(0, 0, 0);
+
+    // Mostrar descripcionTrabajo si existe (como primer item)
+    if (orden.descripcionTrabajo) {
+      pdf.setFillColor(245, 245, 245);
+      const trabajoLines = pdf.splitTextToSize(orden.descripcionTrabajo, contentWidth - 15);
+      const boxHeight = Math.max(20, trabajoLines.length * 4 + 12);
+      pdf.rect(margin, yPosition, contentWidth, boxHeight, 'F');
+
+      yPosition += 6;
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(trabajoLines, margin + 5, yPosition);
+      yPosition += trabajoLines.length * 4 + 10;
+    }
+
+    // Mostrar registros de trabajo
+    if (orden.registrosTrabajo && orden.registrosTrabajo.length > 0) {
+      orden.registrosTrabajo.forEach((registro, index) => {
+        if (yPosition > pageHeight - 40) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+
+        pdf.setFillColor(245, 245, 245);
+        const regDesc = pdf.splitTextToSize(registro.descripcion || '', contentWidth - 15);
+        const boxHeight = Math.max(25, regDesc.length * 3 + 18);
+        pdf.rect(margin, yPosition, contentWidth, boxHeight, 'F');
+
+        yPosition += 6;
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'bold');
+        const itemNum = orden.descripcionTrabajo ? index + 2 : index + 1;
+        pdf.text(`#${itemNum} - ${formatearFechaPDF(registro.fecha)}`, margin + 5, yPosition);
+        if (registro.tecnico) {
+          pdf.text(`Técnico: ${registro.tecnico}`, margin + 100, yPosition);
+        }
+
+        yPosition += 5;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.text(regDesc, margin + 5, yPosition);
+        yPosition += regDesc.length * 3 + 3;
+
+        pdf.text(`Horas: ${registro.horasTrabajo || 0}h`, margin + 5, yPosition);
+        pdf.text(`Costo: $${(registro.costoTotal || 0).toLocaleString('es-AR')}`, margin + 40, yPosition);
+
+        yPosition += 10;
+      });
+    }
+
+    yPosition += 5;
+  }
+
+  // === REPUESTOS UTILIZADOS ===
+  if (orden.repuestos && orden.repuestos.length > 0) {
+    if (yPosition > pageHeight - 50) {
+      pdf.addPage();
+      yPosition = margin;
+    }
+
+    pdf.setFillColor(249, 115, 22); // Orange
+    pdf.rect(margin, yPosition, contentWidth, 8, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('REPUESTOS UTILIZADOS', margin + 5, yPosition + 6);
+
+    yPosition += 12;
+    pdf.setTextColor(0, 0, 0);
+
+    // Table header
+    pdf.setFillColor(230, 230, 230);
+    pdf.rect(margin, yPosition, contentWidth, 7, 'F');
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Repuesto', margin + 5, yPosition + 5);
+    pdf.text('Cant.', margin + 100, yPosition + 5);
+    pdf.text('Costo Unit.', margin + 120, yPosition + 5);
+    pdf.text('Subtotal', margin + 155, yPosition + 5);
+
+    yPosition += 9;
+    pdf.setFont('helvetica', 'normal');
+
+    let totalRepuestos = 0;
+    orden.repuestos.forEach((repuesto) => {
+      const subtotal = repuesto.cantidad * repuesto.costo;
+      totalRepuestos += subtotal;
+
+      pdf.text(repuesto.nombre.substring(0, 40), margin + 5, yPosition);
+      pdf.text(repuesto.cantidad.toString(), margin + 100, yPosition);
+      pdf.text(`$${repuesto.costo.toLocaleString('es-AR')}`, margin + 120, yPosition);
+      pdf.text(`$${subtotal.toLocaleString('es-AR')}`, margin + 155, yPosition);
+      yPosition += 6;
+    });
+
+    // Total
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('TOTAL REPUESTOS:', margin + 100, yPosition + 3);
+    pdf.text(`$${totalRepuestos.toLocaleString('es-AR')}`, margin + 155, yPosition + 3);
+    yPosition += 12;
+  }
+
+  // === RESUMEN DE COSTOS ===
+  if (orden.costoRepuestos || orden.costoManoObra || orden.costoReparacion || orden.horasTrabajo) {
+    if (yPosition > pageHeight - 40) {
+      pdf.addPage();
+      yPosition = margin;
+    }
+
+    pdf.setFillColor(26, 35, 50); // #1a2332 Crosslog dark blue (mismo que header)
+    pdf.rect(margin, yPosition, contentWidth, 8, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('RESUMEN DE COSTOS', margin + 5, yPosition + 6);
+
+    yPosition += 14;
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFontSize(10);
+
+    if (orden.horasTrabajo) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Horas de Trabajo:`, margin + 5, yPosition);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`${orden.horasTrabajo}h`, margin + 60, yPosition);
+      yPosition += 7;
+    }
+
+    if (orden.costoRepuestos) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Costo Repuestos:`, margin + 5, yPosition);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`$${orden.costoRepuestos.toLocaleString('es-AR')}`, margin + 60, yPosition);
+      yPosition += 7;
+    }
+
+    if (orden.costoManoObra) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Costo Mano de Obra:`, margin + 5, yPosition);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`$${orden.costoManoObra.toLocaleString('es-AR')}`, margin + 60, yPosition);
+      yPosition += 7;
+    }
+
+    if (orden.costoReparacion) {
+      pdf.setDrawColor(0, 0, 0);
+      pdf.line(margin + 5, yPosition, margin + 100, yPosition);
+      yPosition += 5;
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`COSTO TOTAL:`, margin + 5, yPosition);
+      pdf.setTextColor(34, 197, 94);
+      pdf.text(`$${orden.costoReparacion.toLocaleString('es-AR')}`, margin + 60, yPosition);
+    }
+  }
+
+  // === FOOTER ===
+  const footerY = pageHeight - 15;
+  pdf.setFillColor(26, 35, 50);
+  pdf.rect(0, footerY - 5, pageWidth, 20, 'F');
+  pdf.setTextColor(150, 150, 150);
+  pdf.setFontSize(8);
+  pdf.setFont('helvetica', 'normal');
+  pdf.text('Crosslog - Sistema de Gestión de Mantenimiento', margin, footerY + 3);
+  pdf.text(`Página 1`, pageWidth - margin - 15, footerY + 3);
+
+  // Generate PDF blob and filename
+  const fileName = `OT_${orden.numeroOT.toString().padStart(4, '0')}_${orden.unidad.numero}_${new Date().toISOString().split('T')[0]}.pdf`;
+  const pdfBlob = pdf.output('blob');
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+
+  console.log('[PDF] OT PDF generado:', fileName);
+
+  return { blob: pdfBlob, url: pdfUrl, fileName };
+}
+
+/**
+ * Descargar PDF directamente (función helper)
+ */
+export function downloadPDFBlob(blob: Blob, fileName: string): void {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+}

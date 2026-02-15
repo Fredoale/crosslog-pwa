@@ -15,9 +15,10 @@ interface KanbanCardProps {
   orden: OrdenTrabajo;
   onClick: () => void;
   onEliminar?: (ordenId: string) => void;
+  isFullscreen?: boolean;
 }
 
-export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
+export function KanbanCard({ orden, onClick, onEliminar, isFullscreen = false }: KanbanCardProps) {
   const {
     attributes,
     listeners,
@@ -62,19 +63,20 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
       {...attributes}
       {...listeners}
       className={`
-        bg-white rounded-lg border-2 border-gray-200 shadow-sm p-3 mb-2 cursor-grab active:cursor-grabbing
+        bg-white rounded-lg border-2 border-gray-200 shadow-sm cursor-grab active:cursor-grabbing
         hover:shadow-lg hover:border-[#a8e063] transition-all
         ${isDragging ? 'shadow-2xl border-[#56ab2f]' : ''}
+        ${isFullscreen ? 'p-4' : 'p-3 mb-2'}
       `}
     >
       {/* Header: OT# + Prioridad + Eliminar */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-[#56ab2f] bg-[#f0f9e8] px-2 py-1 rounded">
+          <span className={`font-bold text-[#56ab2f] bg-[#f0f9e8] px-2 py-1 rounded ${isFullscreen ? 'text-sm' : 'text-xs'}`}>
             OT # {numeroFormateado}
           </span>
           <span
-            className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${
+            className={`px-2 py-0.5 rounded-full border font-semibold ${isFullscreen ? 'text-sm' : 'text-xs'} ${
               prioridadColors[orden.prioridad]
             }`}
           >
@@ -83,7 +85,7 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
             {orden.prioridad === 'BAJA' && '🟢'}
           </span>
         </div>
-        {onEliminar && (
+        {onEliminar && !isFullscreen && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -100,13 +102,13 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
       </div>
 
       {/* Unidad */}
-      <div className="text-sm font-semibold text-gray-700 mb-1">
+      <div className={`font-semibold text-gray-700 mb-1 ${isFullscreen ? 'text-base' : 'text-sm'}`}>
         Unidad {orden.unidad.numero} - {obtenerPatente(orden.unidad.numero) || orden.unidad.patente || 'N/A'}
       </div>
 
       {/* Tipo */}
       <span
-        className={`inline-block text-xs px-2 py-0.5 rounded font-medium mb-2 ${
+        className={`inline-block px-2 py-0.5 rounded font-medium mb-2 ${isFullscreen ? 'text-sm' : 'text-xs'} ${
           tipoColors[orden.tipo]
         }`}
       >
@@ -114,17 +116,17 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
       </span>
 
       {/* Descripción truncada */}
-      <p className="text-xs text-gray-600 mb-2 line-clamp-2">{orden.descripcion}</p>
+      <p className={`text-gray-600 mb-2 ${isFullscreen ? 'text-sm line-clamp-3' : 'text-xs line-clamp-2'}`}>{orden.descripcion}</p>
 
       {/* Asignado a (si existe) */}
       {orden.asignadoA && (
-        <div className="text-xs text-gray-500 mb-2">
+        <div className={`text-gray-500 mb-2 ${isFullscreen ? 'text-sm' : 'text-xs'}`}>
           👤 <span className="font-medium">{orden.asignadoA}</span>
         </div>
       )}
 
       {/* Días desde creación */}
-      <div className="text-xs text-gray-400 mb-2">
+      <div className={`text-gray-400 mb-2 ${isFullscreen ? 'text-sm' : 'text-xs'}`}>
         📅 Hace {diasDesdeCreacion} {diasDesdeCreacion === 1 ? 'día' : 'días'}
       </div>
 
@@ -134,7 +136,7 @@ export function KanbanCard({ orden, onClick, onEliminar }: KanbanCardProps) {
           e.stopPropagation();
           onClick();
         }}
-        className="w-full py-1.5 px-3 text-xs font-semibold text-white bg-gradient-to-r from-[#56ab2f] to-[#a8e063] rounded hover:from-[#4a9428] hover:to-[#96d055] transition-all shadow-sm"
+        className={`w-full font-semibold text-white bg-gradient-to-r from-[#56ab2f] to-[#a8e063] rounded hover:from-[#4a9428] hover:to-[#96d055] transition-all shadow-sm ${isFullscreen ? 'py-2 px-4 text-sm' : 'py-1.5 px-3 text-xs'}`}
       >
         Ver Detalle
       </button>

@@ -603,10 +603,12 @@ export async function registrarMovimiento(movimiento: Omit<MovimientoCubierta, '
       cubiertaUpdate.unidadId = undefined;
       cubiertaUpdate.unidadNumero = undefined;
       cubiertaUpdate.posicion = undefined;
-      if (movimiento.motivoRetiro === 'RECAPADO') {
+      if (movimiento.destinoRetiro === 'RECAPADO') {
         cubiertaUpdate.estado = 'EN_RECAPADO';
-      } else if (movimiento.motivoRetiro === 'BAJA') {
+      } else if (movimiento.destinoRetiro === 'BAJA') {
         cubiertaUpdate.estado = 'BAJA';
+      } else {
+        cubiertaUpdate.estado = 'EN_STOCK';
       }
       // Sumar km recorridos
       if (movimiento.kmRecorridos) {

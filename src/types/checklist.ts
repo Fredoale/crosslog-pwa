@@ -32,6 +32,7 @@ export interface ItemChecklist {
   numero: number;                // Número de ítem (1-16)
   categoria: CategoriaItem;      // Categoría del ítem
   descripcion: string;           // Descripción del ítem
+  detalle?: string;             // Detalle/instrucción del ítem
   esCritico: boolean;           // Si es NO-GO (crítico)
   estado: EstadoItem;           // Estado actual
   comentario?: string;          // Comentario si NO_CONFORME
@@ -144,7 +145,8 @@ export interface OrdenTrabajo {
   id: string;                   // ID único de la OT
   numeroOT: number;             // Número secuencial de OT
 
-  novedadId?: string;           // ID de la novedad origen (si aplica)
+  novedadId?: string;           // ID de la novedad origen (legacy, retrocompatibilidad)
+  novedadesIds?: string[];      // IDs de novedades asociadas (múltiples)
   checklistId?: string;         // ID del checklist origen (si aplica)
 
   fecha: Date;                  // Fecha de creación
@@ -295,137 +297,164 @@ export interface ResumenMantenimiento {
  * Basado en PDF "Reporte del Checklist nro. 6314"
  */
 export const ITEMS_CHECKLIST: Omit<ItemChecklist, 'estado' | 'timestamp'>[] = [
-  // REQUISITOS OBLIGATORIOS (Críticos)
+  // 1 - Estado General Neumáticos (NO-GO)
   {
     id: 'item_01',
     numero: 1,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Aceite y Agua',
+    descripcion: 'Estado General Neumáticos, Vigías Y Auxilios',
+    detalle: 'Sin globos, deformaciones y grietas, sin indicadores visibles de turcas sueltas',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 2 - Aceite y Agua (NO-GO)
   {
     id: 'item_02',
     numero: 2,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Sistema de Aire',
+    descripcion: 'Aceite y Agua',
+    detalle: 'Sin fugas visibles',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 3 - Sistema de Aire (NO-GO)
   {
     id: 'item_03',
     numero: 3,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Matafuegos',
+    descripcion: 'Sistema de Aire',
+    detalle: 'Sin perdidas de aire (Suspensión y frenos)',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 4 - Estado de Espejos (NO-GO)
   {
     id: 'item_04',
     numero: 4,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Estado Tacógrafo',
+    descripcion: 'Estado de Espejos',
+    detalle: 'Estado y limpieza',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 5 - Parabrisas (NO-GO)
   {
     id: 'item_05',
     numero: 5,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Estado Parabrisas',
+    descripcion: 'Parabrisas',
+    detalle: 'Sin marcas, ni fisuras y funcionamiento del limpia parabrisas y sapito',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 6 - Estado de Luces (NO-GO)
   {
     id: 'item_06',
     numero: 6,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Alarma de Retroceso',
+    descripcion: 'Estado de Luces',
+    detalle: 'Todas las luces operativas y funcionales',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 7 - Funcionamiento de Frenos (NO-GO)
   {
     id: 'item_07',
     numero: 7,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
     descripcion: 'Funcionamiento de Frenos',
+    detalle: 'Verificado por conductor',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 8 - Alarma de Retroceso (NO-GO)
   {
     id: 'item_08',
     numero: 8,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Estado Cabina Interior',
+    descripcion: 'Alarma de Retroceso',
+    detalle: 'Verificar funcionamiento',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 9 - Tacógrafo (NO-GO)
   {
     id: 'item_09',
     numero: 9,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Estado Cabina Exterior',
+    descripcion: 'Tacógrafo',
+    detalle: 'Se colocó disco/rollo de tacógrafo? Funciona correctamente?',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 10 - Estado Cabina Interior (NO-GO)
   {
     id: 'item_10',
     numero: 10,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Estado de Espejos',
+    descripcion: 'Estado Cabina Interior',
+    detalle: 'No hay objetos pesados sueltos, velocímetro operativo, bocina operativa, cinturón de seguridad operativo, estados de los asientos, sin luces de alarma, etc',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 11 - Matafuegos (NO-GO)
   {
     id: 'item_11',
     numero: 11,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Estado de Luces',
+    descripcion: 'Matafuegos',
+    detalle: 'En buen estado, cargado y vencimiento vigente',
     esCritico: true,
     fotoRequerida: false,
   },
+  // 12 - Estado Cabina Exterior y Chasis (NO crítico)
   {
     id: 'item_12',
     numero: 12,
     categoria: CategoriaItem.REQUISITOS_OBLIGATORIOS,
-    descripcion: 'Estado Neumáticos',
-    esCritico: true,
+    descripcion: 'Estado De La Cabina Exterior y Chasis',
+    detalle: 'Estado general chapa, pintura y limpieza',
+    esCritico: false,
     fotoRequerida: false,
   },
-
-  // DOCUMENTACIÓN
+  // 13 - Documentación (NO-GO)
   {
     id: 'item_13',
     numero: 13,
     categoria: CategoriaItem.DOCUMENTACION,
-    descripcion: 'Documentación (VTV, Seguro, LINTIN)',
-    esCritico: false,
+    descripcion: 'Documentación (RTO, Seguro, Linti, etc)',
+    detalle: 'Verificar vigencia de toda la documentación',
+    esCritico: true,
     fotoRequerida: false,
   },
+  // 14 - Dispositivo Alto Mobile (NO crítico)
   {
     id: 'item_14',
     numero: 14,
     categoria: CategoriaItem.DOCUMENTACION,
-    descripcion: 'Dispositivo Alto Mobile (Air Liquide)',
+    descripcion: 'Dispositivo Alto Mobile',
+    detalle: 'Cuenta con el celular provisto por Air Liquide? La pantalla se encuentra buen estado? Tiene el cable USB para cargarlo?',
     esCritico: false,
     fotoRequerida: false,
   },
-
-  // SEGURIDAD PERSONAL
+  // 15 - Equipos de protección personal (NO-GO)
   {
     id: 'item_15',
     numero: 15,
     categoria: CategoriaItem.SEGURIDAD_PERSONAL,
-    descripcion: 'Condiciones para Manejar',
-    esCritico: false,
+    descripcion: 'Equipos de Protección Personal',
+    detalle: 'Casco, Guantes criogénicos, Mameluco ignifugo, Zapatos de seguridad',
+    esCritico: true,
     fotoRequerida: false,
   },
+  // 16 - Condiciones para Manejar (NO-GO)
   {
     id: 'item_16',
     numero: 16,
     categoria: CategoriaItem.SEGURIDAD_PERSONAL,
-    descripcion: 'Equipos de Protección Personal (EPP)',
-    esCritico: false,
+    descripcion: 'El Chofer Se Encuentra En Condiciones De Manejar?',
+    detalle: 'No tiene síntomas de fatiga, ni esta bajo el efecto de estupefacientes y no ha tomado bebidas alcohólicas',
+    esCritico: true,
     fotoRequerida: false,
   },
 ];

@@ -5,9 +5,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vite.dev/config/
 export default defineConfig({
   server: {
+    host: '0.0.0.0',
     port: 3000,
-    strictPort: false, // Si 3000 está ocupado, usa el siguiente disponible
-    open: true, // Abre el navegador automáticamente
+    strictPort: false,
+    open: true,
+    allowedHosts: ['localhost', '.ngrok-free.app', '.ngrok.io'],
   },
   build: {
     target: 'esnext',

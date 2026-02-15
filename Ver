@@ -1,0 +1,7 @@
+cubiertasService.ts:408 [CubiertasService] ❌ Error creando cubierta: FirebaseError: Function setDoc() called with invalid data. Unsupported field value: undefined (found in field dot in document cubiertas/cub_1771116707100_qfvgzqmgx)
+crearCubierta @ cubiertasService.ts:408Understand this error
+cubiertasService.ts:410 [CubiertasService] Mensaje: Function setDoc() called with invalid data. Unsupported field value: undefined (found in field dot in document cubiertas/cub_1771116707100_qfvgzqmgx)
+crearCubierta @ cubiertasService.ts:410Understand this error
+cubiertasService.ts:411 [CubiertasService] Stack: FirebaseError: Function setDoc() called with invalid data. Unsupported field value: undefined (found in field dot in document cubiertas/cub_1771116707100_qfvgzqmgx)
+crearCubierta @ cubiertasService.ts:411Understand this error
+PanelCubiertas.tsx:265 [PanelCubiertas] crearCubierta retornó null
