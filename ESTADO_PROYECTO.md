@@ -2544,5 +2544,141 @@ match /recapados_cubiertas/{document=**} { allow read, write, delete: if true; }
 
 ---
 
-*Última actualización: 2026-02-15 (Módulo Cubiertas + Responsive)*
-*Versión: 3.4 - MÓDULO CONTROL DE CUBIERTAS*
+## 📊 PANEL DE MANTENIMIENTO - DASHBOARD COMPLETO
+
+### 🎛️ Tabs del Dashboard (8 secciones)
+
+| Tab | Icono | Color | Descripción |
+|-----|-------|-------|-------------|
+| **Check** | 📋 | Verde | Checklists de inspección diaria |
+| **Nov** | ⚠️ | Ámbar | Novedades reportadas |
+| **OTs** | 📝 | Púrpura | Órdenes de Trabajo listado |
+| **Board** | 📊 | Índigo | Kanban de OTs (flujo visual) |
+| **Hist** | ⏰ | Esmeralda | Historial de OTs cerradas |
+| **Comb** | ⛽ | Azul | Control de combustible |
+| **T.Rod** | 🚛 | Azul | Tren Rodante (40K/80K/160K) |
+| **Cub** | ⭕ | Gris | Control de Cubiertas |
+
+### 📱 Mejoras Responsive Tabs (15 Feb 2026)
+- **Scroll horizontal** en móvil (`overflow-x-auto`)
+- **Badges posicionados** sobre iconos (`absolute -top-1.5 -right-2`)
+- **Texto siempre visible** (`text-[10px] sm:text-xs`)
+- **Ancho mínimo** por tab (`min-w-[44px]`)
+- **Padding optimizado** (`px-2 sm:px-3 md:px-4`)
+
+---
+
+## 📊 SECCIÓN INDICADORES
+
+### Dashboard Principal
+- **Estadísticas en tiempo real** de checklists, novedades y OTs
+- **Filtros por sector**: VRAC, Vital Aire, Distribución
+- **Badges con contadores** en cada tab
+
+### Indicadores de Checklists
+- Total de checklists realizados
+- Resultado: APTO / NO_APTO / PENDIENTE
+- Filtro por fecha y unidad
+
+### Indicadores de Novedades
+- Novedades pendientes vs procesadas
+- Prioridad: ALTA / MEDIA / BAJA
+- Estado: PENDIENTE / PROCESADA / RESUELTA
+
+### Indicadores de Órdenes de Trabajo
+- OTs abiertas vs cerradas
+- Estado: EN_PROCESO / ESPERANDO_REPUESTOS / CERRADO
+- Contador por columna en Kanban
+
+---
+
+## 🔧 FUNCIONALIDADES GENERALES DEL SISTEMA
+
+### 1. SISTEMA DE CHECKLISTS
+- ✅ Checklist diario pre-viaje
+- ✅ Items con estado OK/NO_OK
+- ✅ Fotos de evidencia
+- ✅ Generación automática de novedades
+- ✅ PDF de reporte
+
+### 2. GESTIÓN DE NOVEDADES
+- ✅ Crear novedad manual (Admin)
+- ✅ Novedades automáticas desde checklists
+- ✅ Subir múltiples imágenes de evidencia
+- ✅ Estados: PENDIENTE → PROCESADA → RESUELTA
+- ✅ Vincular a OT
+
+### 3. ÓRDENES DE TRABAJO (OTs)
+- ✅ Numeración automática (OT-XXXXXX)
+- ✅ Generar desde novedad o manual
+- ✅ Estados: EN_PROCESO / ESPERANDO_REPUESTOS / COMPLETADA / CERRADO
+- ✅ Asignar técnico
+- ✅ Registrar trabajos realizados
+- ✅ PDF de OT
+
+### 4. TABLERO KANBAN
+- ✅ Vista drag & drop de OTs
+- ✅ Columnas: Novedades → En Proceso → Esperando Rep. → Historial
+- ✅ Cards con info resumida
+- ✅ Filtros por sector y unidad
+- ✅ Actualización en tiempo real
+
+### 5. CONTROL DE COMBUSTIBLE
+- ✅ Registro de cargas
+- ✅ Cálculo de consumo por unidad
+- ✅ Alertas de consumo anormal
+- ✅ Historial de cargas
+
+### 6. TREN RODANTE (Mantenimiento Preventivo)
+- ✅ Checklists 40K, 80K, 160K km
+- ✅ Alertas por kilometraje
+- ✅ Componentes: frenos, suspensión, dirección, etc.
+- ✅ Generar OT desde alerta
+
+### 7. CONTROL DE CUBIERTAS
+- ✅ Inventario de cubiertas
+- ✅ Diagrama visual de vehículo
+- ✅ Medición con calibre
+- ✅ Ciclo de vida completo
+- ✅ Alertas por desgaste
+
+---
+
+## 🔐 ROLES Y PERMISOS
+
+| Rol | Acceso |
+|-----|--------|
+| **Chofer** | Checklists, ver novedades propias |
+| **Taller** | Todo menos configuración |
+| **Admin** | Acceso completo |
+
+---
+
+## 📱 CARACTERÍSTICAS PWA
+
+- ✅ Instalable en Android/iOS
+- ✅ Funciona offline (service worker)
+- ✅ Push notifications (pendiente)
+- ✅ Responsive design
+- ✅ Touch-friendly (targets 48px)
+
+---
+
+## 🗄️ COLECCIONES FIRESTORE
+
+| Colección | Descripción |
+|-----------|-------------|
+| `viajes` | Marketplace de viajes |
+| `checklists` | Inspecciones diarias |
+| `novedades` | Reportes de problemas |
+| `ordenes_trabajo` | OTs de mantenimiento |
+| `cargas_combustible` | Registros de carga |
+| `cubiertas` | Inventario de neumáticos |
+| `mediciones_cubiertas` | Historial de mediciones |
+| `movimientos_cubiertas` | Instalaciones/retiros |
+| `contadores` | Numeración automática |
+
+---
+
+*Última actualización: 2026-02-15 (Tabs Responsive + Documentación Completa)*
+*Versión: 3.5 - DOCUMENTACIÓN COMPLETA DEL SISTEMA*

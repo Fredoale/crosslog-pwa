@@ -3547,169 +3547,174 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Tabs con branding Crosslog y responsive */}
-      <div className="max-w-7xl mx-auto px-3 md:px-6">
+      <div className="max-w-7xl mx-auto px-2 sm:px-3 md:px-6">
         <div className="bg-white rounded-t-2xl shadow-lg">
-          {/* Tabs compactos para móvil - Badge al lado del icono */}
-          <div className="flex border-b border-gray-200">
-            <button
-              onClick={() => setActiveTab('checklists')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                activeTab === 'checklists'
-                  ? 'text-[#56ab2f] border-b-3 border-[#56ab2f] bg-[#f0f9e8]'
-                  : 'text-gray-500 hover:text-[#56ab2f] hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === 'checklists' ? 'bg-[#56ab2f] text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{checklists.length}</span>
+          {/* Tabs con scroll horizontal en móvil */}
+          <div className="overflow-x-auto scrollbar-hide">
+            <div className="flex border-b border-gray-200 min-w-max sm:min-w-0">
+              {/* Tab Checklists */}
+              <button
+                onClick={() => setActiveTab('checklists')}
+                className={`flex-1 min-w-[44px] sm:min-w-0 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 font-semibold transition-colors ${
+                  activeTab === 'checklists'
+                    ? 'text-[#56ab2f] border-b-2 border-[#56ab2f] bg-[#f0f9e8]'
+                    : 'text-gray-500 hover:text-[#56ab2f] hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${
+                      activeTab === 'checklists' ? 'bg-[#56ab2f] text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>{checklists.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Check</span>
                 </div>
-                <span className="hidden sm:inline text-[11px] sm:text-xs">Check</span>
-              </div>
-            </button>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('novedades')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                activeTab === 'novedades'
-                  ? 'text-amber-600 border-b-3 border-amber-600 bg-amber-50'
-                  : 'text-gray-500 hover:text-amber-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === 'novedades' ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{novedades.length}</span>
+              {/* Tab Novedades */}
+              <button
+                onClick={() => setActiveTab('novedades')}
+                className={`flex-1 min-w-[44px] sm:min-w-0 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 font-semibold transition-colors ${
+                  activeTab === 'novedades'
+                    ? 'text-amber-600 border-b-2 border-amber-600 bg-amber-50'
+                    : 'text-gray-500 hover:text-amber-600 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${
+                      activeTab === 'novedades' ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>{novedades.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Nov</span>
                 </div>
-                <span className="hidden sm:inline text-[11px] sm:text-xs">Nov</span>
-              </div>
-            </button>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('ordenes')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                activeTab === 'ordenes'
-                  ? 'text-purple-600 border-b-3 border-purple-600 bg-purple-50'
-                  : 'text-gray-500 hover:text-purple-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === 'ordenes' ? 'bg-purple-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{ordenes.length}</span>
+              {/* Tab OTs */}
+              <button
+                onClick={() => setActiveTab('ordenes')}
+                className={`flex-1 min-w-[44px] sm:min-w-0 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 font-semibold transition-colors ${
+                  activeTab === 'ordenes'
+                    ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+                    : 'text-gray-500 hover:text-purple-600 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${
+                      activeTab === 'ordenes' ? 'bg-purple-600 text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>{ordenes.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">OTs</span>
                 </div>
-                <span className="hidden sm:inline text-[11px] sm:text-xs">OTs</span>
-              </div>
-            </button>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('kanban')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                activeTab === 'kanban'
-                  ? 'text-indigo-600 border-b-3 border-indigo-600 bg-indigo-50'
-                  : 'text-gray-500 hover:text-indigo-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === 'kanban' ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{ordenes.length}</span>
+              {/* Tab Board */}
+              <button
+                onClick={() => setActiveTab('kanban')}
+                className={`flex-1 min-w-[44px] sm:min-w-0 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 font-semibold transition-colors ${
+                  activeTab === 'kanban'
+                    ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50'
+                    : 'text-gray-500 hover:text-indigo-600 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                    </svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${
+                      activeTab === 'kanban' ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>{ordenes.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Board</span>
                 </div>
-                <span className="hidden sm:inline text-[11px] sm:text-xs">Board</span>
-              </div>
-            </button>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('historial')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                activeTab === 'historial'
-                  ? 'text-emerald-600 border-b-3 border-emerald-600 bg-emerald-50'
-                  : 'text-gray-500 hover:text-emerald-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === 'historial' ? 'bg-emerald-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{ordenes.filter(o => o.estado === 'CERRADO' || o.estado === 'COMPLETADA').length}</span>
+              {/* Tab Historial */}
+              <button
+                onClick={() => setActiveTab('historial')}
+                className={`flex-1 min-w-[44px] sm:min-w-0 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 font-semibold transition-colors ${
+                  activeTab === 'historial'
+                    ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50'
+                    : 'text-gray-500 hover:text-emerald-600 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${
+                      activeTab === 'historial' ? 'bg-emerald-600 text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>{ordenes.filter(o => o.estado === 'CERRADO' || o.estado === 'COMPLETADA').length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Hist</span>
                 </div>
-                <span className="hidden sm:inline text-[11px] sm:text-xs">Hist</span>
-              </div>
-            </button>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('combustible')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                activeTab === 'combustible'
-                  ? 'text-[#0033A0] border-b-3 border-[#0033A0] bg-blue-50'
-                  : 'text-gray-500 hover:text-[#0033A0] hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <span className="text-base">⛽</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    activeTab === 'combustible' ? 'bg-[#0033A0] text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{cargas.length}</span>
+              {/* Tab Combustible */}
+              <button
+                onClick={() => setActiveTab('combustible')}
+                className={`flex-1 min-w-[44px] sm:min-w-0 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 font-semibold transition-colors ${
+                  activeTab === 'combustible'
+                    ? 'text-[#0033A0] border-b-2 border-[#0033A0] bg-blue-50'
+                    : 'text-gray-500 hover:text-[#0033A0] hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <span className="text-lg">⛽</span>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${
+                      activeTab === 'combustible' ? 'bg-[#0033A0] text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>{cargas.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Comb</span>
                 </div>
-                <span className="hidden sm:inline text-[11px] sm:text-xs">Comb</span>
-              </div>
-            </button>
+              </button>
 
-            <button
-              onClick={() => setActiveTab('trenRodante')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                activeTab === 'trenRodante'
-                  ? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
-                  : 'text-gray-500 hover:text-blue-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <span className="text-base">🚛</span>
+              {/* Tab Tren Rodante */}
+              <button
+                onClick={() => setActiveTab('trenRodante')}
+                className={`flex-1 min-w-[44px] sm:min-w-0 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 font-semibold transition-colors ${
+                  activeTab === 'trenRodante'
+                    ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                    : 'text-gray-500 hover:text-blue-600 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <span className="text-lg">🚛</span>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">T.Rod</span>
                 </div>
-                <span className="hidden sm:inline text-[11px] sm:text-xs">T.Rod</span>
-              </div>
-            </button>
+              </button>
 
-            {/* Tab Cubiertas */}
-            <button
-              onClick={() => setActiveTab('cubiertas')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                activeTab === 'cubiertas'
-                  ? 'text-gray-800 border-b-3 border-gray-800 bg-gray-100'
-                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
+              {/* Tab Cubiertas */}
+              <button
+                onClick={() => setActiveTab('cubiertas')}
+                className={`flex-1 min-w-[44px] sm:min-w-0 px-2 sm:px-3 md:px-4 py-2 sm:py-2.5 md:py-3 font-semibold transition-colors ${
+                  activeTab === 'cubiertas'
+                    ? 'text-gray-800 border-b-2 border-gray-800 bg-gray-100'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-0.5">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="9" strokeWidth={2} />
                     <circle cx="12" cy="12" r="3" strokeWidth={2} />
                   </svg>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Cub</span>
                 </div>
-                <span className="hidden sm:inline text-[11px] sm:text-xs">Cub</span>
-              </div>
-            </button>
+              </button>
+            </div>
           </div>
 
           {/* Contenido de tabs - Responsive Android */}
