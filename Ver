@@ -1,1 +1,11 @@
 ![alt text](image-3.png)
+
+Ok...
+  Ahora se breve pero con respecto al modulo de PANEL DE FLOTA Y GPS TRACKING
+  1.-Solicite a YP en ruta la API ya que las unidades de crosslog ya cuentan con dispositivos de yp instalados, me gustaria que crees un archivo breve que
+  se llame "PUNTOS API - YPf" sobre los punto de acceso api que necesitaria. Ya me pasaron un link
+  https://customer-api.location-world.com/docs/index.html y me dijeron que deina cuales necesito. tmb te los puse en el archivo Aqui.md a partir de la
+  linea 21 a las 205.
+  2.-Me gustaria comercializar el sistema... pudiendo yo mismo poder instalar gps y conigurarlo con mi sistema apw. crea un archivo
+  "GPSTRAKING-INSTALACION".
+  Primero dime que  entendiste antes de avanzar. No hagas mas deploy

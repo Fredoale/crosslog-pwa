@@ -187,22 +187,24 @@ function DroppableEtapa({
       ref={setNodeRef}
       onClick={onClick}
       className={`
-        w-full text-left px-3 py-3 rounded-lg transition-all
-        flex items-center justify-between gap-2
+        flex-shrink-0 md:flex-shrink md:w-full text-left
+        px-2 py-2 md:px-3 md:py-3 rounded-lg transition-all
+        flex flex-col md:flex-row items-center md:justify-between gap-0.5 md:gap-2
+        min-w-[70px] md:min-w-0
         ${isActive
           ? 'bg-[#56ab2f] text-white shadow-md'
-          : 'hover:bg-gray-100 text-gray-700'
+          : 'hover:bg-gray-100 text-gray-700 bg-gray-50 md:bg-transparent'
         }
         ${isOver && canReceiveDrop ? 'ring-2 ring-[#56ab2f] ring-offset-2 bg-green-50' : ''}
         ${isDropTarget && canReceiveDrop && !isOver ? 'ring-1 ring-dashed ring-gray-400' : ''}
       `}
     >
-      <div className="flex items-center gap-2">
-        <span className="text-lg">{etapa.icono}</span>
-        <span className="font-medium text-sm">{etapa.titulo}</span>
+      <div className="flex flex-col md:flex-row items-center gap-0.5 md:gap-2">
+        <span className="text-base md:text-lg">{etapa.icono}</span>
+        <span className="font-medium text-[10px] md:text-sm text-center md:text-left leading-tight">{etapa.titulo}</span>
       </div>
       <span className={`
-        text-xs font-bold px-2 py-0.5 rounded-full min-w-[24px] text-center
+        text-[10px] md:text-xs font-bold px-1.5 md:px-2 py-0.5 rounded-full min-w-[20px] md:min-w-[24px] text-center
         ${isActive
           ? 'bg-white/30 text-white'
           : count > 0
@@ -331,11 +333,12 @@ export function KanbanBoard({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-[calc(100vh-200px)] min-h-[500px] gap-4">
-        {/* ========== PANEL IZQUIERDO - FILTROS ========== */}
-        <div className="w-56 flex-shrink-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-          {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+      <div className="flex flex-col md:flex-row h-[calc(100vh-180px)] md:h-[calc(100vh-200px)] min-h-[400px] md:min-h-[500px] gap-2 md:gap-4">
+
+        {/* ========== PANEL DE ETAPAS - HORIZONTAL EN MÓVIL, SIDEBAR EN DESKTOP ========== */}
+        <div className="md:w-56 flex-shrink-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+          {/* Header - Solo visible en desktop */}
+          <div className="hidden md:block px-4 py-3 border-b border-gray-200 bg-gray-50">
             <h3 className="font-bold text-gray-700 text-sm">Flujo de Trabajo</h3>
             {isDragging && (
               <p className="text-xs text-[#56ab2f] mt-1 font-medium">
@@ -344,8 +347,8 @@ export function KanbanBoard({
             )}
           </div>
 
-          {/* Lista de etapas */}
-          <div className="flex-1 p-2 space-y-1">
+          {/* Lista de etapas - Horizontal en móvil, Vertical en desktop */}
+          <div className="flex md:flex-col md:flex-1 p-1.5 md:p-2 gap-1 md:gap-1 overflow-x-auto md:overflow-x-visible">
             {ETAPAS.map((etapa) => (
               <DroppableEtapa
                 key={etapa.id}
@@ -358,45 +361,45 @@ export function KanbanBoard({
             ))}
           </div>
 
-          {/* Footer */}
-          <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
+          {/* Footer - Solo visible en desktop */}
+          <div className="hidden md:block px-4 py-2 border-t border-gray-200 bg-gray-50">
             <p className="text-xs text-gray-500 text-center">
               <span className="font-semibold text-gray-700">{ordenes.length + novedadesPendientes.length}</span> items totales
             </p>
           </div>
         </div>
 
-      {/* ========== PANEL DERECHO - CONTENIDO ========== */}
-      <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+      {/* ========== PANEL DE CONTENIDO ========== */}
+      <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col min-h-0">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">{ETAPAS.find(e => e.id === etapaActiva)?.icono}</span>
-            <h3 className="font-bold text-gray-700">
+        <div className="px-3 md:px-4 py-2 md:py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <span className="text-lg md:text-xl">{ETAPAS.find(e => e.id === etapaActiva)?.icono}</span>
+            <h3 className="font-bold text-gray-700 text-sm md:text-base">
               {ETAPAS.find(e => e.id === etapaActiva)?.titulo}
             </h3>
-            <span className="text-sm text-gray-500">({conteos[etapaActiva]} registros)</span>
+            <span className="text-xs md:text-sm text-gray-500">({conteos[etapaActiva]})</span>
           </div>
 
           {/* Paginación */}
           {etapaActiva !== 'NOVEDADES' && totalPaginas > 1 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 md:gap-2">
               <button
                 onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
                 disabled={paginaActual === 1}
-                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="p-1 md:p-1.5 rounded hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <span className="text-sm text-gray-600 font-medium">
-                {paginaActual} / {totalPaginas}
+              <span className="text-xs md:text-sm text-gray-600 font-medium">
+                {paginaActual}/{totalPaginas}
               </span>
               <button
                 onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
                 disabled={paginaActual === totalPaginas}
-                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="p-1 md:p-1.5 rounded hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -407,7 +410,7 @@ export function KanbanBoard({
         </div>
 
         {/* Contenido */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-2 md:p-4">
           {etapaActiva === 'NOVEDADES' ? (
             // ========== NOVEDADES AGRUPADAS POR UNIDAD (DRAGGABLE) ==========
             unidadesOrdenadas.length === 0 ? (
@@ -451,44 +454,64 @@ export function KanbanBoard({
                     <div
                       key={orden.id}
                       onClick={() => onOrdenClick(orden)}
-                      className="border border-gray-200 rounded-lg px-4 py-3 hover:border-[#56ab2f] hover:shadow-sm cursor-pointer transition-all"
+                      className="border border-gray-200 rounded-lg px-2 py-2 md:px-4 md:py-3 hover:border-[#56ab2f] hover:shadow-sm cursor-pointer transition-all"
                     >
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 md:gap-4">
                         {/* OT Badge */}
-                        <div className="w-12 h-12 bg-[#56ab2f] rounded-lg flex flex-col items-center justify-center flex-shrink-0">
-                          <span className="text-white text-[10px] font-medium">OT</span>
-                          <span className="text-white text-xs font-bold">{formatearNumeroOT(orden.numeroOT).slice(-4)}</span>
+                        <div className="w-10 h-10 md:w-12 md:h-12 bg-[#56ab2f] rounded-lg flex flex-col items-center justify-center flex-shrink-0">
+                          <span className="text-white text-[8px] md:text-[10px] font-medium">OT</span>
+                          <span className="text-white text-[10px] md:text-xs font-bold">{formatearNumeroOT(orden.numeroOT).slice(-4)}</span>
                         </div>
 
-                        {/* Info Grid */}
-                        <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-1">
-                          <div>
-                            <p className="text-xs text-gray-500">Unidad</p>
-                            <p className="font-semibold text-gray-800">INT-{orden.unidad.numero}</p>
+                        {/* Info - Simplificado en móvil */}
+                        <div className="flex-1 min-w-0">
+                          {/* Móvil: Layout compacto */}
+                          <div className="md:hidden">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="font-semibold text-gray-800 text-sm">INT-{orden.unidad.numero}</p>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-700' :
+                                orden.prioridad === 'MEDIA' ? 'bg-amber-100 text-amber-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>{orden.prioridad}</span>
+                              <span className={`text-[10px] font-semibold ${
+                                diasDesdeCreacion > 7 ? 'text-red-600' :
+                                diasDesdeCreacion > 3 ? 'text-amber-600' : 'text-gray-500'
+                              }`}>{diasDesdeCreacion}d</span>
+                            </div>
+                            <p className="text-xs text-gray-600 line-clamp-1">{orden.descripcion}</p>
                           </div>
-                          <div className="md:col-span-2">
-                            <p className="text-xs text-gray-500">Descripción</p>
-                            <p className="text-sm text-gray-700 line-clamp-1">{orden.descripcion}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Técnico</p>
-                            <p className="text-sm text-gray-700">
-                              {orden.asignadoA || orden.mecanico || <span className="text-gray-400 italic">Sin asignar</span>}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Antigüedad</p>
-                            <p className={`text-sm font-semibold ${
-                              diasDesdeCreacion > 7 ? 'text-red-600' :
-                              diasDesdeCreacion > 3 ? 'text-amber-600' : 'text-gray-700'
-                            }`}>
-                              {diasDesdeCreacion} día{diasDesdeCreacion !== 1 ? 's' : ''}
-                            </p>
+
+                          {/* Desktop: Layout completo */}
+                          <div className="hidden md:grid grid-cols-5 gap-x-4 gap-y-1">
+                            <div>
+                              <p className="text-xs text-gray-500">Unidad</p>
+                              <p className="font-semibold text-gray-800">INT-{orden.unidad.numero}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-xs text-gray-500">Descripción</p>
+                              <p className="text-sm text-gray-700 line-clamp-1">{orden.descripcion}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">Técnico</p>
+                              <p className="text-sm text-gray-700">
+                                {orden.asignadoA || orden.mecanico || <span className="text-gray-400 italic">Sin asignar</span>}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">Antigüedad</p>
+                              <p className={`text-sm font-semibold ${
+                                diasDesdeCreacion > 7 ? 'text-red-600' :
+                                diasDesdeCreacion > 3 ? 'text-amber-600' : 'text-gray-700'
+                              }`}>
+                                {diasDesdeCreacion} día{diasDesdeCreacion !== 1 ? 's' : ''}
+                              </p>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Badges */}
-                        <div className="flex flex-col gap-1 flex-shrink-0">
+                        {/* Badges - Solo en desktop */}
+                        <div className="hidden md:flex flex-col gap-1 flex-shrink-0">
                           <span className={`
                             px-2 py-0.5 rounded text-xs font-semibold text-center
                             ${orden.prioridad === 'ALTA' ? 'bg-red-100 text-red-700' :
@@ -508,7 +531,7 @@ export function KanbanBoard({
                         </div>
 
                         {/* Arrow */}
-                        <svg className="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 md:w-5 md:h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
                       </div>
