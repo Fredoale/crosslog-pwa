@@ -1468,5 +1468,1081 @@ if (criticidad) {
 
 ---
 
-*Última actualización: 2025-12-05 (Módulo Documentación)*
-*Versión: 3.1 - GESTIÓN DE DOCUMENTACIÓN MEJORADA*
+## 🛰️ PANEL DE FLOTA Y GPS TRACKING - 1 FEBRERO 2026
+
+**Estado:** COMPLETADO Y FUNCIONAL ✅
+
+### 📍 Resumen de Funcionalidades
+
+Sistema de rastreo GPS en tiempo real para la flota de VRAC con las siguientes características:
+
+1. ✅ **Panel de Flota** con Google Maps integrado
+2. ✅ **GPS Tracking** para choferes después del checklist VRAC
+3. ✅ **Geofence de 50 metros** - tracking se detiene automáticamente al llegar a Base Los Cardales
+4. ✅ **Marcadores de bases** (Los Cardales y Villa Maipú)
+5. ✅ **Estados visuales**: En ruta (verde), En Base (azul), Inactivo (gris)
+6. ✅ **Acceso secreto** al Panel de Flota (5 clicks en logo + código)
+
+---
+
+### 🔧 ARCHIVOS CREADOS
+
+#### 1. `src/hooks/useGPSTracking.ts`
+Hook personalizado para el tracking GPS con las siguientes funcionalidades:
+
+```typescript
+// Funcionalidades principales
+- startTracking(config): Inicia tracking GPS
+- stopTracking(): Detiene tracking manualmente
+- sendLocationToFirebase(): Envía ubicación a Firestore
+- Geofence de 50m para Base Los Cardales
+- Wake Lock API para mantener pantalla activa
+- Cálculo de distancia con fórmula de Haversine
+```
+
+**Constantes clave:**
+```typescript
+const BASE_CARDALES = {
+  lat: -34.359870591834174,
+  lng: -59.00963886159655,
+  nombre: 'Base Los Cardales'
+};
+const GEOFENCE_RADIUS = 50; // metros
+```
+
+**Estados expuestos:**
+```typescript
+interface GPSTrackingState {
+  isTracking: boolean;
+  hasPermission: boolean | null;
+  error: string | null;
+  lastUpdate: Date | null;
+  arrivedAtBase: boolean;
+}
+```
+
+#### 2. `src/components/PanelFlota.tsx`
+Componente principal del panel de flota con Google Maps:
+
+```typescript
+// Funcionalidades principales
+- Google Maps con @react-google-maps/api
+- Listener en tiempo real de Firestore (onSnapshot)
+- Marcadores de bases Crosslog (verde con X)
+- Marcadores de unidades activas (verde con camión)
+- InfoWindow al seleccionar unidad
+- Lista de unidades con estados
+- Contador de unidades en ruta/en base
+```
+
+**Bases configuradas:**
+```typescript
+const BASES_CROSSLOG = [
+  {
+    id: 'los-cardales',
+    lat: -34.359870591834174,
+    lng: -59.00963886159655,
+    nombre: 'Base Los Cardales',
+    direccion: 'Los Cardales, Provincia de Buenos Aires'
+  },
+  {
+    id: 'villa-maipu',
+    lat: -34.56297844053954,
+    lng: -58.52935080773911,
+    nombre: 'Base Villa Maipú',
+    direccion: 'Sta Marta 2475, Villa Maipú, Buenos Aires'
+  }
+];
+```
+
+---
+
+### 🔄 ARCHIVOS MODIFICADOS
+
+#### 1. `src/components/Login.tsx`
+Agregado acceso secreto al Panel de Flota:
+
+```typescript
+// Estados nuevos
+const [logoClickCount, setLogoClickCount] = useState(0);
+const [showAccesoFlota, setShowAccesoFlota] = useState(false);
+const [codigoFlota, setCodigoFlota] = useState('');
+const [showPanelFlota, setShowPanelFlota] = useState(false);
+
+// Función de clicks secretos
+const handleLogoClick = () => {
+  const newCount = logoClickCount + 1;
+  if (newCount >= 5) {
+    setShowAccesoFlota(true);
+    setLogoClickCount(0);
+  }
+  setTimeout(() => setLogoClickCount(0), 2000);
+};
+```
+
+**Acceso al Panel:**
+- 5 clicks en el logo "CROSSLOG"
+- Código de acceso: `crosslog2026`
+- Modal: "🔐 Acceso Personal Autorizado"
+
+#### 2. `src/components/ChecklistVRAC.tsx`
+Integración del GPS tracking después del checklist:
+
+```typescript
+// Nuevos pasos agregados
+type Step = '...' | 'activar-gps' | 'tracking-activo';
+
+// Hook integrado
+const gpsTracking = useGPSTracking();
+
+// Flujo después de guardar checklist
+1. Checklist completado → paso 'activar-gps'
+2. Usuario activa GPS → paso 'tracking-activo'
+3. Pantalla muestra ubicación activa
+4. Si llega a base (50m) → muestra "¡Llegaste a Base!"
+```
+
+**Pantallas nuevas:**
+- Pantalla de activación GPS (obligatoria)
+- Pantalla de tracking activo (con última actualización)
+- Pantalla de llegada a base (con botón "Nuevo Viaje")
+
+---
+
+### 🗂️ ESTRUCTURA DE DATOS EN FIRESTORE
+
+#### Colección: `ubicaciones`
+
+**Documento de unidad en ruta:**
+```typescript
+{
+  unidad: "41",
+  patente: "AB152AZ",
+  chofer: "Noval Ezequiel",
+  lat: -34.5678,
+  lng: -58.4321,
+  activo: true,
+  enBase: false,
+  timestamp: Timestamp,
+  checklistId: "chk_xxx",
+  updatedAt: "2026-02-01T10:30:00.000Z"
+}
+```
+
+**Documento de unidad en base:**
+```typescript
+{
+  unidad: "41",
+  patente: "AB152AZ",
+  chofer: "Noval Ezequiel",
+  lat: -34.359870591834174,  // Coordenadas de la base
+  lng: -59.00963886159655,
+  activo: false,
+  enBase: true,
+  baseNombre: "Base Los Cardales",
+  timestamp: Timestamp,
+  checklistId: "chk_xxx",
+  updatedAt: "2026-02-01T12:00:00.000Z"
+}
+```
+
+---
+
+### 🔐 REGLAS FIRESTORE ACTUALIZADAS
+
+```javascript
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ... reglas existentes ...
+
+    // GPS TRACKING (NUEVO)
+    match /ubicaciones/{document=**} {
+      allow read, write: if true;
+    }
+
+    // BLOQUEAR TODO LO DEMÁS
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+```
+
+---
+
+### 🌐 CONFIGURACIÓN GOOGLE MAPS
+
+**Variables de entorno (.env):**
+```
+VITE_GOOGLE_MAPS_API_KEY=AIzaSyD8UoubNuqWazSLcjh4bSq36EbFaXcvDB4
+```
+
+**Configuración en Google Cloud Console:**
+- Proyecto: Crosslog-pwa
+- API habilitada: Maps JavaScript API
+- API Key: Crosslog-GPS
+- Restricciones: Por dominio (netlify + localhost)
+
+**Dependencia instalada:**
+```bash
+npm install @react-google-maps/api
+```
+
+---
+
+### 🎯 FLUJO COMPLETO DE GPS TRACKING
+
+```
+1. Chofer completa checklist VRAC
+   ↓
+2. Sistema muestra pantalla "Activar GPS" (obligatoria)
+   ↓
+3. Chofer toca "Activar Ubicación"
+   ↓
+4. Navegador solicita permiso de geolocalización
+   ↓
+5. Permiso concedido → Wake Lock activado
+   ↓
+6. Primera ubicación enviada a Firebase
+   ↓
+7. Actualización cada 30 segundos + watchPosition
+   ↓
+8. Pantalla muestra "Ubicación Activa" con última actualización
+   ↓
+9. Si llega a 50m de Base Cardales:
+   - Tracking se detiene automáticamente
+   - Unidad se marca como "En Base"
+   - Wake Lock liberado
+   - Pantalla muestra "¡Llegaste a Base!"
+   ↓
+10. Chofer puede iniciar "Nuevo Viaje"
+```
+
+---
+
+### 📊 ESTADOS EN PANEL DE FLOTA
+
+| Estado | Color | Icono | Descripción |
+|--------|-------|-------|-------------|
+| En ruta | Verde | 🚛 | Tracking GPS activo |
+| En Base | Azul | 🏠 | Llegó a base (geofence) |
+| Inactivo | Gris | 🚛 | Sin tracking activo |
+
+---
+
+### 📱 LIMITACIONES PWA
+
+**Importante:** Al ser una PWA (no app nativa):
+- El tracking solo funciona con la app **abierta o minimizada**
+- Si el usuario cierra la app, el tracking se detiene
+- Wake Lock mantiene la pantalla activa para evitar suspensión
+
+**Documentación para app nativa:** `AppNativaPlayStore.md`
+
+---
+
+### ✅ FUNCIONALIDADES COMPLETADAS
+
+- ✅ Panel de Flota con Google Maps
+- ✅ Acceso secreto (5 clicks + código)
+- ✅ Marcadores de bases Crosslog (Los Cardales, Villa Maipú)
+- ✅ GPS Tracking obligatorio post-checklist
+- ✅ Geofence de 50m para Base Los Cardales
+- ✅ Wake Lock API para mantener pantalla
+- ✅ Estados: En ruta, En Base, Inactivo
+- ✅ Listener en tiempo real de ubicaciones
+- ✅ Pantalla de llegada a base
+- ✅ Botón refrescar sin recargar página
+- ✅ Reglas Firestore para colección `ubicaciones`
+
+---
+
+### 📋 TAREAS PENDIENTES GPS
+
+#### Prioridad ALTA
+1. ⏳ Probar geofence en campo (físicamente cerca de la base)
+2. ⏳ Agregar geofence para Base Villa Maipú
+
+#### Prioridad MEDIA
+3. ⏳ Historial de rutas por unidad
+4. ⏳ Alertas cuando unidad sale de zona esperada
+5. ⏳ Estimación de llegada basada en velocidad
+
+#### Prioridad BAJA
+6. ⏳ App nativa Android para tracking en background
+7. ⏳ Replay de rutas en el mapa
+8. ⏳ Exportar datos de tracking a Excel
+
+---
+
+## 🔐 SISTEMA DE LOGIN Y AUTENTICACIÓN
+
+**Estado:** OPERATIVO ✅
+
+### Flujo de Autenticación por Sector
+
+```
+LOGIN (Carousel Sector)
+  ├── DISTRIBUCIÓN → Validar HDR → Verificación Seguridad → Checklist → Entregas
+  ├── VRAC → ChecklistVRAC → GPS Tracking
+  ├── VITAL AIRE → Seleccionar Unidad → ChecklistVitalAire → GPS Tracking
+  ├── TALLER → Código Acceso → DashboardTaller
+  ├── COMBUSTIBLE → Seleccionar Unidad → FormularioCargaCombustible
+  └── FLOTA (Secreto) → 5 clicks logo + código → PanelFlota
+```
+
+### Flujo DISTRIBUCIÓN (Fleteros/Propios)
+
+1. **Ingreso de HDR** → Validación contra Google Sheets
+2. **Verificación de Seguridad:**
+   - Para **Propio:** Seleccionar número de unidad (3 opciones: 2 falsas + 1 correcta)
+   - Para **Fleteros:** Seleccionar empresa (3 opciones: 2 falsas + 1 correcta)
+3. **Welcome Modal** → Muestra: Chofer, HDR, Cliente, Fecha, Tipo Transporte
+4. **Checklist Distribución** (solo si es Propio y no existe checklist previo)
+5. **Acceso a Entregas**
+
+### Funcionalidades Login
+
+- ✅ Validación HDR contra Google Sheets API
+- ✅ Generación aleatoria de opciones para verificación de seguridad
+- ✅ Carga de información de cliente desde Maestra_Clientes
+- ✅ Acceso secreto al Panel de Flota (5 clicks en logo + código "crosslog2026")
+- ✅ Modal de bienvenida con resumen de viaje
+- ✅ Botón QR para compartir link por WhatsApp
+
+**Archivo:** `src/components/Login.tsx` (977 líneas)
+
+---
+
+## 🎠 CAROUSEL SECTOR - Selector de Módulos
+
+**Estado:** OPERATIVO ✅
+
+### Sectores Disponibles (5)
+
+| Sector | Icono | Color | Descripción |
+|--------|-------|-------|-------------|
+| **DISTRIBUCIÓN** | 📦 | Verde (#a8e063) | Fleteros y choferes propios |
+| **VRAC CISTERNAS** | 🛢️ | Cian (#0ea5e9) | Air Liquide - cisternas |
+| **VITAL AIRE** | 🚐 | Naranja (#f59e0b) | Camionetas de aire |
+| **TALLER** | 🔧 | Púrpura (#6366f1) | Personal mantenimiento |
+| **COMBUSTIBLE** | ⛽ | Azul (#0033A0) | Carga YPF en ruta |
+
+### Funcionamiento del Carrusel
+
+- **Swiper** con autoplay cada 5 segundos
+- Pausa automática al interactuar (touch/mouse)
+- Reanuda después de 7 segundos de inactividad
+- Loop infinito con navegación correcta
+- Pagination con bullets personalizados
+
+### Búsqueda Inteligente por Sector
+
+- **DISTRIBUCIÓN:** Input para número HDR
+- **VRAC:** Acceso directo a ChecklistVRAC
+- **VITAL AIRE:** Dropdown filtrable por INT o patente (10 unidades)
+- **TALLER:** Input para código de acceso
+- **COMBUSTIBLE:** Dropdown con todas las unidades (24 unidades)
+
+### Unidades por Sector
+
+```typescript
+VRAC: 11 unidades (INT 40, 41, 48, 50, 802-815)
+VITAL AIRE: 10 unidades (INT 52-817)
+DISTRIBUCIÓN: 8 unidades propias
+COMBUSTIBLE: 24 unidades totales
+```
+
+**Archivo:** `src/components/CarouselSector.tsx` (725 líneas)
+
+---
+
+## 🛢️ CHECKLIST VRAC - Cisternas Air Liquide
+
+**Estado:** OPERATIVO ✅
+
+### Pasos del Checklist (7 pasos)
+
+1. **Selección de Unidad INT** - Búsqueda entre 11 unidades VRAC
+2. **Selección de Cisterna** - Búsqueda entre 11 cisternas (532-721)
+3. **Selección de Chofer** - Búsqueda entre 16 choferes VRAC
+4. **Ingreso de Odómetro** - Captura del kilometraje inicial
+5. **Evaluación de Ítems** - Verificaciones críticas y no críticas
+6. **Resumen Final** - Resultado APTO/NO_APTO
+7. **Activación de GPS** - Si está habilitado en configuración
+
+### Sistema de Evaluación
+
+**Estados por ítem:**
+- ✅ CONFORME - Todo en orden
+- ❌ NO_CONFORME - Requiere atención (foto obligatoria si es crítico)
+- ➖ NO_APLICA - No corresponde verificar
+
+**Ítems Críticos (NO-GO):**
+- Requieren foto obligatoria si son NO_CONFORME
+- Si hay ítems críticos rechazados → Checklist NO_APTO
+
+### Funcionalidades
+
+- ✅ Botón flotante 🚨 para novedades descubiertas durante inspección
+- ✅ Validación: NO_APTO si hay ítems críticos rechazados o novedades
+- ✅ Guardado en Firebase Firestore
+- ✅ GPS tracking automático al finalizar (si está habilitado)
+- ✅ Búsqueda inteligente de unidades, cisternas y choferes
+
+**Choferes VRAC:** Boada, Brandt, Castro, Diaz, Garcia, Gonzalez, Lopez, Martinez, Molina, Noval, Perez, Rodriguez, Sanchez, Silva, Torres, Vazquez
+
+**Archivo:** `src/components/ChecklistVRAC.tsx` (1,585 líneas)
+
+---
+
+## 📦 CHECKLIST DISTRIBUCIÓN
+
+**Estado:** OPERATIVO ✅
+
+### Pasos del Checklist
+
+1. **Ingreso de Odómetro** - Captura del kilometraje inicial
+2. **Evaluación de 14 Ítems** - Checklist específico para distribución
+3. **Resumen Final** - Resultado APTO/NO_APTO
+4. **Activación de GPS** - Para tracking en ruta
+
+### Ítems del Checklist (14 ítems)
+
+**Críticos (10):**
+1. Aceite/Agua
+2. Sistema Aire
+3. Matafuegos
+4. Tacógrafo
+5. Parabrisas
+6. Alarma Retroceso
+7. Frenos
+8. Espejos
+9. Luces
+10. Neumáticos
+
+**No Críticos (4):**
+11. Cabina Interior
+12. Cabina Exterior
+13. Documentación
+14. EPP (Elementos de Protección Personal)
+
+### Funcionalidades
+
+- ✅ Chequeo automático de existencia de checklist previo para ese HDR
+- ✅ Reactivación automática de GPS si estaba activo
+- ✅ Botón flotante 🚨 para novedades adicionales
+- ✅ Captura de fotos solo para ítems críticos cuando son NO_CONFORME
+- ✅ Validación: NO_APTO si hay ítems críticos rechazados o novedades
+
+**Archivo:** `src/components/ChecklistDistribucion.tsx` (1,474 líneas)
+
+---
+
+## 🚐 CHECKLIST VITAL AIRE
+
+**Estado:** OPERATIVO ✅
+
+### Ítems del Checklist (17 ítems)
+
+**Críticos (8):**
+1. EPP completo
+2. Documentación vigente
+3. Nivel de aceite
+4. Luces funcionando
+5. Plataforma de carga
+6. Matafuegos vigente
+7. GOX (sistema de oxígeno)
+8. Frenos
+
+**No Críticos (9):**
+9. Exterior limpio
+10. Cuñas de seguridad
+11. Cintas reflectivas
+12. Cabina interior
+13. Espejos
+14. Neumáticos
+15. Alarma retroceso
+16. Tacógrafo
+17. Parabrisas
+
+### Funcionalidades
+
+- ✅ Misma estructura que VRAC (estados, fotos, novedades)
+- ✅ Selección de unidad desde dropdown filtrable
+- ✅ GPS tracking al finalizar
+
+**Archivo:** `src/components/ChecklistVitalAire.tsx`
+
+---
+
+## 🔧 MÓDULO DE MANTENIMIENTO
+
+**Estado:** OPERATIVO ✅
+
+### Componentes del Módulo
+
+#### 1. DashboardTaller.tsx - Vista Operativa para Mecánicos
+
+**Funcionalidades:**
+- ✅ Selección de técnico/mecánico antes de iniciar
+- ✅ Vistas: Dashboard, Órdenes Activas, Órdenes Asignadas, Checklists, Historial
+- ✅ Filtros por: Prioridad, Estado, Unidad, Fechas, Sector, Resultado
+- ✅ Integración con Firebase en tiempo real (listeners)
+- ✅ Modal para crear nuevas órdenes de trabajo
+- ✅ Registro de trabajos: descripción, repuestos, horas, fotos antes/después
+- ✅ Carga de combustible para seguimiento
+
+#### 2. DashboardMantenimiento.tsx - Panel Administrativo
+
+**Tabs disponibles:**
+- Checklists
+- Novedades
+- Órdenes
+- Kanban
+- Historial
+- Combustible
+
+**Estadísticas:**
+- Total checklists
+- APTO/NO_APTO
+- Novedades pendientes
+- Órdenes abiertas/en proceso
+
+**Funcionalidades:**
+- ✅ Modal Crear Novedad: unidad, descripción, prioridad (ALTA/MEDIA/BAJA), imágenes
+- ✅ Integración con sistema de combustible (alertas y consumo)
+- ✅ Búsqueda inteligente de unidades con dropdown
+- ✅ Carga de imágenes a Firebase Storage
+
+#### 3. KanbanBoard.tsx - Gestión Visual de Órdenes
+
+**Columnas (Estados):**
+1. PENDIENTE
+2. EN_PROCESO
+3. ESPERANDO_REPUESTOS
+4. CERRADO
+
+**Funcionalidades:**
+- ✅ Drag & Drop con `@dnd-kit/core`
+- ✅ Cambio de estado al arrastrar tarjetas
+- ✅ Click en tarjeta abre detalle de orden
+- ✅ Opción de eliminar orden
+- ✅ Responsive: 1 columna móvil, 2 tablets, 4 desktop
+
+**Archivos:**
+- `src/components/mantenimiento/DashboardTaller.tsx`
+- `src/components/mantenimiento/DashboardMantenimiento.tsx`
+- `src/components/mantenimiento/KanbanBoard.tsx`
+
+---
+
+## ⛽ MÓDULO DE COMBUSTIBLE
+
+**Estado:** OPERATIVO ✅
+
+### Funcionalidades
+
+- ✅ Formulario de carga de combustible
+- ✅ Selección de unidad desde dropdown
+- ✅ Registro de litros, monto, estación
+- ✅ Captura de foto del ticket
+- ✅ Historial de cargas por unidad
+- ✅ Alertas de consumo anormal
+- ✅ Integración con DashboardMantenimiento
+
+**Archivo:** `src/components/FormularioCargaCombustible.tsx`
+
+---
+
+## 🗺️ REDISEÑO PANEL DE FLOTA - 7 FEBRERO 2026
+
+**Estado:** COMPLETADO Y FUNCIONAL ✅
+
+### 📍 Resumen del Rediseño
+
+Rediseño completo del Panel de Flota inspirado en sistemas profesionales de tracking (Volvo/YPF Ruta) con las siguientes mejoras:
+
+---
+
+### 🎨 NUEVO LAYOUT - PANTALLA COMPLETA
+
+#### Estructura de 3 Paneles
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ← Volver                                    [Logo Crosslog] │  ← Primera fila
+├─────────────────────────────────────────────────────────────┤
+│  ☰ │ Todos │ VRAC │ DIST │ VITAL │    X ruta │ Y base 🔄 📍 │  ← Segunda fila
+├─────┬───────────────────────────────────────────────┬───────┤
+│     │                                               │       │
+│ P   │                                               │  P    │
+│ A   │              MAPA GOOGLE MAPS                 │  A    │
+│ N   │              (Pantalla completa)              │  N    │
+│ E   │                                               │  E    │
+│ L   │                                               │  L    │
+│     │                                               │       │
+│ I   │                                               │  D    │
+│ Z   │                                               │  E    │
+│ Q   │                                               │  R    │
+│     │                                               │       │
+└─────┴───────────────────────────────────────────────┴───────┘
+  ↑ Colapsable (☰)                              Solo al seleccionar ↑
+```
+
+#### Componentes del Layout
+
+1. **Header (2 filas):**
+   - **Fila 1:** ← Volver (izquierda) + Logo Crosslog (derecha)
+   - **Fila 2:** ☰ Hamburguesa + Filtros sector + Contadores + Refresh + GPS
+
+2. **Panel Izquierdo (w-72, colapsable):**
+   - Lista de unidades con estado (🟢 Ruta, 🔵 Base, ⚫ Inactivo)
+   - Badge de sector (D=Dist, R=VRAC, V=Vital)
+   - Se abre/cierra con botón hamburguesa (☰)
+   - Click en unidad → cierra panel automáticamente + centra mapa + abre detalles
+
+3. **Mapa Central:**
+   - Ocupa 100% del espacio disponible
+   - Labels en marcadores: "INT XXX - PATENTE"
+   - Marcadores de bases Crosslog (Los Cardales, Villa Maipú)
+   - Click en mapa cierra panel de detalles
+
+4. **Panel Derecho (w-72, condicional):**
+   - Aparece SOLO cuando se selecciona una unidad
+   - Muestra: Estado, Patente, Chofer, HDR, Última actualización, Coordenadas
+   - Botón "Centrar en Mapa"
+   - Botón X para cerrar
+
+---
+
+### 🔧 CAMBIOS TÉCNICOS
+
+#### Header Profesional
+```typescript
+// Primera fila
+<div className="flex items-center justify-between px-4 py-2">
+  <button onClick={onClose}>← Volver</button>
+  <img src="/LogoCross.png" alt="Crosslog" className="h-7" />
+</div>
+
+// Segunda fila
+<div className="flex items-center justify-between px-3 py-2">
+  {/* Izquierda: Hamburguesa + Filtros */}
+  <div className="flex items-center gap-2">
+    <button onClick={() => setShowSidebar(!showSidebar)}>☰</button>
+    <button>Todos ({n})</button>
+    <button>VRAC ({n})</button>
+    <button>DIST ({n})</button>
+    <button>VITAL ({n})</button>
+  </div>
+
+  {/* Derecha: Contadores + Acciones */}
+  <div className="flex items-center gap-2">
+    <span>X ruta</span> | <span>Y base</span>
+    <button>🔄</button>  {/* Refresh */}
+    <button>📍</button>  {/* GPS Toggle */}
+  </div>
+</div>
+```
+
+#### Panel Izquierdo Colapsable
+```typescript
+const [showSidebar, setShowSidebar] = useState(false);
+
+// Panel
+<div className={`absolute top-0 left-0 bottom-0 z-10 w-72
+  ${showSidebar ? 'translate-x-0' : '-translate-x-full'}`}>
+  {/* Lista de unidades */}
+</div>
+
+// Click en unidad cierra sidebar automáticamente
+onClick={() => {
+  map.panTo({ lat, lng });
+  map.setZoom(15);
+  setSelectedUnidad(unidad);
+  setShowSidebar(false); // ← Cierre automático
+}}
+```
+
+#### Mapa Pantalla Completa
+```typescript
+const mapContainerStyle = {
+  width: '100%',
+  height: '100%',  // Ya no es 400px fijo
+};
+
+// Contenedor principal
+<div className="h-screen w-screen flex flex-col">
+  {/* Header */}
+  <div className="flex-shrink-0">...</div>
+
+  {/* Contenedor mapa + paneles */}
+  <div className="flex-1 relative">
+    {/* Panel izquierdo (absolute) */}
+    {/* Mapa (h-full) */}
+    {/* Panel derecho (absolute, condicional) */}
+  </div>
+</div>
+```
+
+#### Labels en Marcadores
+```typescript
+<OverlayView position={{ lat, lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
+  <div style={{
+    backgroundColor: '#ffffff',
+    color: '#111827',
+    padding: '4px 8px',
+    borderRadius: '6px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    whiteSpace: 'nowrap',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+    border: '1px solid #d1d5db',
+  }}>
+    INT {unidad} - {patente}
+  </div>
+</OverlayView>
+```
+
+---
+
+### 🎯 FUNCIONALIDADES IMPLEMENTADAS
+
+#### GPS Enable/Disable Switch
+- **Propósito:** Control administrativo del GPS tracking
+- **Ubicación:** Header, botón con icono de ubicación
+- **Estado:** Guardado en Firestore (`configuracion/gps_tracking`)
+- **Efecto:** Si está OFF, los choferes NO ven la opción de activar GPS después del checklist
+- **Color activo:** Verde Crosslog (#BFCE2A)
+
+#### Filtros por Sector
+- **Todos:** Muestra todas las unidades
+- **VRAC:** Solo unidades VRAC (azul)
+- **DIST:** Solo distribución (verde Crosslog)
+- **VITAL:** Solo Vital Aire (naranja)
+- **Responsive:** Funciona en móviles Android
+
+#### Comportamiento UX Mejorado
+- ✅ Click en unidad del sidebar → cierra sidebar + centra mapa + abre detalles
+- ✅ Click en mapa vacío → cierra panel de detalles
+- ✅ Hamburguesa cambia color cuando sidebar está abierto
+- ✅ GPS toggle cambia color cuando está activo
+- ✅ Contadores responsive (texto completo en desktop, compacto en móvil)
+
+---
+
+### 📂 ARCHIVOS MODIFICADOS
+
+#### `src/components/PanelFlota.tsx`
+**Cambios principales:**
+- Eliminado `max-w-4xl` - ahora usa pantalla completa
+- Header dividido en 2 filas
+- Agregado `showSidebar` state para panel colapsable
+- Mapa con `height: 100%` en lugar de `400px`
+- Eliminado `InfoWindow` - reemplazado por panel derecho
+- Labels con `OverlayView` en marcadores
+- Filtros por sector (Todos, VRAC, DIST, VITAL)
+- GPS enable/disable toggle con persistencia en Firestore
+
+#### `public/LogoCross.png`
+- Logo Crosslog con fondo transparente
+- Altura en header: 28px (h-7)
+
+---
+
+### 🎨 ESTILOS Y BRANDING
+
+#### Colores Crosslog
+```css
+/* Verde Crosslog */
+#BFCE2A - Botones activos, badges DIST
+
+/* Fondo oscuro */
+bg-gray-900 - Header y paneles
+
+/* Estados */
+green-500 - En ruta
+blue-500 - En base
+gray-500 - Inactivo
+orange-500 - Vital Aire
+```
+
+#### Iconos SVG Profesionales
+- Flecha volver: `<path d="M15 19l-7-7 7-7" />`
+- Hamburguesa: `<path d="M4 6h16M4 12h16M4 18h16" />`
+- Refresh: `<path d="M4 4v5h.582m15.356 2A8.001..." />`
+- Ubicación: `<path d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9..." />`
+
+---
+
+### 📱 RESPONSIVE DESIGN
+
+```typescript
+// Contadores - Desktop vs Mobile
+<span className="hidden sm:inline">X ruta</span>
+<span className="sm:hidden">X🟢</span>
+
+// Filtros - Padding responsive
+<button className="px-3 py-1.5">...</button>
+
+// Paneles - Ancho fijo para consistencia
+<div className="w-72">...</div>  // 288px
+```
+
+---
+
+### ✅ MEJORAS COMPLETADAS (7 Feb 2026)
+
+1. ✅ **Layout pantalla completa** - Mapa ocupa todo el viewport
+2. ✅ **Panel izquierdo colapsable** - Lista de unidades con hamburguesa
+3. ✅ **Panel derecho contextual** - Detalles solo al seleccionar
+4. ✅ **Header profesional** - 2 filas con logo Crosslog
+5. ✅ **GPS toggle administrativo** - Control de activación para choferes
+6. ✅ **Filtros por sector** - Todos, VRAC, DIST, VITAL
+7. ✅ **Labels en marcadores** - "INT XXX - PATENTE"
+8. ✅ **Cierre automático sidebar** - Al seleccionar unidad
+9. ✅ **Diseño responsive** - Funciona en Android
+10. ✅ **Iconos SVG profesionales** - Sin emojis en controles
+
+---
+
+### 📋 ESTRUCTURA FINAL DE SECCIONES APP
+
+#### 🏠 Login / Home
+- Selector de sector (VRAC, Distribución, Consultas, Mantenimiento)
+- Acceso secreto a Panel de Flota (5 clicks + código)
+
+#### 🚛 VRAC
+- Checklist pre-viaje
+- GPS Tracking post-checklist (si está habilitado)
+
+#### 📦 Distribución
+- Checklist pre-viaje
+- GPS Tracking post-checklist (si está habilitado)
+
+#### 🔍 Consultas Internas
+- Marketplace de viajes
+- Gestión de documentación (Dashboard + Choferes + Unidades + Crosslog)
+
+#### 🔧 Mantenimiento
+- Dashboard Taller
+- Dashboard Mantenimiento
+- Kanban de órdenes
+
+#### 🗺️ Panel de Flota (Acceso restringido)
+- Mapa en tiempo real
+- Lista de unidades
+- Filtros por sector
+- Detalles de unidad
+- Control GPS admin
+
+---
+
+## 🔧 MÓDULO CONTROL DE CUBIERTAS - 15 FEBRERO 2026
+
+**Estado:** COMPLETADO Y FUNCIONAL ✅
+
+### 📍 Resumen de Funcionalidades
+
+Sistema completo de gestión de neumáticos de la flota:
+- **Taller**: Registrar instalaciones, mediciones con calibre, cambios y recapados
+- **Mantenimiento (Admin)**: Visualizar estado de toda la flota, alertas de desgaste, historial
+
+---
+
+### 🔧 TIPOS Y MODELO DE DATOS
+
+#### Tipos Base (`src/types/cubiertas.ts`)
+
+```typescript
+// Estados de cubierta
+export type EstadoCubierta = 'NUEVA' | 'EN_USO' | 'RECAPADA' | 'BAJA' | 'AUXILIO' | 'EN_RECAPADO' | 'EN_STOCK';
+export type EstadoDesgaste = 'BUENO' | 'REGULAR' | 'CRITICO'; // >6mm, 4-6mm, <4mm
+export type TipoCubierta = 'LINEAL' | 'RECAPADA';
+
+// Tipo según posición de uso
+export type TipoUsoCubierta =
+  | 'DIRECCIONAL'   // Eje delantero - canales longitudinales
+  | 'TRACCION'      // Eje trasero motor - tacos profundos
+  | 'LIBRE'         // Acoplados/semis - cargas pesadas
+  | 'MIXTA';        // Multiposición - versátil
+
+// Motivos de retiro
+export type MotivoRetiro =
+  | 'CAMBIO'        // Cambio normal por desgaste
+  | 'EXPLOTO'       // Explotó en ruta
+  | 'AGRIETADA'     // Se agrietó
+  | 'RESECA'        // Está reseca
+  | 'SOPLADA'       // Soplada/pinchada
+  | 'RECAPADO'      // Enviada a recapado
+  | 'ROTACION';     // Rotación entre posiciones
+
+// Destino después del retiro
+export type DestinoRetiro =
+  | 'STOCK'         // Vuelve al stock
+  | 'BAJA'          // Eliminación definitiva
+  | 'RECAPADO';     // Enviada a recapar
+```
+
+#### Configuraciones de Vehículos
+
+| Tipo | Ejes | Cubiertas | Auxilios | Unidades |
+|------|------|-----------|----------|----------|
+| CAMIONETA | 2 | 6 | 1 | INT-817, 54, 816 |
+| CHASIS | 2 | 6 | 1 | INT-64 |
+| CHASIS-TRACTOR | 2 | 6 | 1 | INT-46 |
+| BALANCÍN | 3 | 10 | 1 | INT-813 |
+| TRACTOR_2EJES | 2 | 6 | 1-2 | INT-45 |
+| TRACTOR_3EJES | 3 | 10 | 1-2 | INT-40,41,48,50,802-815 |
+| SEMIREMOLQUE_12 | 3 | 12 | 2 | INT-803, 818 |
+| CISTERNA | 3 | 10 | 1 | INT-532,535,537,548,552,603,703,711,712,715,721 |
+
+**Reglas**:
+- Eje delantero: Solo cubiertas LINEALES (nuevas)
+- Ejes traseros: Nuevas o Recapadas
+- Semiremolques: Primer eje puede ser neumático automático
+
+---
+
+### 📂 ARCHIVOS DEL MÓDULO
+
+#### Archivos Creados:
+1. `src/types/cubiertas.ts` - Tipos e interfaces
+2. `src/services/cubiertasService.ts` - Lógica de negocio y Firestore
+3. `src/components/cubiertas/index.ts` - Exports
+4. `src/components/cubiertas/DiagramaVehiculo.tsx` - Diagrama visual interactivo SVG
+5. `src/components/cubiertas/PanelCubiertas.tsx` - Panel principal (Taller)
+6. `src/components/cubiertas/VisorFlotaCubiertas.tsx` - Vista flota (Admin)
+
+---
+
+### 🔧 FUNCIONES DEL SERVICIO (`cubiertasService.ts`)
+
+```typescript
+// CRUD de Cubiertas
+crearCubierta(cubierta: Partial<Cubierta>): Promise<string | null>
+obtenerCubierta(cubiertaId: string): Promise<Cubierta | null>
+guardarCubierta(cubierta: Cubierta): Promise<boolean>
+eliminarCubierta(cubiertaId: string): Promise<boolean>
+
+// Gestión por Unidad
+obtenerEstadoCubiertasUnidad(unidadNumero: string): Promise<EstadoCubiertasUnidad | null>
+obtenerCubiertasUnidad(unidadId: string): Promise<Cubierta[]>
+obtenerCubiertasDisponibles(): Promise<Cubierta[]>
+
+// Mediciones
+registrarMedicion(medicion: Omit<MedicionCubierta, 'id' | 'timestamp'>): Promise<string | null>
+obtenerHistorialMediciones(cubiertaId: string): Promise<MedicionCubierta[]>
+
+// Movimientos (Instalación/Retiro)
+instalarCubierta(datos: InstalarCubiertaParams): Promise<string | null>
+retirarCubierta(datos: RetirarCubiertaParams): Promise<string | null>
+registrarMovimiento(movimiento: MovimientoCubierta): Promise<string | null>
+
+// Ciclo de vida
+devolverAStock(cubiertaId: string, esRecapada?: boolean): Promise<boolean>
+
+// Flota
+obtenerAlertasFlota(): Promise<AlertaCubierta[]>
+obtenerResumenFlota(): Promise<ResumenFlotaCubiertas>
+obtenerUnidadesPorSector(sector: string): Promise<UnidadConfiguracion[]>
+```
+
+---
+
+### 🎨 COMPONENTES UI
+
+#### DiagramaVehiculo.tsx - Diagrama Visual Interactivo
+- SVG **responsive** (width 100%, viewBox mantiene proporciones)
+- Configurable según tipo de vehículo (2-3 ejes, 6-12 cubiertas)
+- Cada posición clickeable
+- Colores según estado: verde (>6mm), amarillo (4-6mm), rojo (<4mm), gris (vacío)
+- Modo compacto para grids de flota
+- Altura dinámica según número de ejes
+
+#### PanelCubiertas.tsx - Panel para Taller
+- Selector de unidad con búsqueda
+- Diagrama del vehículo con estado de cubiertas
+- Lista de cubiertas con última medición
+- Acciones: Medir, Instalar, Retirar
+- **Tab Stock**: Inventario de cubiertas disponibles
+- **Modal Crear Cubierta**: Código, marca, medida, DOT, tipo (Lineal/Recapada), tipo uso
+- **Modal Retirar Cubierta**: Motivo (6 opciones) + Destino (Stock/Recapado/Baja)
+- **Modal Medición**: Profundidad, presión, técnico, observaciones
+- Modales **responsive** para Android (p-2/p-4, max-h-95vh/90vh)
+
+#### VisorFlotaCubiertas.tsx - Vista para Administración
+- Grid de cards por unidad (diagrama mini)
+- Filtros: sector, estado, alertas
+- Vista Alertas: tabla de cubiertas críticas
+- Modal de detalle **responsive** con diagrama grande + info de cubierta
+- Estadísticas: total cubiertas, en buen estado, regulares, críticas, en recapado
+
+---
+
+### 🗂️ ESTRUCTURA DE DATOS EN FIRESTORE
+
+#### Colecciones:
+- `cubiertas` - Inventario de cubiertas
+- `mediciones_cubiertas` - Historial de mediciones
+- `movimientos_cubiertas` - Instalaciones/retiros/rotaciones
+- `recapados_cubiertas` - Proceso de recapado
+
+#### Reglas Firestore (agregadas):
+```javascript
+match /cubiertas/{document=**} { allow read, write, delete: if true; }
+match /mediciones_cubiertas/{document=**} { allow read, write, delete: if true; }
+match /movimientos_cubiertas/{document=**} { allow read, write, delete: if true; }
+match /recapados_cubiertas/{document=**} { allow read, write, delete: if true; }
+```
+
+---
+
+### 🎯 CICLO DE VIDA DE CUBIERTA
+
+```
+1. NUEVA/RECAPADA (Stock)
+   ↓ Instalar en unidad
+2. EN_USO (Instalada en posición)
+   ↓ Mediciones periódicas
+   ↓ Estado: BUENO → REGULAR → CRITICO
+   ↓ Retirar (motivo + destino)
+3a. STOCK (vuelve disponible)
+3b. EN_RECAPADO (enviada a recapar)
+3c. BAJA (eliminada definitivamente)
+```
+
+---
+
+### ✅ FUNCIONALIDADES COMPLETADAS
+
+1. ✅ **Diagrama visual interactivo** - SVG responsive con colores por estado
+2. ✅ **Altura dinámica** - Vehículos 2 y 3 ejes se visualizan completos
+3. ✅ **Crear cubiertas** - Con tipo de uso (Direccional/Tracción/Libre/Mixta)
+4. ✅ **Instalar cubiertas** - Desde stock a posición de unidad
+5. ✅ **Registrar mediciones** - Profundidad, presión, técnico
+6. ✅ **Retirar cubiertas** - Con motivo y destino
+7. ✅ **Eliminar cubiertas** - Dar de baja definitiva
+8. ✅ **Vista de flota** - Grid con estado de todas las unidades
+9. ✅ **Alertas** - Cubiertas en estado crítico o regular
+10. ✅ **Modales responsive** - Se visualizan correctamente en Android
+11. ✅ **Modales no cierran con click afuera** - Solo con X o Cancelar
+
+---
+
+### 📱 MEJORAS RESPONSIVE (15 Feb 2026)
+
+- **DiagramaVehiculo**: SVG con `width="100%"` y `viewBox` para escalar correctamente
+- **Modales PanelCubiertas**: `p-2 sm:p-4`, `max-h-95vh sm:max-h-90vh`
+- **Modal VisorFlotaCubiertas**: `p-1 sm:p-4`, `max-h-98vh sm:max-h-95vh`
+- **Grid de info cubierta**: `gap-2 sm:gap-4`, `p-2 sm:p-3`
+- **SVG cubierta individual**: `w-20 h-20 sm:w-[120px] sm:h-[120px]`
+- **Textos**: `text-sm sm:text-base` para mejor lectura en móvil
+
+---
+
+*Última actualización: 2026-02-15 (Módulo Cubiertas + Responsive)*
+*Versión: 3.4 - MÓDULO CONTROL DE CUBIERTAS*

@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { showSuccess, showError, showWarning, showInfo } from '../../utils/toast';
-import { generateOrdenTrabajoPDF } from '../../utils/pdfGenerator';
+import { generateOrdenTrabajoPDF, type PDFResult } from '../../utils/pdfGenerator';
+import { ModalPrevisualizacionPDF } from './ModalPrevisualizacionPDF';
 import { convertirTimestampFirebase } from '../../utils/dateUtils';
 import {
   collection,
@@ -33,6 +34,7 @@ import AlertasTrenRodante, { type DatosOTTrenRodante } from '../trenRodante/Aler
 import ChecklistTrenRodante40K from '../trenRodante/ChecklistTrenRodante40K';
 import ChecklistTrenRodante80K from '../trenRodante/ChecklistTrenRodante80K';
 import ChecklistTrenRodante160K from '../trenRodante/ChecklistTrenRodante160K';
+import { PanelCubiertas } from '../cubiertas';
 
 // Función para obtener patente de una unidad (usa TODAS_LAS_UNIDADES de CarouselSector)
 const obtenerPatente = (numeroUnidad: string): string => {
@@ -44,11 +46,11 @@ interface DashboardTallerProps {
   onLogout: () => void;
 }
 
-type VistaType = 'dashboard' | 'activas' | 'asignadas' | 'checklists' | 'historial' | 'trenRodante';
+type VistaType = 'dashboard' | 'activas' | 'asignadas' | 'checklists' | 'historial' | 'trenRodante' | 'cubiertas';
 
 interface Filtros {
   prioridad: '' | 'ALTA' | 'MEDIA' | 'BAJA';
-  estado: '' | 'PENDIENTE' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS';
+  estado: '' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS';
   unidad: string;
   fechaDesde: string;
   fechaHasta: string;
@@ -108,6 +110,10 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
   const [checklistSeleccionado, setChecklistSeleccionado] = useState<ChecklistRegistro | null>(null);
   const [mostrarDetalleChecklist, setMostrarDetalleChecklist] = useState(false);
   const [mostrarModalDetalleOT, setMostrarModalDetalleOT] = useState(false);
+
+  // Estados para previsualización de PDF
+  const [mostrarPrevisualizacionPDF, setMostrarPrevisualizacionPDF] = useState(false);
+  const [pdfData, setPdfData] = useState<PDFResult | null>(null);
 
   // Estados para Tren Rodante VRAC
   const [showChecklistTR, setShowChecklistTR] = useState<'40K' | '80K' | '160K' | null>(null);
@@ -332,6 +338,10 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
     } else if (vista === 'trenRodante') {
       // Tren Rodante: El componente AlertasTrenRodante maneja su propio loading
       console.log('[DashboardTaller] 🚛 Vista Tren Rodante - loading manejado por componente');
+      setLoading(false);
+    } else if (vista === 'cubiertas') {
+      // Cubiertas: El componente PanelCubiertas maneja su propio loading
+      console.log('[DashboardTaller] 🛞 Vista Cubiertas - loading manejado por componente');
       setLoading(false);
     }
 
@@ -665,12 +675,32 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                 <span className="text-[10px] sm:text-xs">T.Rod</span>
               </div>
             </button>
+
+            {/* Tab Cubiertas */}
+            <button
+              onClick={() => setVista('cubiertas')}
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
+                vista === 'cubiertas'
+                  ? 'text-gray-800 border-b-3 border-gray-800 bg-gray-100'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="flex items-center gap-1">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" strokeWidth={2} />
+                    <circle cx="12" cy="12" r="3" strokeWidth={2} />
+                  </svg>
+                </div>
+                <span className="text-[10px] sm:text-xs">Cub</span>
+              </div>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Filtros - Solo mostrar si no es dashboard, checklists, historial o trenRodante */}
-      {vista !== 'dashboard' && vista !== 'checklists' && vista !== 'historial' && vista !== 'trenRodante' && (
+      {/* Filtros - Solo mostrar si no es dashboard, checklists, historial, trenRodante o cubiertas */}
+      {vista !== 'dashboard' && vista !== 'checklists' && vista !== 'historial' && vista !== 'trenRodante' && vista !== 'cubiertas' && (
         <div className="bg-gradient-to-br from-green-50 to-gray-50 border-b border-green-200 p-3 md:p-4">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
@@ -684,9 +714,8 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                   style={{ fontSize: '16px' }}
                 >
                   <option value="">Todos los estados</option>
-                  <option value="PENDIENTE">⏳ PENDIENTE</option>
-                  <option value="EN_PROCESO">🔧 EN PROCESO</option>
-                  <option value="ESPERANDO_REPUESTOS">📦 ESPERANDO REPUESTOS</option>
+                  <option value="EN_PROCESO">🔧 Órdenes de Trabajo</option>
+                  <option value="ESPERANDO_REPUESTOS">📦 Esperando Repuestos</option>
                 </select>
               </div>
 
@@ -1053,13 +1082,18 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                               COMPLETADO
                             </span>
                             <button
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                generateOrdenTrabajoPDF(orden);
-                                showSuccess('PDF generado correctamente');
+                                try {
+                                  const result = await generateOrdenTrabajoPDF(orden);
+                                  setPdfData(result);
+                                  setMostrarPrevisualizacionPDF(true);
+                                } catch (error) {
+                                  showError('Error al generar PDF');
+                                }
                               }}
                               className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
-                              title="Descargar PDF"
+                              title="Ver PDF"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -1184,6 +1218,16 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                 }}
               />
             )}
+
+            {/* Tab Control de Cubiertas */}
+            {vista === 'cubiertas' && (
+              <PanelCubiertas
+                onGenerarOT={(datos) => {
+                  console.log('[DashboardTaller] Generando OT Cubiertas:', datos);
+                  // TODO: Implementar creación de OT desde cubiertas
+                }}
+              />
+            )}
           </div>
         )}
       </div>
@@ -1303,6 +1347,19 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
           } : undefined}
         />
       )}
+
+      {/* Modal Previsualización PDF */}
+      <ModalPrevisualizacionPDF
+        isOpen={mostrarPrevisualizacionPDF}
+        onClose={() => {
+          setMostrarPrevisualizacionPDF(false);
+          setPdfData(null);
+        }}
+        pdfUrl={pdfData?.url || ''}
+        pdfBlob={pdfData?.blob || null}
+        fileName={pdfData?.fileName || ''}
+        titulo="Previsualización - Orden de Trabajo"
+      />
 
       {/* Modal Detalle Checklist */}
       {mostrarDetalleChecklist && checklistSeleccionado && (
@@ -1778,11 +1835,14 @@ function VistaDashboard({ ordenes }: VistaDashboardProps) {
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-semibold text-sm text-gray-900">OT-{String(ot.numeroOT).slice(-5)}</span>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            ot.estado === 'CERRADO' ? 'bg-green-100 text-green-700' :
-                            ot.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-700' :
+                            ot.estado === 'CERRADO' || ot.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                            ot.estado === 'EN_PROCESO' || ot.estado === 'PENDIENTE' ? 'bg-blue-100 text-blue-700' :
+                            ot.estado === 'ESPERANDO_REPUESTOS' ? 'bg-amber-100 text-amber-700' :
                             'bg-gray-100 text-gray-700'
                           }`}>
-                            {ot.estado}
+                            {ot.estado === 'EN_PROCESO' || ot.estado === 'PENDIENTE' ? 'OT Activa' :
+                             ot.estado === 'ESPERANDO_REPUESTOS' ? 'Esperando' :
+                             ot.estado === 'CERRADO' || ot.estado === 'COMPLETADA' ? 'Completada' : ot.estado}
                           </span>
                         </div>
                         <p className="text-xs text-gray-700 mb-1">{ot.descripcion}</p>
@@ -1989,10 +2049,10 @@ function ListaOrdenesAsignadas({
                   {orden.prioridad === 'ALTA' ? '🔴' : orden.prioridad === 'MEDIA' ? '🟡' : '🟢'} {orden.prioridad}
                 </span>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                  orden.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-800' :
+                  orden.estado === 'EN_PROCESO' || orden.estado === 'PENDIENTE' ? 'bg-blue-100 text-blue-800' :
                   'bg-amber-100 text-amber-800'
                 }`}>
-                  {orden.estado === 'EN_PROCESO' ? '🔧 EN PROCESO' : '⏳ ESPERANDO'}
+                  {orden.estado === 'EN_PROCESO' || orden.estado === 'PENDIENTE' ? '🔧 OT' : '⏳ ESPERANDO'}
                 </span>
                 {orden.fotosEvidencia && orden.fotosEvidencia.length > 0 && (
                   <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
@@ -2031,7 +2091,7 @@ function ListaOrdenesAsignadas({
               >
                 ✏️ Registrar
               </button>
-              {orden.estado === 'EN_PROCESO' && (
+              {(orden.estado === 'EN_PROCESO' || orden.estado === 'PENDIENTE') && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onMarcarEsperando(orden); }}
                   className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-all"
@@ -3042,12 +3102,14 @@ function ModalHistorialUnidad({ ordenes, onClose }: ModalHistorialUnidadProps) {
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-gray-900">OT #{orden.numeroOT}</span>
                     <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                      orden.estado === 'COMPLETADA' ? 'bg-green-100 text-green-800' :
-                      orden.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-800' :
+                      orden.estado === 'COMPLETADA' || orden.estado === 'CERRADO' ? 'bg-green-100 text-green-800' :
+                      orden.estado === 'EN_PROCESO' || orden.estado === 'PENDIENTE' ? 'bg-blue-100 text-blue-800' :
                       orden.estado === 'ESPERANDO_REPUESTOS' ? 'bg-amber-100 text-amber-800' :
                       'bg-gray-100 text-gray-800'
                     }`}>
-                      {orden.estado}
+                      {orden.estado === 'EN_PROCESO' || orden.estado === 'PENDIENTE' ? 'OT Activa' :
+                       orden.estado === 'ESPERANDO_REPUESTOS' ? 'Esperando' :
+                       orden.estado === 'COMPLETADA' || orden.estado === 'CERRADO' ? 'Completada' : orden.estado}
                     </span>
                   </div>
                   <span className="text-sm text-gray-600">
@@ -3161,11 +3223,14 @@ function ModalDetalleOT({ orden, onClose, onTomarOT, tecnicoActual }: ModalDetal
               {orden.tipo}
             </span>
             <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-              orden.estado === 'PENDIENTE' ? 'bg-yellow-100 text-yellow-800' :
-              orden.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-800' :
+              orden.estado === 'EN_PROCESO' || orden.estado === 'PENDIENTE' ? 'bg-blue-100 text-blue-800' :
+              orden.estado === 'ESPERANDO_REPUESTOS' ? 'bg-amber-100 text-amber-800' :
+              orden.estado === 'COMPLETADA' || orden.estado === 'CERRADO' ? 'bg-green-100 text-green-800' :
               'bg-gray-100 text-gray-800'
             }`}>
-              {orden.estado}
+              {orden.estado === 'EN_PROCESO' || orden.estado === 'PENDIENTE' ? 'OT Activa' :
+               orden.estado === 'ESPERANDO_REPUESTOS' ? 'Esperando Repuestos' :
+               orden.estado === 'COMPLETADA' || orden.estado === 'CERRADO' ? 'Completada' : orden.estado}
             </span>
           </div>
 

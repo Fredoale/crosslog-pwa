@@ -26,7 +26,8 @@ import type { ChecklistRegistro, Novedad, OrdenTrabajo, CargaCombustible, Alerta
 import { KanbanBoard } from './KanbanBoard';
 import { getAllCargasCombustible, getAlertasByUnidad, getConsumoUnidad, deleteCargaCombustible } from '../../services/combustibleService';
 import { showSuccess, showError, showWarning } from '../../utils/toast';
-import { generateOrdenTrabajoPDF } from '../../utils/pdfGenerator';
+import { generateOrdenTrabajoPDF, type PDFResult } from '../../utils/pdfGenerator';
+import { ModalPrevisualizacionPDF } from './ModalPrevisualizacionPDF';
 import { convertirTimestampFirebase } from '../../utils/dateUtils';
 import { generarNumeroOT, inicializarContadorOT, obtenerContadorActual } from '../../services/ordenTrabajoService';
 import { TODAS_LAS_UNIDADES } from '../CarouselSector';
@@ -34,6 +35,7 @@ import AlertasTrenRodante, { type DatosOTTrenRodante } from '../trenRodante/Aler
 import ChecklistTrenRodante40K from '../trenRodante/ChecklistTrenRodante40K';
 import ChecklistTrenRodante80K from '../trenRodante/ChecklistTrenRodante80K';
 import ChecklistTrenRodante160K from '../trenRodante/ChecklistTrenRodante160K';
+import { VisorFlotaCubiertas } from '../cubiertas';
 
 // Función para obtener patente de una unidad usando TODAS_LAS_UNIDADES
 const obtenerPatente = (numeroUnidad: string): string => {
@@ -45,7 +47,7 @@ interface DashboardMantenimientoProps {
   onBack: () => void;
 }
 
-type TabType = 'checklists' | 'novedades' | 'ordenes' | 'kanban' | 'historial' | 'combustible' | 'trenRodante';
+type TabType = 'checklists' | 'novedades' | 'ordenes' | 'kanban' | 'historial' | 'combustible' | 'trenRodante' | 'cubiertas';
 
 interface Filtros {
   sector: '' | 'vrac' | 'vital-aire';
@@ -54,9 +56,9 @@ interface Filtros {
   fechaHasta: string;
   resultado: '' | 'APTO' | 'NO_APTO' | 'PENDIENTE';
   prioridad: '' | 'ALTA' | 'MEDIA' | 'BAJA';
-  estado: '' | 'PENDIENTE' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS' | 'CERRADO';
+  estado: '' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS' | 'CERRADO';
   // Filtros para Novedades
-  novedadEstado: '' | 'PENDIENTE' | 'EN_PROCESO' | 'RESUELTA' | 'RECHAZADA';
+  novedadEstado: '' | 'PROCESADA' | 'RESUELTA' | 'RECHAZADA';
   novedadUnidad: string;
   novedadFechaDesde: string;
   novedadFechaHasta: string;
@@ -385,15 +387,17 @@ interface DatosInicialesOT {
   prioridad?: 'ALTA' | 'MEDIA' | 'BAJA';
   tipoMantenimientoTR?: '40K' | '80K' | '160K';
   kilometrajeActual?: number;
+  novedadesUnidad?: Novedad[];  // Para drag & drop desde KanbanBoard
 }
 
 interface ModalCrearOrdenProps {
   onClose: () => void;
   onCreated: () => void;
   datosIniciales?: DatosInicialesOT;
+  todasOrdenes: OrdenTrabajo[];  // Para detectar OTs existentes
 }
 
-const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated, datosIniciales }) => {
+const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated, datosIniciales, todasOrdenes }) => {
   const [loading, setLoading] = useState(false);
 
   // Generar descripción automática si viene de Tren Rodante
@@ -421,6 +425,54 @@ const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated, d
   });
   const [imagenesEvidencia, setImagenesEvidencia] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+
+  // Estado para novedades seleccionadas (cuando viene de drag & drop)
+  const tieneNovedades = datosIniciales?.novedadesUnidad && datosIniciales.novedadesUnidad.length > 0;
+  const [novedadesSeleccionadas, setNovedadesSeleccionadas] = useState<string[]>(
+    tieneNovedades ? datosIniciales.novedadesUnidad!.map(n => n.id) : []
+  );
+
+  // Generar descripción desde novedades seleccionadas
+  const generarDescripcionDesdeNovedades = () => {
+    if (!tieneNovedades) return '';
+    const seleccionadas = datosIniciales.novedadesUnidad!.filter(n => novedadesSeleccionadas.includes(n.id));
+    if (seleccionadas.length === 0) return '';
+    return seleccionadas.map((n, i) => `${i + 1}. ${n.descripcion}`).join('\n');
+  };
+
+  // Actualizar descripción cuando cambian las novedades seleccionadas
+  React.useEffect(() => {
+    if (tieneNovedades) {
+      const nuevaDescripcion = generarDescripcionDesdeNovedades();
+      setFormData(prev => ({ ...prev, descripcion: nuevaDescripcion }));
+    }
+  }, [novedadesSeleccionadas]);
+
+  // Estado para búsqueda inteligente de unidad
+  const [unidadBusqueda, setUnidadBusqueda] = useState(datosIniciales?.unidadNumero || '');
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+
+  // Filtrar unidades según búsqueda
+  const unidadesFiltradas = TODAS_LAS_UNIDADES.filter(u =>
+    u.numero.toLowerCase().includes(unidadBusqueda.toLowerCase()) ||
+    u.patente.toLowerCase().includes(unidadBusqueda.toLowerCase())
+  ).slice(0, 8);
+
+  // Seleccionar unidad del dropdown
+  const seleccionarUnidad = (unidad: typeof TODAS_LAS_UNIDADES[0]) => {
+    setFormData({ ...formData, unidadNumero: unidad.numero, unidadPatente: unidad.patente });
+    setUnidadBusqueda(unidad.numero);
+    setMostrarSugerencias(false);
+  };
+
+  // Detectar OTs abiertas de la misma unidad
+  const otsAbiertasMismaUnidad = formData.unidadNumero
+    ? todasOrdenes.filter(ot =>
+        ot.unidad?.numero === formData.unidadNumero &&
+        ot.estado !== 'CERRADO' &&
+        ot.estado !== 'COMPLETADA'
+      )
+    : [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -524,33 +576,110 @@ const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated, d
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Unidad */}
+          {/* Unidad - Búsqueda inteligente */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+            <div className="relative">
               <label className="block text-sm font-semibold text-gray-700 mb-2">Unidad (Número) *</label>
               <input
                 type="text"
                 required
-                value={formData.unidadNumero}
-                onChange={(e) => setFormData({ ...formData, unidadNumero: e.target.value })}
+                value={unidadBusqueda}
+                onChange={(e) => {
+                  setUnidadBusqueda(e.target.value);
+                  setMostrarSugerencias(true);
+                  // Si borra, limpiar también el formData
+                  if (!e.target.value) {
+                    setFormData({ ...formData, unidadNumero: '', unidadPatente: '' });
+                  }
+                }}
+                onFocus={() => setMostrarSugerencias(true)}
+                onBlur={() => setTimeout(() => setMostrarSugerencias(false), 200)}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                placeholder="Ej: 810"
+                placeholder="Buscar INT..."
                 style={{ fontSize: '16px' }}
               />
+              {/* Dropdown de sugerencias */}
+              {mostrarSugerencias && unidadBusqueda && (
+                <div className="absolute z-50 w-full mt-1 bg-white border-2 border-purple-500 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {unidadesFiltradas.length > 0 ? (
+                    unidadesFiltradas.map(u => (
+                      <button
+                        key={u.numero}
+                        type="button"
+                        onClick={() => seleccionarUnidad(u)}
+                        className="w-full px-3 py-2 text-left hover:bg-purple-50 transition-colors flex justify-between items-center"
+                      >
+                        <span className="font-semibold text-gray-800">INT-{u.numero}</span>
+                        <span className="text-sm text-gray-500">{u.patente}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-gray-500 text-sm">No se encontraron unidades</div>
+                  )}
+                </div>
+              )}
+              {/* Indicador de unidad seleccionada */}
+              {formData.unidadNumero && (
+                <div className="absolute right-3 top-10 text-green-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Patente *</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Patente</label>
               <input
                 type="text"
-                required
+                readOnly
                 value={formData.unidadPatente}
-                onChange={(e) => setFormData({ ...formData, unidadPatente: e.target.value })}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                placeholder="Ej: AA123BB"
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg bg-gray-50 text-gray-700 cursor-not-allowed"
+                placeholder="Se completa automáticamente"
                 style={{ fontSize: '16px' }}
               />
+              <p className="text-xs text-gray-500 mt-1">Se completa automáticamente al seleccionar unidad</p>
             </div>
           </div>
+
+          {/* Advertencia: OTs abiertas de la misma unidad */}
+          {otsAbiertasMismaUnidad.length > 0 && (
+            <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-orange-800">OTs abiertas para INT-{formData.unidadNumero}</h4>
+                  <p className="text-sm text-orange-700 mt-1">
+                    Esta unidad ya tiene {otsAbiertasMismaUnidad.length} OT{otsAbiertasMismaUnidad.length > 1 ? 's' : ''} abierta{otsAbiertasMismaUnidad.length > 1 ? 's' : ''}:
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {otsAbiertasMismaUnidad.slice(0, 3).map(ot => (
+                      <div key={ot.id} className="flex items-center gap-2 text-sm">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          ot.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-700' :
+                          ot.estado === 'ESPERANDO_REPUESTOS' ? 'bg-amber-100 text-amber-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {ot.estado}
+                        </span>
+                        <span className="text-orange-800 font-medium">OT #{ot.numeroOT}</span>
+                        <span className="text-orange-600 truncate flex-1">{ot.descripcion?.slice(0, 30)}...</span>
+                      </div>
+                    ))}
+                    {otsAbiertasMismaUnidad.length > 3 && (
+                      <p className="text-xs text-orange-600 font-semibold">+{otsAbiertasMismaUnidad.length - 3} más...</p>
+                    )}
+                  </div>
+                  <p className="text-xs text-orange-600 mt-2 italic">
+                    Considera cerrar las OTs existentes antes de crear una nueva.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Tipo y Prioridad */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -582,9 +711,61 @@ const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated, d
             </div>
           </div>
 
+          {/* Novedades de la unidad (cuando viene de drag & drop) */}
+          {tieneNovedades && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                Selecciona las novedades a incluir en esta OT
+              </label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {datosIniciales!.novedadesUnidad!.map((novedad) => (
+                  <label
+                    key={novedad.id}
+                    className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                      novedadesSeleccionadas.includes(novedad.id)
+                        ? 'bg-[#56ab2f]/10 border border-[#56ab2f]'
+                        : 'bg-white border border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={novedadesSeleccionadas.includes(novedad.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNovedadesSeleccionadas([...novedadesSeleccionadas, novedad.id]);
+                        } else {
+                          setNovedadesSeleccionadas(novedadesSeleccionadas.filter(id => id !== novedad.id));
+                        }
+                      }}
+                      className="mt-1 w-4 h-4 text-[#56ab2f] rounded focus:ring-[#56ab2f]"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          novedad.estado === 'PENDIENTE' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {novedad.estado}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700">{novedad.descripcion}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {novedadesSeleccionadas.length === 0 && (
+                <p className="text-amber-600 text-sm mt-2">
+                  Selecciona al menos una novedad para crear la OT
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Descripción */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Descripción del Trabajo *</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Descripción del Trabajo *
+              {tieneNovedades && <span className="text-gray-400 font-normal ml-2">(generada automáticamente)</span>}
+            </label>
             <textarea
               required
               value={formData.descripcion}
@@ -688,18 +869,38 @@ const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCreated, d
 // ============================================================================
 interface ModalDetalleNovedadProps {
   novedad: Novedad;
+  todasNovedades: Novedad[];  // Todas las novedades para filtrar por unidad
+  todasOrdenes: OrdenTrabajo[];  // Todas las OTs para detectar duplicadas
   onClose: () => void;
   onUpdated: () => void;
 }
 
-const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onClose, onUpdated }) => {
+const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, todasNovedades, todasOrdenes, onClose, onUpdated }) => {
   const [loading, setLoading] = useState(false);
   const [estado, setEstado] = useState(novedad.estado);
   const [prioridad, setPrioridad] = useState(novedad.prioridad);
+
+  // OTs abiertas de la misma unidad
+  const otsAbiertasMismaUnidad = todasOrdenes.filter(ot =>
+    ot.unidad?.numero === novedad.unidad?.numero &&
+    ot.estado !== 'CERRADO' &&
+    ot.estado !== 'COMPLETADA'
+  );
   const [imagenViewer, setImagenViewer] = useState<string | null>(null);
 
   // Estado para cargar datos de la OT asociada
   const [ordenAsociada, setOrdenAsociada] = useState<OrdenTrabajo | null>(null);
+
+  // Estado para selección de novedades al crear OT
+  const [mostrarSelectorNovedades, setMostrarSelectorNovedades] = useState(false);
+  const [novedadesSeleccionadas, setNovedadesSeleccionadas] = useState<string[]>([novedad.id]);
+
+  // Novedades pendientes de la misma unidad
+  const novedadesMismaUnidad = todasNovedades.filter(n =>
+    n.unidad?.numero === novedad.unidad?.numero &&
+    (n.estado === 'PENDIENTE' || n.estado === 'EN_PROCESO') &&
+    !n.ordenTrabajoId
+  );
 
   // Cargar datos de la OT si existe
   useEffect(() => {
@@ -776,8 +977,29 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
     }
   };
 
-  const handleTomarNovedad = async () => {
-    if (!confirm('¿Deseas crear una Orden de Trabajo para esta novedad?')) {
+  // Mostrar selector de novedades antes de crear OT
+  const handleMostrarSelectorNovedades = () => {
+    if (novedadesMismaUnidad.length > 1) {
+      setMostrarSelectorNovedades(true);
+    } else {
+      // Si solo hay una novedad, crear directamente
+      handleCrearOTConNovedades();
+    }
+  };
+
+  // Toggle selección de novedad
+  const toggleNovedadSeleccionada = (novedadId: string) => {
+    setNovedadesSeleccionadas(prev =>
+      prev.includes(novedadId)
+        ? prev.filter(id => id !== novedadId)
+        : [...prev, novedadId]
+    );
+  };
+
+  // Crear OT con las novedades seleccionadas
+  const handleCrearOTConNovedades = async () => {
+    if (novedadesSeleccionadas.length === 0) {
+      showError('Debes seleccionar al menos una novedad');
       return;
     }
 
@@ -785,24 +1007,46 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
     try {
       // Generar número correlativo de OT
       const nuevoNumeroOT = await generarNumeroOT();
-      const ordenTrabajoId = `ot_${nuevoNumeroOT}_${novedad.id}`;
+      const ordenTrabajoId = `ot_${nuevoNumeroOT}_${novedad.unidad.numero}`;
+
+      // Obtener las novedades seleccionadas para construir la descripción
+      const novedadesParaOT = novedadesMismaUnidad.filter(n => novedadesSeleccionadas.includes(n.id));
+
+      // Construir descripción combinada
+      const descripcionCombinada = novedadesParaOT.length === 1
+        ? `${novedadesParaOT[0].descripcion}${novedadesParaOT[0].comentarioChofer ? ' - ' + novedadesParaOT[0].comentarioChofer : ''}`
+        : `Múltiples novedades (${novedadesParaOT.length}):\n${novedadesParaOT.map((n, i) => `${i + 1}. ${n.descripcion}`).join('\n')}`;
+
+      // Recopilar todas las fotos
+      const todasLasFotos: string[] = [];
+      novedadesParaOT.forEach(n => {
+        if (n.fotosEvidencia && n.fotosEvidencia.length > 0) {
+          todasLasFotos.push(...n.fotosEvidencia);
+        } else if (n.fotoUrl) {
+          todasLasFotos.push(n.fotoUrl);
+        }
+      });
+
+      // Determinar prioridad más alta
+      const prioridadMaxima = novedadesParaOT.some(n => n.prioridad === 'ALTA') ? 'ALTA'
+        : novedadesParaOT.some(n => n.prioridad === 'MEDIA') ? 'MEDIA' : 'BAJA';
 
       const ordenTrabajo: OrdenTrabajo = {
         id: ordenTrabajoId,
         numeroOT: nuevoNumeroOT,
-        novedadId: novedad.id,
+        novedadId: novedad.id,  // Mantener por retrocompatibilidad
+        novedadesIds: novedadesSeleccionadas,  // Nuevo: array de todas las novedades
         checklistId: novedad.checklistId,
         fecha: new Date(),
         fechaCreacion: new Date(),
         unidad: novedad.unidad,
         tipo: 'CORRECTIVO',
-        descripcion: `${novedad.descripcion} - ${novedad.comentarioChofer}`,
+        descripcion: descripcionCombinada,
         estado: 'PENDIENTE',
-        prioridad: novedad.prioridad,
+        prioridad: prioridadMaxima,
         tipoMantenimiento: 'CORRECTIVO',
         timestamp: new Date(),
-        // Transferir imágenes de la novedad a la OT
-        ...(novedad.fotosEvidencia && novedad.fotosEvidencia.length > 0 && { fotosEvidencia: novedad.fotosEvidencia })
+        ...(todasLasFotos.length > 0 ? { fotosEvidencia: todasLasFotos } : {})
       };
 
       const ordenTrabajoData = {
@@ -815,14 +1059,16 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
       // Crear OT
       await setDoc(doc(db, 'ordenes_trabajo', ordenTrabajoId), ordenTrabajoData);
 
-      // Actualizar novedad - marcar como PROCESADA
-      await updateDoc(doc(db, 'novedades', novedad.id), {
-        ordenTrabajoId: ordenTrabajoId,
-        estado: 'PROCESADA'
-      });
+      // Actualizar todas las novedades seleccionadas - marcar como EN_PROCESO
+      for (const novedadId of novedadesSeleccionadas) {
+        await updateDoc(doc(db, 'novedades', novedadId), {
+          ordenTrabajoId: ordenTrabajoId,
+          estado: 'EN_PROCESO'
+        });
+      }
 
-      console.log('[ModalDetalleNovedad] ✅ Orden de Trabajo creada:', ordenTrabajoId);
-      showSuccess('Orden de Trabajo creada exitosamente');
+      console.log('[ModalDetalleNovedad] ✅ Orden de Trabajo creada con', novedadesSeleccionadas.length, 'novedades:', ordenTrabajoId);
+      showSuccess(`Orden de Trabajo creada con ${novedadesSeleccionadas.length} novedad${novedadesSeleccionadas.length > 1 ? 'es' : ''}`);
 
       onUpdated();
       onClose();
@@ -836,8 +1082,9 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
 
   const getEstadoColor = (est: string) => {
     switch (est) {
-      case 'PENDIENTE': return 'bg-yellow-100 text-yellow-800';
+      case 'PENDIENTE':
       case 'EN_PROCESO': return 'bg-blue-100 text-blue-800';
+      case 'PROCESADA':
       case 'RESUELTA': return 'bg-green-100 text-green-800';
       case 'RECHAZADA': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -1003,9 +1250,7 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
                   style={{ fontSize: '16px' }}
                   disabled={novedad.ordenTrabajoId ? true : false}
                 >
-                  <option value="PENDIENTE">⏳ Pendiente</option>
                   <option value="PROCESADA">📋 Procesada (OT Generada)</option>
-                  <option value="EN_PROCESO">🔧 En Proceso</option>
                   <option value="RESUELTA">✅ Resuelta</option>
                   <option value="RECHAZADA">❌ Rechazada</option>
                 </select>
@@ -1029,27 +1274,106 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
 
           {/* Botones de Acción */}
           <div className="space-y-3 pt-4 border-t border-gray-200">
-            {/* Botón Tomar Novedad - Solo si no tiene OT asignada */}
-            {!novedad.ordenTrabajoId && (
-              <button
-                onClick={handleTomarNovedad}
-                disabled={loading}
-                className="w-full px-6 py-4 bg-gradient-to-r from-purple-500 to-purple-600 text-white font-bold rounded-lg hover:from-purple-600 hover:to-purple-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                    Creando OT...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            {/* Advertencia: OTs abiertas de la misma unidad */}
+            {!novedad.ordenTrabajoId && otsAbiertasMismaUnidad.length > 0 && (
+              <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 mb-2">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
-                    🔧 Tomar Novedad (Crear Orden de Trabajo)
-                  </>
-                )}
-              </button>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-orange-800">OTs abiertas para INT-{novedad.unidad?.numero}</h4>
+                    <p className="text-sm text-orange-700 mt-1">
+                      Esta unidad ya tiene {otsAbiertasMismaUnidad.length} OT{otsAbiertasMismaUnidad.length > 1 ? 's' : ''} abierta{otsAbiertasMismaUnidad.length > 1 ? 's' : ''}:
+                    </p>
+                    <div className="mt-2 space-y-1">
+                      {otsAbiertasMismaUnidad.slice(0, 3).map(ot => (
+                        <div key={ot.id} className="flex items-center gap-2 text-sm">
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            ot.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-700' :
+                            ot.estado === 'ESPERANDO_REPUESTOS' ? 'bg-amber-100 text-amber-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {ot.estado}
+                          </span>
+                          <span className="text-orange-800 font-medium">OT #{ot.numeroOT}</span>
+                          <span className="text-orange-600 truncate flex-1">{ot.descripcion?.slice(0, 40)}...</span>
+                        </div>
+                      ))}
+                      {otsAbiertasMismaUnidad.length > 3 && (
+                        <p className="text-xs text-orange-600 font-semibold">+{otsAbiertasMismaUnidad.length - 3} más...</p>
+                      )}
+                    </div>
+                    <p className="text-xs text-orange-600 mt-2 italic">
+                      Puedes crear una nueva OT o cerrar las existentes primero.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Selector de novedades para incluir en la OT */}
+            {mostrarSelectorNovedades && !novedad.ordenTrabajoId && (
+              <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4 mb-4">
+                <h4 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Seleccionar novedades para la OT
+                </h4>
+                <p className="text-sm text-purple-600 mb-3">
+                  Hay {novedadesMismaUnidad.length} novedades de la unidad INT-{novedad.unidad?.numero}. Selecciona cuáles incluir:
+                </p>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {novedadesMismaUnidad.map((n) => (
+                    <label
+                      key={n.id}
+                      className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all ${
+                        novedadesSeleccionadas.includes(n.id)
+                          ? 'bg-purple-200 border-2 border-purple-500'
+                          : 'bg-white border-2 border-gray-200 hover:border-purple-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={novedadesSeleccionadas.includes(n.id)}
+                        onChange={() => toggleNovedadSeleccionada(n.id)}
+                        className="mt-1 w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 line-clamp-2">{n.descripcion}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            n.prioridad === 'ALTA' ? 'bg-red-100 text-red-700' :
+                            n.prioridad === 'MEDIA' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            {n.prioridad}
+                          </span>
+                          <span className="text-xs text-gray-500">{n.estado}</span>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => setMostrarSelectorNovedades(false)}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleCrearOTConNovedades}
+                    disabled={loading || novedadesSeleccionadas.length === 0}
+                    className="flex-1 px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Creando...' : `Crear OT (${novedadesSeleccionadas.length})`}
+                  </button>
+                </div>
+              </div>
             )}
 
             {novedad.ordenTrabajoId && (
@@ -1071,19 +1395,25 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
               </div>
             )}
 
+            {/* Botones principales - 3 en línea, diseño sobrio */}
             <div className="flex gap-3">
+              {/* Eliminar - Outline gris */}
               <button
-                type="button"
-                onClick={onClose}
+                onClick={handleEliminar}
                 disabled={loading}
-                className="flex-1 px-6 py-3 bg-[#1a2332] text-white font-semibold rounded-lg hover:bg-[#252f42] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-600 font-semibold rounded-lg hover:border-gray-400 hover:text-gray-700 hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Cerrar
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Eliminar
               </button>
+
+              {/* Guardar - Fondo sólido gris oscuro (acción principal) */}
               <button
-                onClick={handleActualizar}
+                onClick={() => { handleActualizar(); onClose(); }}
                 disabled={loading}
-                className="flex-1 px-6 py-3 bg-[#1a2332] text-white font-semibold rounded-lg hover:bg-[#252f42] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-3 bg-[#374151] text-white font-semibold rounded-lg hover:bg-[#4b5563] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>
@@ -1095,21 +1425,34 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Guardar Cambios
+                    Guardar
                   </>
                 )}
               </button>
+
+              {/* Crear OT - Outline gris (solo si no tiene OT asignada y no está resuelta) */}
+              {!novedad.ordenTrabajoId && novedad.estado !== 'RESUELTA' && (
+                <button
+                  onClick={handleMostrarSelectorNovedades}
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-600 font-semibold rounded-lg hover:border-[#56ab2f] hover:text-[#56ab2f] hover:bg-green-50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Crear OT
+                </button>
+              )}
+              {/* Mensaje si la novedad ya está resuelta */}
+              {!novedad.ordenTrabajoId && novedad.estado === 'RESUELTA' && (
+                <div className="flex-1 px-4 py-3 bg-green-50 border-2 border-green-200 text-green-700 font-semibold rounded-lg flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Novedad Resuelta
+                </div>
+              )}
             </div>
-            <button
-              onClick={handleEliminar}
-              disabled={loading}
-              className="w-full px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-lg hover:from-red-600 hover:to-red-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Eliminar Novedad
-            </button>
           </div>
         </div>
 
@@ -1147,17 +1490,26 @@ const ModalDetalleNovedad: React.FC<ModalDetalleNovedadProps> = ({ novedad, onCl
 // ============================================================================
 interface ModalDetalleOrdenProps {
   orden: OrdenTrabajo;
+  todasNovedades: Novedad[];  // Para mostrar novedades asociadas
   onClose: () => void;
   onUpdated: () => void;
 }
 
-const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, onUpdated }) => {
+const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, todasNovedades, onClose, onUpdated }) => {
   const [loading, setLoading] = useState(false);
   const [estado, setEstado] = useState(orden.estado);
   const [prioridad, setPrioridad] = useState(orden.prioridad);
   const [asignadoA, setAsignadoA] = useState(orden.asignadoA || '');
   const [comentarioFin, setComentarioFin] = useState(orden.comentarioFin || '');
   const [imagenViewer, setImagenViewer] = useState<string | null>(null);
+
+  // Obtener novedades asociadas a esta OT
+  const novedadesAsociadas = todasNovedades.filter(n => {
+    if (orden.novedadesIds && orden.novedadesIds.includes(n.id)) return true;
+    if (orden.novedadId === n.id) return true;
+    if (n.ordenTrabajoId === orden.id) return true;
+    return false;
+  });
 
   const handleActualizar = async () => {
     setLoading(true);
@@ -1178,7 +1530,7 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
         comentarioFin: comentarioFin || null,
       };
 
-      if (estadoFinal === 'COMPLETADA' && !orden.timestampCompletada) {
+      if ((estadoFinal === 'COMPLETADA' || estadoFinal === 'CERRADO') && !orden.timestampCompletada) {
         updateData.timestampCompletada = serverTimestamp();
       }
 
@@ -1187,6 +1539,31 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
       }
 
       await updateDoc(doc(db, 'ordenes_trabajo', orden.id), updateData);
+
+      // Si se cierra la OT, cerrar todas las novedades asociadas
+      if (estadoFinal === 'CERRADO' || estadoFinal === 'COMPLETADA') {
+        const novedadesACerrar: string[] = [];
+        if (orden.novedadesIds && orden.novedadesIds.length > 0) {
+          novedadesACerrar.push(...orden.novedadesIds);
+        }
+        if (orden.novedadId && !novedadesACerrar.includes(orden.novedadId)) {
+          novedadesACerrar.push(orden.novedadId);
+        }
+
+        for (const novedadId of novedadesACerrar) {
+          try {
+            const novedadRef = doc(db, 'novedades', novedadId);
+            await updateDoc(novedadRef, {
+              estado: 'RESUELTA',
+              timestampResuelta: serverTimestamp(),
+              ordenTrabajoId: orden.id
+            });
+            console.log('[ModalDetalleOrden] ✅ Novedad cerrada:', novedadId);
+          } catch (novedadError) {
+            console.warn('[ModalDetalleOrden] ⚠️ No se pudo cerrar novedad:', novedadId);
+          }
+        }
+      }
 
       console.log('[ModalDetalleOrden] Orden actualizada exitosamente');
       onUpdated();
@@ -1220,9 +1597,11 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
 
   const getEstadoBadge = (est: string) => {
     switch (est) {
-      case 'PENDIENTE': return 'bg-yellow-100 text-yellow-800';
+      case 'PENDIENTE':
       case 'EN_PROCESO': return 'bg-blue-100 text-blue-800';
-      case 'COMPLETADA': return 'bg-green-100 text-green-800';
+      case 'COMPLETADA':
+      case 'CERRADO': return 'bg-green-100 text-green-800';
+      case 'ESPERANDO_REPUESTOS': return 'bg-amber-100 text-amber-800';
       case 'CANCELADA': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
@@ -1428,11 +1807,103 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
             </div>
           )}
 
-          {/* Descripción */}
+          {/* Motivo de Ingreso / Descripción */}
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">Descripción del Trabajo</label>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <p className="text-gray-800 leading-relaxed">{orden.descripcion}</p>
+            <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Motivo de Ingreso
+            </label>
+            <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
+              <p className="text-gray-800 leading-relaxed whitespace-pre-line">{orden.descripcion}</p>
+            </div>
+          </div>
+
+          {/* Novedades Adicionales Resueltas - Combina novedades asociadas + registros de trabajo */}
+          {(novedadesAsociadas.length > 0 || (orden.registrosTrabajo && orden.registrosTrabajo.length > 0)) && (
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                <svg className="w-5 h-5 text-[#1a2332]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                Novedades Adicionales Resueltas ({novedadesAsociadas.length + (orden.registrosTrabajo?.length || 0)})
+              </label>
+              <div className="space-y-2">
+                {/* Novedades asociadas (de administración) */}
+                {novedadesAsociadas.map((nov, idx) => (
+                  <div key={nov.id || idx} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-800 font-medium">{nov.descripcion}</p>
+                        {nov.comentarioChofer && (
+                          <p className="text-xs text-gray-500 mt-1 italic">"{nov.comentarioChofer}"</p>
+                        )}
+                      </div>
+                      <span className={`flex-shrink-0 px-2 py-0.5 rounded text-xs font-semibold ${
+                        nov.estado === 'RESUELTA' ? 'bg-green-100 text-green-700' :
+                        nov.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {nov.estado === 'RESUELTA' ? '✓ Resuelta' : nov.estado}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {/* Registros de trabajo (de mantenimiento) */}
+                {orden.registrosTrabajo && orden.registrosTrabajo.map((registro, idx) => (
+                  <div key={registro.id || idx} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-800 font-medium">{registro.descripcion}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                          <span>📅 {(() => {
+                            try {
+                              return convertirTimestampFirebase(registro.fecha).toLocaleDateString('es-AR');
+                            } catch { return 'N/A'; }
+                          })()}</span>
+                          {registro.tecnico && <span>👤 {registro.tecnico}</span>}
+                          {registro.horasTrabajo > 0 && <span>⏱️ {registro.horasTrabajo}h</span>}
+                          {registro.costoTotal > 0 && <span>💰 ${registro.costoTotal.toLocaleString('es-AR')}</span>}
+                        </div>
+                      </div>
+                      <span className="flex-shrink-0 px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">
+                        ✓ Realizado
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Asignación simplificada */}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                asignadoA || orden.mecanico ? 'bg-blue-500' : 'bg-gray-300'
+              }`}>
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-gray-500 font-medium">Técnico Asignado</p>
+                {(asignadoA || orden.mecanico) ? (
+                  <p className="text-lg font-bold text-blue-700">
+                    {asignadoA || orden.mecanico}
+                  </p>
+                ) : (
+                  <p className="text-base font-semibold text-gray-400 italic">
+                    Pendiente de asignación en Taller
+                  </p>
+                )}
+                {!asignadoA && !orden.mecanico && orden.estado !== 'CERRADO' && orden.estado !== 'COMPLETADA' && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    La asignación se realiza desde el Panel de Taller
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1487,8 +1958,6 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     style={{ fontSize: '16px' }}
                   >
-                    <option value="PENDIENTE">⏳ Pendiente</option>
-                    <option value="EN_PROCESO">🔧 En Proceso</option>
                     <option value="ESPERANDO_REPUESTOS">📦 Esperando Repuestos</option>
                     <option value="CERRADO">✅ Completada</option>
                   </select>
@@ -1507,19 +1976,6 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
                     <option value="BAJA">🟢 Baja - Puede esperar</option>
                   </select>
                 </div>
-              </div>
-
-              {/* Asignación */}
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Asignado a (Técnico/Mecánico)</label>
-                <input
-                  type="text"
-                  value={asignadoA}
-                  onChange={(e) => setAsignadoA(e.target.value)}
-                  placeholder="Nombre del técnico o taller"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  style={{ fontSize: '16px' }}
-                />
               </div>
 
               {/* Comentario Final */}
@@ -1556,59 +2012,52 @@ const ModalDetalleOrden: React.FC<ModalDetalleOrdenProps> = ({ orden, onClose, o
             </div>
           )}
 
-          {/* Botones de Acción */}
-          <div className="space-y-3 pt-4 border-t border-gray-200">
+          {/* Botones de Acción - Diseño sobrio estándar */}
+          <div className="pt-4 border-t border-gray-200">
             {/* Para OTs completadas, solo mostrar botón Cerrar */}
             {(orden.estado === 'CERRADO' || orden.estado === 'COMPLETADA') ? (
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full px-6 py-3 bg-gradient-to-r from-[#56ab2f] to-[#a8e063] text-white font-semibold rounded-lg hover:from-[#4a9428] hover:to-[#96d055] active:scale-95 transition-all"
+                className="w-full px-6 py-3 bg-[#374151] text-white font-semibold rounded-lg hover:bg-[#4b5563] active:scale-95 transition-all"
               >
                 Cerrar
               </button>
             ) : (
-              <>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    disabled={loading}
-                    className="flex-1 px-6 py-3 bg-[#1a2332] text-white font-semibold rounded-lg hover:bg-[#252f42] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Cerrar
-                  </button>
-                  <button
-                    onClick={handleActualizar}
-                    disabled={loading}
-                    className="flex-1 px-6 py-3 bg-[#1a2332] text-white font-semibold rounded-lg hover:bg-[#252f42] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Guardando...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Guardar Cambios
-                      </>
-                    )}
-                  </button>
-                </div>
+              <div className="flex gap-3">
+                {/* Eliminar - Outline gris */}
                 <button
                   onClick={handleEliminar}
                   disabled={loading}
-                  className="w-full px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-lg hover:from-red-600 hover:to-red-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-600 font-semibold rounded-lg hover:border-gray-400 hover:text-gray-700 hover:bg-gray-50 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                  Eliminar Orden de Trabajo
+                  Eliminar
                 </button>
-              </>
+
+                {/* Guardar - Fondo sólido gris oscuro (acción principal) */}
+                <button
+                  onClick={() => { handleActualizar(); onClose(); }}
+                  disabled={loading}
+                  className="flex-1 px-4 py-3 bg-[#374151] text-white font-semibold rounded-lg hover:bg-[#4b5563] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Guardar
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -2024,6 +2473,36 @@ const ModalCompletarOrden: React.FC<ModalCompletarOrdenProps> = ({ orden, onClos
       };
 
       await updateDoc(ordenRef, updateData);
+
+      // Al cerrar la OT, cerrar todas las novedades asociadas
+      const novedadesACerrar: string[] = [];
+
+      // Agregar novedades del nuevo array novedadesIds
+      if (orden.novedadesIds && orden.novedadesIds.length > 0) {
+        novedadesACerrar.push(...orden.novedadesIds);
+      }
+      // Agregar novedadId legacy si existe y no está ya incluida
+      if (orden.novedadId && !novedadesACerrar.includes(orden.novedadId)) {
+        novedadesACerrar.push(orden.novedadId);
+      }
+
+      // Cerrar todas las novedades
+      if (novedadesACerrar.length > 0) {
+        for (const novedadId of novedadesACerrar) {
+          try {
+            const novedadRef = doc(db, 'novedades', novedadId);
+            await updateDoc(novedadRef, {
+              estado: 'RESUELTA',
+              timestampResuelta: Timestamp.now(),
+              ordenTrabajoId: orden.id
+            });
+            console.log('[ModalCompletarOrden] ✅ Novedad cerrada:', novedadId);
+          } catch (novedadError) {
+            console.warn('[ModalCompletarOrden] ⚠️ No se pudo cerrar la novedad:', novedadId, novedadError);
+          }
+        }
+        console.log('[ModalCompletarOrden] ✅ Total novedades cerradas:', novedadesACerrar.length);
+      }
 
       console.log('[ModalCompletarOrden] ✅ Orden completada exitosamente:', orden.id);
       showSuccess('Orden de Trabajo completada exitosamente');
@@ -2510,6 +2989,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   // Estado separado para el input de búsqueda de unidad (sugerencias sin filtrar)
   const [unidadBusqueda, setUnidadBusqueda] = useState('');
   const [unidadBusquedaNov, setUnidadBusquedaNov] = useState('');
+  const [unidadExpandida, setUnidadExpandida] = useState<string | null>(null);
 
   const [selectedItem, setSelectedItem] = useState<ChecklistRegistro | Novedad | OrdenTrabajo | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -2517,6 +2997,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   // Estados para modales de creación
   const [showCrearNovedad, setShowCrearNovedad] = useState(false);
   const [showCrearOrden, setShowCrearOrden] = useState(false);
+  const [datosOTDragDrop, setDatosOTDragDrop] = useState<{ unidadNumero: string; novedades: Novedad[] } | null>(null);
 
   // Estados para modales de edición/detalle
   const [showDetalleNovedad, setShowDetalleNovedad] = useState(false);
@@ -2538,6 +3019,10 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   const [showChecklistTR, setShowChecklistTR] = useState<'40K' | '80K' | '160K' | null>(null);
   const [unidadTRSeleccionada, setUnidadTRSeleccionada] = useState<string | null>(null);
   const [datosOTTR, setDatosOTTR] = useState<DatosOTTrenRodante | null>(null);
+
+  // Estados para previsualización de PDF
+  const [mostrarPrevisualizacionPDF, setMostrarPrevisualizacionPDF] = useState(false);
+  const [pdfData, setPdfData] = useState<PDFResult | null>(null);
 
   // Cargar datos al montar - cargar todo para las estadísticas
   useEffect(() => {
@@ -2975,6 +3460,12 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
     });
   };
 
+  // Handler para crear OT desde drag & drop de unidad en KanbanBoard
+  const handleCrearOTDesdeUnidad = (unidadNumero: string, novedadesUnidad: Novedad[]) => {
+    setDatosOTDragDrop({ unidadNumero, novedades: novedadesUnidad });
+    setShowCrearOrden(true);
+  };
+
   // Función para manejar cambios de estado desde el Kanban
   const handleEstadoChange = async (ordenId: string, nuevoEstado: OrdenTrabajo['estado']) => {
     // Si intentan cerrar la orden, mostrar modal de completar con desglose
@@ -3197,6 +3688,26 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                   <span className="text-base">🚛</span>
                 </div>
                 <span className="hidden sm:inline text-[11px] sm:text-xs">T.Rod</span>
+              </div>
+            </button>
+
+            {/* Tab Cubiertas */}
+            <button
+              onClick={() => setActiveTab('cubiertas')}
+              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
+                activeTab === 'cubiertas'
+                  ? 'text-gray-800 border-b-3 border-gray-800 bg-gray-100'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
+                <div className="flex items-center gap-1">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" strokeWidth={2} />
+                    <circle cx="12" cy="12" r="3" strokeWidth={2} />
+                  </svg>
+                </div>
+                <span className="hidden sm:inline text-[11px] sm:text-xs">Cub</span>
               </div>
             </button>
           </div>
@@ -3472,10 +3983,9 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                             style={{ fontSize: '16px' }}
                           >
                             <option value="">Todos los estados</option>
-                            <option value="PENDIENTE">⏳ PENDIENTE</option>
-                            <option value="EN_PROCESO">🔧 EN PROCESO</option>
-                            <option value="RESUELTA">✅ RESUELTA</option>
-                            <option value="RECHAZADA">❌ RECHAZADA</option>
+                            <option value="PROCESADA">📋 Procesada</option>
+                            <option value="RESUELTA">✅ Resuelta</option>
+                            <option value="RECHAZADA">❌ Rechazada</option>
                           </select>
                         </div>
 
@@ -3559,38 +4069,9 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                     </div>
 
                     <div className="space-y-3 md:space-y-4">
-                      {novedades
-                        .filter(novedad => {
-                          // Filtro por estado
-                          if (filtros.novedadEstado && novedad.estado !== filtros.novedadEstado) return false;
-                          // Filtro por unidad
-                          if (filtros.novedadUnidad && novedad.unidad?.numero !== filtros.novedadUnidad) return false;
-                          // Filtro por fecha desde
-                          if (filtros.novedadFechaDesde) {
-                            const fechaNovedad = convertirTimestampFirebase(novedad.timestamp);
-                            const fechaDesde = new Date(filtros.novedadFechaDesde);
-                            if (fechaNovedad < fechaDesde) return false;
-                          }
-                          // Filtro por fecha hasta
-                          if (filtros.novedadFechaHasta) {
-                            const fechaNovedad = convertirTimestampFirebase(novedad.timestamp);
-                            const fechaHasta = new Date(filtros.novedadFechaHasta);
-                            fechaHasta.setHours(23, 59, 59);
-                            if (fechaNovedad > fechaHasta) return false;
-                          }
-                          return true;
-                        })
-                        .length === 0 ? (
-                        <div className="text-center py-12 md:py-16">
-                          <svg className="w-12 h-12 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 md:mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                          <p className="text-gray-500 text-base md:text-lg font-medium">No hay novedades reportadas</p>
-                          <p className="text-gray-400 text-sm mt-2">Las novedades críticas aparecerán aquí</p>
-                        </div>
-                      ) : (
-                        novedades
-                        .filter(novedad => {
+                      {(() => {
+                        // Filtrar novedades
+                        const novedadesFiltradas = novedades.filter(novedad => {
                           if (filtros.novedadEstado && novedad.estado !== filtros.novedadEstado) return false;
                           if (filtros.novedadUnidad && novedad.unidad?.numero !== filtros.novedadUnidad) return false;
                           if (filtros.novedadFechaDesde) {
@@ -3605,76 +4086,193 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                             if (fechaNovedad > fechaHasta) return false;
                           }
                           return true;
-                        })
-                        .map((novedad, index) => (
-                          <div
-                            key={`${novedad.checklistId}-${index}`}
-                            className="bg-white border-l-4 border-amber-500 rounded-lg p-4 md:p-6 shadow-md hover:shadow-lg hover:border-amber-600 transition-all"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div
-                                className="flex-1 min-w-0 cursor-pointer"
-                                onClick={() => {
-                                  setNovedadSeleccionada(novedad);
-                                  setShowDetalleNovedad(true);
-                                }}
-                              >
-                                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                  <span className="px-2 md:px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs md:text-sm font-bold">
-                                    ⚠️ NOVEDAD
-                                  </span>
-                                  <span className="text-xs md:text-sm text-gray-600 font-semibold">
-                                    Unidad INT-{novedad.unidad?.numero}
-                                  </span>
-                                  {/* Badge de Estado */}
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                    novedad.estado === 'RESUELTA' ? 'bg-green-100 text-green-800' :
-                                    novedad.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-800' :
-                                    novedad.estado === 'RECHAZADA' ? 'bg-red-100 text-red-800' :
-                                    'bg-yellow-100 text-yellow-800'
-                                  }`}>
-                                    {novedad.estado}
-                                  </span>
-                                </div>
-                                <p className="text-sm md:text-base text-gray-800 font-medium leading-relaxed line-clamp-2">{novedad.descripcion}</p>
+                        });
 
-                                <div className="flex items-center gap-2 mt-2 text-xs md:text-sm text-gray-500">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  {formatearFecha(novedad.timestamp)}
-                                </div>
-                              </div>
+                        // Agrupar por unidad
+                        const novedadesPorUnidad = novedadesFiltradas.reduce((acc, novedad) => {
+                          const unidadNum = novedad.unidad?.numero || 'SIN_UNIDAD';
+                          if (!acc[unidadNum]) {
+                            acc[unidadNum] = [];
+                          }
+                          acc[unidadNum].push(novedad);
+                          return acc;
+                        }, {} as Record<string, Novedad[]>);
 
-                              <div className="flex flex-col gap-2 flex-shrink-0">
-                                <button
-                                  onClick={() => {
-                                    setNovedadSeleccionada(novedad);
-                                    setShowDetalleNovedad(true);
-                                  }}
-                                  className="text-amber-600 hover:text-amber-700 touch-target-48"
-                                >
-                                  <svg className="w-6 h-6 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                                  </svg>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    eliminarNovedad(novedad.id);
-                                  }}
-                                  className="text-red-500 hover:text-red-700 touch-target-48"
-                                  title="Eliminar novedad"
-                                >
-                                  <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
-                              </div>
+                        const unidades = Object.keys(novedadesPorUnidad).sort((a, b) => Number(a) - Number(b));
+
+                        if (unidades.length === 0) {
+                          return (
+                            <div className="text-center py-12 md:py-16">
+                              <svg className="w-12 h-12 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 md:mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                              <p className="text-gray-500 text-base md:text-lg font-medium">No hay novedades reportadas</p>
+                              <p className="text-gray-400 text-sm mt-2">Las novedades críticas aparecerán aquí</p>
                             </div>
-                          </div>
-                        ))
-                      )}
+                          );
+                        }
+
+                        return unidades.map(unidadNum => {
+                          const novedadesUnidad = novedadesPorUnidad[unidadNum];
+                          const estaExpandida = unidadExpandida === unidadNum;
+                          const pendientes = novedadesUnidad.filter(n => n.estado === 'PENDIENTE').length;
+                          const enProceso = novedadesUnidad.filter(n => n.estado === 'EN_PROCESO').length;
+
+                          return (
+                            <div
+                              key={unidadNum}
+                              className="bg-white border-l-4 border-amber-500 rounded-lg shadow-md hover:shadow-lg transition-all overflow-hidden"
+                            >
+                              {/* Header de la card agrupada */}
+                              <div
+                                className="p-4 md:p-5 cursor-pointer hover:bg-amber-50 transition-colors"
+                                onClick={() => setUnidadExpandida(estaExpandida ? null : unidadNum)}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-md">
+                                      <span className="text-white font-bold text-lg md:text-xl">{unidadNum}</span>
+                                    </div>
+                                    <div>
+                                      <h3 className="font-bold text-gray-800 text-base md:text-lg">INT-{unidadNum}</h3>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">
+                                          {novedadesUnidad.length} novedad{novedadesUnidad.length !== 1 ? 'es' : ''}
+                                        </span>
+                                        {pendientes > 0 && (
+                                          <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-xs font-semibold">
+                                            {pendientes} pendiente{pendientes !== 1 ? 's' : ''}
+                                          </span>
+                                        )}
+                                        {enProceso > 0 && (
+                                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                                            {enProceso} en proceso
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <svg
+                                      className={`w-6 h-6 text-amber-600 transition-transform duration-200 ${estaExpandida ? 'rotate-180' : ''}`}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </div>
+                                </div>
+
+                                {/* Preview de novedades (cuando no está expandida) */}
+                                {!estaExpandida && (
+                                  <div className="mt-3 space-y-1">
+                                    {novedadesUnidad.slice(0, 2).map((nov, idx) => (
+                                      <p key={idx} className="text-sm text-gray-600 truncate">
+                                        • {nov.descripcion}
+                                      </p>
+                                    ))}
+                                    {novedadesUnidad.length > 2 && (
+                                      <p className="text-xs text-amber-600 font-semibold">
+                                        +{novedadesUnidad.length - 2} más...
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Lista expandida de novedades */}
+                              {estaExpandida && (
+                                <div className="border-t border-amber-200 bg-amber-50/50">
+                                  {novedadesUnidad.map((novedad, index) => {
+                                    // Buscar la OT asociada si existe
+                                    const ordenAsociada = novedad.ordenTrabajoId
+                                      ? ordenes.find(o => o.id === novedad.ordenTrabajoId)
+                                      : null;
+                                    const numeroOTCorto = ordenAsociada?.numeroOT
+                                      ? String(ordenAsociada.numeroOT).slice(-5)
+                                      : null;
+                                    const otCerrada = ordenAsociada?.estado === 'CERRADO' || ordenAsociada?.estado === 'COMPLETADA';
+
+                                    return (
+                                    <div
+                                      key={`${novedad.checklistId}-${index}`}
+                                      className="p-4 border-b border-amber-100 last:border-b-0 hover:bg-amber-100/50 transition-colors"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div
+                                          className="flex-1 min-w-0 cursor-pointer"
+                                          onClick={() => {
+                                            setNovedadSeleccionada(novedad);
+                                            setShowDetalleNovedad(true);
+                                          }}
+                                        >
+                                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                              novedad.estado === 'RESUELTA' ? 'bg-green-100 text-green-800' :
+                                              novedad.estado === 'EN_PROCESO' ? 'bg-blue-100 text-blue-800' :
+                                              novedad.estado === 'RECHAZADA' ? 'bg-red-100 text-red-800' :
+                                              'bg-yellow-100 text-yellow-800'
+                                            }`}>
+                                              {novedad.estado}
+                                            </span>
+                                            {/* Mostrar OT asociada si existe */}
+                                            {numeroOTCorto && (
+                                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                otCerrada
+                                                  ? 'bg-green-100 text-green-700'
+                                                  : 'bg-purple-100 text-purple-700'
+                                              }`}>
+                                                🔧 OT #{numeroOTCorto} {otCerrada && '✓'}
+                                              </span>
+                                            )}
+                                            <span className="text-xs text-gray-500">
+                                              {formatearFecha(novedad.timestamp)}
+                                            </span>
+                                          </div>
+                                          <p className="text-sm text-gray-800 font-medium">{novedad.descripcion}</p>
+                                          {novedad.comentarioChofer && (
+                                            <p className="text-xs text-gray-500 mt-1 italic">"{novedad.comentarioChofer}"</p>
+                                          )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                          <button
+                                            onClick={() => {
+                                              setNovedadSeleccionada(novedad);
+                                              setShowDetalleNovedad(true);
+                                            }}
+                                            className="p-2 text-amber-600 hover:text-amber-700 hover:bg-amber-200 rounded-lg transition-colors"
+                                            title="Ver detalle"
+                                          >
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                            </svg>
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              eliminarNovedad(novedad.id);
+                                            }}
+                                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-lg transition-colors"
+                                            title="Eliminar novedad"
+                                          >
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}
@@ -3694,10 +4292,9 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                             style={{ fontSize: '16px' }}
                           >
                             <option value="">Todos los estados</option>
-                            <option value="PENDIENTE">⏳ PENDIENTE</option>
-                            <option value="EN_PROCESO">🔧 EN PROCESO</option>
-                            <option value="ESPERANDO_REPUESTOS">📦 ESPERANDO REPUESTOS</option>
-                            <option value="CERRADO">✅ CERRADO</option>
+                            <option value="EN_PROCESO">🔧 Órdenes de Trabajo</option>
+                            <option value="ESPERANDO_REPUESTOS">📦 Esperando Repuestos</option>
+                            <option value="CERRADO">✅ Completada</option>
                           </select>
                         </div>
 
@@ -3771,17 +4368,14 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                     {orden.prioridad === 'ALTA' ? '🔴 ALTA' : orden.prioridad === 'MEDIA' ? '🟡 MEDIA' : '🟢 BAJA'}
                                   </span>
                                   <span className={`px-2 md:px-3 py-1 rounded-full text-xs md:text-sm font-semibold ${
-                                    orden.estado === 'PENDIENTE'
-                                      ? 'bg-gray-100 text-gray-700'
-                                      : orden.estado === 'EN_PROCESO'
+                                    orden.estado === 'PENDIENTE' || orden.estado === 'EN_PROCESO'
                                       ? 'bg-blue-100 text-blue-700'
-                                      : orden.estado === 'CERRADO'
+                                      : orden.estado === 'CERRADO' || orden.estado === 'COMPLETADA'
                                       ? 'bg-green-100 text-green-700'
                                       : 'bg-amber-100 text-amber-700'
                                   }`}>
-                                    {orden.estado === 'PENDIENTE' ? '⏳ PEND' :
-                                     orden.estado === 'EN_PROCESO' ? '🔧 PROC' :
-                                     orden.estado === 'CERRADO' ? '✅ OK' : '📦 REP'}
+                                    {orden.estado === 'PENDIENTE' || orden.estado === 'EN_PROCESO' ? '🔧 OT' :
+                                     orden.estado === 'CERRADO' || orden.estado === 'COMPLETADA' ? '✅ OK' : '📦 ESP'}
                                   </span>
                                 </div>
 
@@ -3853,10 +4447,20 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                   <div>
                     <KanbanBoard
                       ordenes={ordenes}
+                      novedades={novedades}
                       onOrdenClick={(orden) => {
                         setOrdenSeleccionada(orden);
                         setShowDetalleOrden(true);
                       }}
+                      onNovedadClick={(novedad) => {
+                        setNovedadSeleccionada(novedad);
+                        setShowDetalleNovedad(true);
+                      }}
+                      onCrearOTDesdeNovedad={(novedad) => {
+                        setNovedadSeleccionada(novedad);
+                        setShowDetalleNovedad(true);
+                      }}
+                      onCrearOTDesdeUnidad={handleCrearOTDesdeUnidad}
                       onEstadoChange={handleEstadoChange}
                       onEliminar={eliminarOrden}
                     />
@@ -4008,13 +4612,18 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                                   ✅ COMPLETADO
                                 </span>
                                 <button
-                                  onClick={(e) => {
+                                  onClick={async (e) => {
                                     e.stopPropagation();
-                                    generateOrdenTrabajoPDF(orden);
-                                    showSuccess('PDF generado correctamente');
+                                    try {
+                                      const result = await generateOrdenTrabajoPDF(orden);
+                                      setPdfData(result);
+                                      setMostrarPrevisualizacionPDF(true);
+                                    } catch (error) {
+                                      showError('Error al generar PDF');
+                                    }
                                   }}
                                   className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
-                                  title="Descargar PDF"
+                                  title="Ver PDF"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -4246,6 +4855,20 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                     }}
                   />
                 )}
+
+                {/* Tab Control de Cubiertas */}
+                {activeTab === 'cubiertas' && (
+                  <VisorFlotaCubiertas
+                    onVerDetalle={(unidadNumero) => {
+                      console.log('[DashboardMant] Ver detalle cubiertas:', unidadNumero);
+                      // TODO: Abrir modal de detalle
+                    }}
+                    onGenerarOT={(datos) => {
+                      console.log('[DashboardMant] Generando OT Cubiertas:', datos);
+                      // TODO: Implementar creación de OT desde cubiertas
+                    }}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -4474,20 +5097,31 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
           onClose={() => {
             setShowCrearOrden(false);
             setDatosOTTR(null);
+            setDatosOTDragDrop(null);
           }}
           onCreated={() => {
             setShowCrearOrden(false);
             setDatosOTTR(null);
+            setDatosOTDragDrop(null);
             cargarDatos();
           }}
-          datosIniciales={datosOTTR ? {
-            unidadNumero: datosOTTR.unidadNumero,
-            unidadPatente: obtenerPatente(datosOTTR.unidadNumero),
-            tipo: 'PREVENTIVO',
-            prioridad: datosOTTR.estado === 'VENCIDO' ? 'ALTA' : datosOTTR.estado === 'PROXIMO' ? 'MEDIA' : 'BAJA',
-            tipoMantenimientoTR: datosOTTR.tipo,
-            kilometrajeActual: datosOTTR.kilometrajeActual,
-          } : undefined}
+          todasOrdenes={ordenes}
+          datosIniciales={
+            // Prioridad: datos de Drag & Drop > datos de Tren Rodante
+            datosOTDragDrop ? {
+              unidadNumero: datosOTDragDrop.unidadNumero,
+              unidadPatente: obtenerPatente(datosOTDragDrop.unidadNumero),
+              tipo: 'CORRECTIVO',
+              novedadesUnidad: datosOTDragDrop.novedades,
+            } : datosOTTR ? {
+              unidadNumero: datosOTTR.unidadNumero,
+              unidadPatente: obtenerPatente(datosOTTR.unidadNumero),
+              tipo: 'PREVENTIVO',
+              prioridad: datosOTTR.estado === 'VENCIDO' ? 'ALTA' : datosOTTR.estado === 'PROXIMO' ? 'MEDIA' : 'BAJA',
+              tipoMantenimientoTR: datosOTTR.tipo,
+              kilometrajeActual: datosOTTR.kilometrajeActual,
+            } : undefined
+          }
         />
       )}
 
@@ -4511,6 +5145,8 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       {showDetalleNovedad && novedadSeleccionada && (
         <ModalDetalleNovedad
           novedad={novedadSeleccionada}
+          todasNovedades={novedades}
+          todasOrdenes={ordenes}
           onClose={() => {
             setShowDetalleNovedad(false);
             setNovedadSeleccionada(null);
@@ -4527,6 +5163,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       {showDetalleOrden && ordenSeleccionada && (
         <ModalDetalleOrden
           orden={ordenSeleccionada}
+          todasNovedades={novedades}
           onClose={() => {
             setShowDetalleOrden(false);
             setOrdenSeleccionada(null);
@@ -4553,6 +5190,19 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
           }}
         />
       )}
+
+      {/* Modal Previsualización PDF */}
+      <ModalPrevisualizacionPDF
+        isOpen={mostrarPrevisualizacionPDF}
+        onClose={() => {
+          setMostrarPrevisualizacionPDF(false);
+          setPdfData(null);
+        }}
+        pdfUrl={pdfData?.url || ''}
+        pdfBlob={pdfData?.blob || null}
+        fileName={pdfData?.fileName || ''}
+        titulo="Previsualización - Orden de Trabajo"
+      />
     </div>
   );
 };
