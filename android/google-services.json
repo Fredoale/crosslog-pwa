@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "203275697008",
+    "project_id": "croog-marketplace",
+    "storage_bucket": "croog-marketplace.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:203275697008:android:63f630f77bab1223a7edb5",
+        "android_client_info": {
+          "package_name": "com.crosslog.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCSpRR6KhPbg6RSOggroWKgDvnaI5DXzQk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:203275697008:android:410fcbf0a20ff6bda7edb5",
+        "android_client_info": {
+          "package_name": "com.crosslogmobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCSpRR6KhPbg6RSOggroWKgDvnaI5DXzQk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

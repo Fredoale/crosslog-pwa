@@ -83,6 +83,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "historial",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fecha",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

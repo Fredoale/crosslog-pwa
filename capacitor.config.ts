@@ -21,6 +21,15 @@ const config: CapacitorConfig = {
       maximumAge: 3000,
       enableHighAccuracy: true,
     },
+    BackgroundGeolocation: {
+      // Notificación persistente en Android mientras el tracking está activo
+      backgroundMessage: 'CROSSLOG está rastreando la ubicación del vehículo',
+      backgroundTitle: 'CROSSLOG GPS',
+      // Actualizar cada 30 metros de movimiento (balance entre batería y precisión)
+      distanceFilter: 30,
+      // Parar automáticamente si el vehículo no se mueve por 5 minutos
+      stale: false,
+    },
     SplashScreen: {
       launchShowDuration: 1000,
       backgroundColor: '#0ea5e9',

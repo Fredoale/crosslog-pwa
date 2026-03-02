@@ -35,8 +35,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      disable: true, // TEMPORARILY DISABLED - Service Worker causing issues with Google Sheets API
+      // Re-habilitado: el problema era que Firebase no estaba excluido del caché.
+      // Ahora el SW personalizado (src/sw.ts) usa NetworkOnly para TODOS los endpoints de Firebase + Google.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15 MB (OCR/PDF)
+      },
       includeAssets: ['favicon.ico', 'icon-192x192.svg', 'vite.svg'],
       manifest: {
         name: 'CROSSLOG - Sistema de Entregas',
@@ -60,56 +68,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/svg+xml',
             purpose: 'any maskable'
-          }
-        ]
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15 MB (for large bundles with OCR/PDF libs)
-        runtimeCaching: [
-          // Google Sheets API - Network Only (CRITICAL: avoid cache issues)
-          {
-            urlPattern: /^https:\/\/sheets\.googleapis\.com\/.*/i,
-            handler: 'NetworkOnly'
-          },
-          // Google Drive API - Network Only (uploads)
-          {
-            urlPattern: /^https:\/\/www\.googleapis\.com\/upload\/drive\/.*/i,
-            handler: 'NetworkOnly'
-          },
-          // Google Drive API - Network Only (all Drive API calls)
-          {
-            urlPattern: /^https:\/\/www\.googleapis\.com\/drive\/.*/i,
-            handler: 'NetworkOnly'
-          },
-          // N8N Webhook - Network Only
-          {
-            urlPattern: /webhook/i,
-            handler: 'NetworkOnly'
-          },
-          // Google Identity Services
-          {
-            urlPattern: /^https:\/\/accounts\.google\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'google-auth-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 // 24 hours
-              }
-            }
-          },
-          // Static resources - Cache First
-          {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'images-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-              }
-            }
           }
         ]
       },

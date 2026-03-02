@@ -30,6 +30,16 @@ const NOVEDADES_COLLECTION = 'novedades';
 const ORDENES_TRABAJO_COLLECTION = 'ordenes_trabajo';
 const ESTADISTICAS_UNIDADES_COLLECTION = 'estadisticas_unidades';
 
+// Helper para convertir fecha de forma segura (puede ser Timestamp, Date, string, o número)
+function convertirFecha(valor: any): Date {
+  if (!valor) return new Date();
+  if (valor instanceof Date) return valor;
+  if (typeof valor.toDate === 'function') return valor.toDate(); // Timestamp de Firestore
+  if (typeof valor === 'string') return new Date(valor);
+  if (typeof valor === 'number') return new Date(valor);
+  return new Date();
+}
+
 // ============================================================================
 // FUNCIONES DE CHECKLISTS
 // ============================================================================
@@ -193,26 +203,30 @@ export async function getChecklistsByUnidad(
 
     querySnapshot.forEach((doc) => {
       const data = doc.data();
-      checklists.push({
-        ...data,
-        fecha: data.fecha.toDate(),
-        timestamp: data.timestamp.toDate(),
-        timestampCompletado: data.timestampCompletado ? data.timestampCompletado.toDate() : undefined,
-        odometroInicial: {
-          ...data.odometroInicial,
-          fecha_hora: data.odometroInicial.fecha_hora.toDate()
-        },
-        odometroFinal: data.odometroFinal
-          ? {
-              ...data.odometroFinal,
-              fecha_hora: data.odometroFinal.fecha_hora.toDate()
-            }
-          : undefined,
-        items: data.items.map((item: any) => ({
-          ...item,
-          timestamp: item.timestamp ? item.timestamp.toDate() : undefined
-        }))
-      } as ChecklistRegistro);
+      try {
+        checklists.push({
+          ...data,
+          fecha: convertirFecha(data.fecha),
+          timestamp: convertirFecha(data.timestamp),
+          timestampCompletado: data.timestampCompletado ? convertirFecha(data.timestampCompletado) : undefined,
+          odometroInicial: data.odometroInicial ? {
+            ...data.odometroInicial,
+            fecha_hora: convertirFecha(data.odometroInicial.fecha_hora)
+          } : { valor: 0, fecha_hora: new Date() },
+          odometroFinal: data.odometroFinal
+            ? {
+                ...data.odometroFinal,
+                fecha_hora: convertirFecha(data.odometroFinal.fecha_hora)
+              }
+            : undefined,
+          items: (data.items || []).map((item: any) => ({
+            ...item,
+            timestamp: item.timestamp ? convertirFecha(item.timestamp) : undefined
+          }))
+        } as ChecklistRegistro);
+      } catch (parseError) {
+        console.warn('[ChecklistService] Error parseando checklist, omitiendo:', doc.id, parseError);
+      }
     });
 
     console.log(`[ChecklistService] ${checklists.length} checklists encontrados para unidad ${numeroUnidad}`);

@@ -3,7 +3,11 @@
 // ============================================
 
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 // Your web app's Firebase configuration
@@ -19,8 +23,13 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore
-export const db = getFirestore(app);
+// Initialize Firestore con persistencia offline (IndexedDB)
+// Permite que los datos GPS y OTs se guarden localmente y se sincronicen cuando vuelve la conexión
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(), // Soporte multi-pestaña
+  }),
+});
 
 // Initialize Storage (for photos)
 export const storage = getStorage(app);

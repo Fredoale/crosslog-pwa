@@ -12,6 +12,8 @@ import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
 import { TODAS_LAS_UNIDADES } from './CarouselSector';
 import { useGPSTracking } from '../hooks/useGPSTracking';
+import { BienvenidaViajeModal } from './BienvenidaViajeModal';
+import { compressAndUploadImage } from '../utils/compressAndUploadImage';
 
 interface ChecklistDistribucionProps {
   hdr: string;
@@ -147,7 +149,8 @@ const ITEMS_DISTRIBUCION: Omit<ItemChecklist, 'estado' | 'timestamp'>[] = [
 ];
 
 export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCancel }: ChecklistDistribucionProps) {
-  const [currentStep, setCurrentStep] = useState<'odometro' | 'items' | 'resumen' | 'gps'>('odometro');
+  const [currentStep, setCurrentStep] = useState<'odometro' | 'items' | 'resumen'>('odometro');
+  const [mostrarBienvenida, setMostrarBienvenida] = useState(false);
   const [checking, setChecking] = useState(true);
   const [odometro, setOdometro] = useState('');
   const [checklistSaved, setChecklistSaved] = useState(false);
@@ -175,6 +178,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
     error: gpsError,
     lastUpdate,
     arrivedAtBase,
+    hasLeftBase,
     startTracking,
     stopTracking
   } = useGPSTracking();
@@ -195,7 +199,6 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
   const [novedadTemp, setNovedadTemp] = useState('');
   const [fotoNovedadTemp, setFotoNovedadTemp] = useState<string | null>(null);
   const [capturandoFotoNovedadModal, setCapturandoFotoNovedadModal] = useState(false);
-  const [showConfirmacionSinEvidencia, setShowConfirmacionSinEvidencia] = useState(false);
   const [capturandoFoto, setCapturandoFoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false); // Protección contra doble-click
 
@@ -232,7 +235,6 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
             if (success) {
               showInfo('GPS reactivado automáticamente');
               setChecklistSaved(true);
-              setCurrentStep('gps');
               setChecking(false);
               return;
             }
@@ -293,15 +295,12 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
       return;
     }
 
-    // Verificar si es ítem crítico sin foto
+    // Verificar si es ítem crítico sin foto — aviso sin bloquear
     const itemActual = items[currentItemIndex];
     if (itemActual.esCritico && !itemActual.fotoUrl) {
-      // Mostrar modal de confirmación
-      setShowConfirmacionSinEvidencia(true);
-      return;
+      showWarning('Ítem crítico sin evidencia fotográfica. Se registrará sin foto.');
     }
 
-    // Si no es crítico o ya tiene foto, proceder normalmente
     procederSinEvidencia();
   };
 
@@ -314,7 +313,6 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
     setItems(updatedItems);
     setShowComentario(false);
     setComentarioTemp('');
-    setShowConfirmacionSinEvidencia(false);
 
     // Avanzar al siguiente ítem
     if (currentItemIndex < totalItems - 1) {
@@ -348,29 +346,16 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
       setCapturandoFoto(true);
 
       try {
-        // Convertir imagen a base64
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64String = reader.result as string;
-
-          // Guardar foto en el item actual
-          const updatedItems = [...items];
-          updatedItems[currentItemIndex] = {
-            ...updatedItems[currentItemIndex],
-            fotoUrl: base64String
-          };
-          setItems(updatedItems);
-          setCapturandoFoto(false);
-
-          showSuccess('Foto capturada y guardada');
+        const path = `fotos/checklists/dist_${Date.now()}_item${currentItemIndex}.jpg`;
+        const url = await compressAndUploadImage(file, path);
+        const updatedItems = [...items];
+        updatedItems[currentItemIndex] = {
+          ...updatedItems[currentItemIndex],
+          fotoUrl: url
         };
-
-        reader.onerror = () => {
-          setCapturandoFoto(false);
-          showError('Error al procesar la imagen');
-        };
-
-        reader.readAsDataURL(file);
+        setItems(updatedItems);
+        setCapturandoFoto(false);
+        showSuccess('Foto capturada y guardada');
       } catch (error) {
         console.error('[ChecklistDistribucion] Error capturando foto:', error);
         setCapturandoFoto(false);
@@ -394,17 +379,11 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
 
       setCapturandoFotoNovedadModal(true);
       try {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setFotoNovedadTemp(reader.result as string);
-          setCapturandoFotoNovedadModal(false);
-          showSuccess('Foto capturada');
-        };
-        reader.onerror = () => {
-          setCapturandoFotoNovedadModal(false);
-          showError('Error al procesar la imagen');
-        };
-        reader.readAsDataURL(file);
+        const path = `fotos/checklists/dist_novedad_${Date.now()}.jpg`;
+        const url = await compressAndUploadImage(file, path);
+        setFotoNovedadTemp(url);
+        setCapturandoFotoNovedadModal(false);
+        showSuccess('Foto capturada');
       } catch (error) {
         console.error('[ChecklistDistribucion] Error capturando foto novedad:', error);
         setCapturandoFotoNovedadModal(false);
@@ -436,8 +415,8 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
     // Calcular resultado
     const itemsRechazados = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
-    // Si hay novedades extras, también es NO_APTO
-    const resultado = (itemsRechazados > 0 || novedades.length > 0) ? 'NO_APTO' : 'APTO';
+    // Solo items críticos NO_CONFORME determinan el resultado. Las novedades del botón son informativas.
+    const resultado = itemsRechazados > 0 ? 'NO_APTO' : 'APTO';
 
     const checklistData: ChecklistRegistro = {
       id: `checklist_dist_${Date.now()}`,
@@ -515,7 +494,31 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
 
       // Verificar si GPS está habilitado en la configuración
       if (gpsHabilitadoConfig) {
-        setCurrentStep('gps');
+        const patente = TODAS_LAS_UNIDADES.find(u => u.numero === unidad)?.patente || 'N/A';
+        const success = await startTracking({
+          unidad,
+          patente,
+          chofer,
+          checklistId: `checklist_dist_${hdr}`,
+          sector: 'distribucion',
+          hdr,
+        });
+        if (success) {
+          // Guardar en Firebase que este HDR activó GPS
+          try {
+            await setDoc(doc(db, 'gps_activos', hdr), {
+              hdr, unidad, chofer, patente,
+              activadoEn: Timestamp.now(),
+              activo: true,
+            });
+          } catch (e) {
+            console.error('[GPS] Error guardando estado HDR:', e);
+          }
+          setIsSubmitting(false);
+          setMostrarBienvenida(true);
+        } else {
+          onComplete();
+        }
       } else {
         // GPS deshabilitado - finalizar directamente
         onComplete();
@@ -653,39 +656,6 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
   if (currentStep === 'items') {
     // Si está mostrando el modal de comentario
     if (showComentario) {
-      // Modal de Confirmación Sin Evidencia
-      const ConfirmacionSinEvidenciaModal = () => (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="text-center mb-4">
-              <div className="text-5xl mb-3">📸</div>
-              <h2 className="text-xl font-bold text-gray-800 mb-2">¿Continuar sin evidencia?</h2>
-              <p className="text-sm text-gray-600">
-                Este ítem es crítico y no has agregado evidencia fotográfica.
-              </p>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowConfirmacionSinEvidencia(false)}
-                className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={procederSinEvidencia}
-                className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
-                }}
-              >
-                Continuar sin foto
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-
       return (
         <>
           {/* Modal de Novedad Encontrada */}
@@ -762,7 +732,6 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
               </div>
             </div>
           )}
-          {showConfirmacionSinEvidencia && <ConfirmacionSinEvidenciaModal />}
           <FloatingNovedadButton />
 
           <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
@@ -1066,13 +1035,160 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
     );
   }
 
+  // Modal de bienvenida al iniciar GPS (debe estar ANTES del render resumen)
+  if (mostrarBienvenida) {
+    const patente = TODAS_LAS_UNIDADES.find(u => u.numero === unidad)?.patente || 'N/A';
+    return (
+      <BienvenidaViajeModal
+        chofer={chofer}
+        unidad={unidad}
+        patente={patente}
+        sector="distribucion"
+        hdr={hdr}
+        onDismiss={() => {
+          showSuccess('¡Checklist guardado correctamente!');
+          setMostrarBienvenida(false);
+        }}
+      />
+    );
+  }
+
+  // GPS activo pero aún en base (antes del resumen para que no se muestre el resumen)
+  if (isTracking && !hasLeftBase && !arrivedAtBase) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col p-4">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="max-w-md w-full text-center">
+            <div className="mb-8">
+              <div className="w-32 h-32 rounded-full bg-gray-700 flex items-center justify-center mx-auto">
+                <span className="text-6xl">🏭</span>
+              </div>
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-2">Aún en Base</h1>
+            <p className="text-gray-400 text-lg mb-8">El seguimiento iniciará al salir</p>
+            <div className="bg-white/10 backdrop-blur rounded-2xl p-6 mb-6">
+              <div className="grid grid-cols-2 gap-4 text-left">
+                <div>
+                  <p className="text-gray-400 text-xs">UNIDAD</p>
+                  <p className="text-white font-bold text-lg">INT-{unidad}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-xs">HDR</p>
+                  <p className="text-white font-bold text-lg">{hdr}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-gray-400 text-xs">CHOFER</p>
+                  <p className="text-white font-bold">{chofer}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4">
+              <p className="text-yellow-300 text-sm font-semibold">⏳ Esperando salida</p>
+              <p className="text-yellow-200/80 text-xs mt-1">
+                El mapa mostrará la unidad "En Ruta" cuando se aleje de la base
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="text-center pb-4">
+          <p className="text-gray-500 text-xs">Crosslog PWA • GPS Activo</p>
+        </div>
+      </div>
+    );
+  }
+
+  // GPS activo en ruta
+  if (isTracking) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <div className="text-center mb-6">
+              <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse" style={{
+                background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+              }}>
+                <span className="text-5xl">📍</span>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">GPS Activo</h1>
+              <p className="text-gray-600">Tu ubicación está siendo compartida</p>
+            </div>
+            <div className="space-y-2 rounded-xl p-4 border-2 mb-6" style={{
+              backgroundColor: '#f0f9e8', borderColor: '#a8e063'
+            }}>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>📋 HDR:</span>
+                <span className="text-sm font-bold text-gray-800">{hdr}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>🚛 UNIDAD:</span>
+                <span className="text-sm font-bold text-gray-800">INT-{unidad}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>👤 CHOFER:</span>
+                <span className="text-sm font-bold text-gray-800">{chofer}</span>
+              </div>
+              {lastUpdate && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>⏱️ ÚLTIMA ACT:</span>
+                  <span className="text-sm font-bold text-gray-800">
+                    {lastUpdate.toLocaleTimeString('es-AR')}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="bg-blue-50 border-l-4 border-blue-500 rounded p-3 mb-6">
+              <p className="text-sm text-blue-800">
+                ℹ️ El GPS se apagará automáticamente al llegar a la base.
+                Mantén la aplicación abierta para el seguimiento.
+              </p>
+            </div>
+            <button
+              onClick={onComplete}
+              className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
+            >
+              Continuar con las entregas
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Llegó a la base por geofence
+  if (arrivedAtBase) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <div className="text-center mb-6">
+              <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center bg-blue-100">
+                <span className="text-5xl">🏠</span>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">¡Llegaste a la Base!</h1>
+              <p className="text-gray-600">El GPS se ha detenido automáticamente</p>
+            </div>
+            <button
+              onClick={onComplete}
+              className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
+            >
+              Finalizar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Render: Resumen Final
   if (currentStep === 'resumen') {
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
     const itemsNoConformes = items.filter(i => i.estado === 'NO_CONFORME').length;
     const itemsNoAplica = items.filter(i => i.estado === 'NO_APLICA').length;
     const itemsRechazadosCriticos = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
-    const resultado = (itemsRechazadosCriticos > 0 || novedades.length > 0) ? 'NO_APTO' : 'APTO';
+    // Solo items críticos NO_CONFORME determinan el resultado. Las novedades del botón son informativas.
+    const resultado = itemsRechazadosCriticos > 0 ? 'NO_APTO' : 'APTO';
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4 pb-20">
@@ -1144,7 +1260,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
               <p className="text-lg opacity-90">
                 {resultado === 'APTO'
                   ? 'Todas las verificaciones críticas OK'
-                  : `${itemsRechazadosCriticos + novedades.length} problema${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''} crítico${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''} detectado${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''}`
+                  : `${itemsRechazadosCriticos} problema${itemsRechazadosCriticos > 1 ? 's' : ''} crítico${itemsRechazadosCriticos > 1 ? 's' : ''} detectado${itemsRechazadosCriticos > 1 ? 's' : ''}`
                 }
               </p>
             </div>
@@ -1175,7 +1291,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
               )}
               {novedades.length > 0 && (
                 <div className="flex justify-between items-center p-4 bg-orange-50 rounded-xl">
-                  <span className="text-sm font-bold text-gray-700">🚨 Novedades Críticas:</span>
+                  <span className="text-sm font-bold text-gray-700">📋 Novedades (informativas):</span>
                   <span className="text-2xl font-bold text-orange-600">{novedades.length}</span>
                 </div>
               )}
@@ -1215,13 +1331,13 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
                     <div className="flex items-start gap-3">
                       <span className="text-2xl">🚨</span>
                       <div className="flex-1">
-                        <p className="text-sm font-bold text-orange-800">Novedad Crítica Encontrada</p>
+                        <p className="text-sm font-bold text-orange-800">Novedad Informativa</p>
                         <p className="text-xs text-orange-700 mt-1">{novedad.descripcion}</p>
                         {novedad.fotoUrl && (
                           <p className="text-xs text-green-600 mt-1">📸 Con foto adjunta</p>
                         )}
-                        <span className="inline-block mt-2 px-2 py-1 bg-orange-200 text-orange-800 rounded text-xs font-bold">
-                          ATENCIÓN INMEDIATA
+                        <span className="inline-block mt-2 px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">
+                          INFORMATIVA
                         </span>
                       </div>
                     </div>
@@ -1269,219 +1385,6 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
             >
               ← Revisar Ítems
             </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Render: Paso de GPS
-  if (currentStep === 'gps') {
-    const patente = TODAS_LAS_UNIDADES.find(u => u.numero === unidad)?.patente || 'N/A';
-
-    // Handler para activar GPS
-    const handleActivarGPS = async () => {
-      const config = {
-        unidad,
-        patente,
-        chofer,
-        checklistId: `checklist_dist_${hdr}`,
-        sector: 'distribucion' as const,
-        hdr
-      };
-
-      const success = await startTracking(config);
-
-      if (success) {
-        // Guardar en Firebase que este HDR ya activó GPS
-        try {
-          await setDoc(doc(db, 'gps_activos', hdr), {
-            hdr,
-            unidad,
-            chofer,
-            patente,
-            activadoEn: Timestamp.now(),
-            activo: true
-          });
-          console.log('[GPS] ✅ HDR registrado con GPS activo:', hdr);
-        } catch (error) {
-          console.error('[GPS] Error guardando estado HDR:', error);
-        }
-
-        showSuccess('GPS activado correctamente');
-      }
-    };
-
-    // Handler para continuar sin GPS
-    const handleContinuarSinGPS = () => {
-      showInfo('Puedes activar el GPS desde el menú principal si lo necesitas');
-      onComplete();
-    };
-
-    // Si ya está trackeando, mostrar estado activo
-    if (isTracking) {
-      return (
-        <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
-          <div className="max-w-md mx-auto">
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <div className="text-center mb-6">
-                <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse" style={{
-                  background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
-                }}>
-                  <span className="text-5xl">📍</span>
-                </div>
-                <h1 className="text-2xl font-bold text-gray-800 mb-2">GPS Activo</h1>
-                <p className="text-gray-600">Tu ubicación está siendo compartida</p>
-              </div>
-
-              {/* Info de la unidad */}
-              <div className="space-y-2 rounded-xl p-4 border-2 mb-6" style={{
-                backgroundColor: '#f0f9e8',
-                borderColor: '#a8e063'
-              }}>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>📋 HDR:</span>
-                  <span className="text-sm font-bold text-gray-800">{hdr}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>🚛 UNIDAD:</span>
-                  <span className="text-sm font-bold text-gray-800">INT-{unidad}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>👤 CHOFER:</span>
-                  <span className="text-sm font-bold text-gray-800">{chofer}</span>
-                </div>
-                {lastUpdate && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>⏱️ ÚLTIMA ACT:</span>
-                    <span className="text-sm font-bold text-gray-800">
-                      {lastUpdate.toLocaleTimeString('es-AR')}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Nota importante */}
-              <div className="bg-blue-50 border-l-4 border-blue-500 rounded p-3 mb-6">
-                <p className="text-sm text-blue-800">
-                  ℹ️ El GPS se apagará automáticamente al llegar a la base.
-                  Mantén la aplicación abierta para el seguimiento.
-                </p>
-              </div>
-
-              <button
-                onClick={onComplete}
-                className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
-                }}
-              >
-                Continuar con las entregas
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Si llegó a la base por geofence
-    if (arrivedAtBase) {
-      return (
-        <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
-          <div className="max-w-md mx-auto">
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <div className="text-center mb-6">
-                <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center bg-blue-100">
-                  <span className="text-5xl">🏠</span>
-                </div>
-                <h1 className="text-2xl font-bold text-gray-800 mb-2">¡Llegaste a la Base!</h1>
-                <p className="text-gray-600">El GPS se ha detenido automáticamente</p>
-              </div>
-
-              <button
-                onClick={onComplete}
-                className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
-                }}
-              >
-                Finalizar
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Pantalla inicial para activar GPS
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="text-center mb-6">
-              <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center" style={{
-                background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
-              }}>
-                <span className="text-5xl">📍</span>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-800 mb-2">Activar GPS</h1>
-              <p className="text-gray-600">
-                ¿Deseas activar el seguimiento GPS para este viaje?
-              </p>
-            </div>
-
-            {/* Info de la unidad */}
-            <div className="space-y-2 rounded-xl p-4 border-2 mb-6" style={{
-              backgroundColor: '#f0f9e8',
-              borderColor: '#a8e063'
-            }}>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>📋 HDR:</span>
-                <span className="text-sm font-bold text-gray-800">{hdr}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>🚛 UNIDAD:</span>
-                <span className="text-sm font-bold text-gray-800">INT-{unidad} • {patente}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>👤 CHOFER:</span>
-                <span className="text-sm font-bold text-gray-800">{chofer}</span>
-              </div>
-            </div>
-
-            {/* Error de GPS si hay */}
-            {gpsError && (
-              <div className="bg-red-50 border-l-4 border-red-500 rounded p-3 mb-4">
-                <p className="text-sm text-red-800">❌ {gpsError}</p>
-              </div>
-            )}
-
-            {/* Nota importante */}
-            <div className="bg-blue-50 border-l-4 border-blue-500 rounded p-3 mb-6">
-              <p className="text-sm text-blue-800">
-                ℹ️ <strong>Beneficios:</strong> El GPS permite monitorear tu recorrido en tiempo real
-                y se desactiva automáticamente al llegar a la base.
-              </p>
-            </div>
-
-            {/* Botones */}
-            <div className="space-y-3">
-              <button
-                onClick={handleActivarGPS}
-                className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
-                }}
-              >
-                📍 Activar GPS
-              </button>
-              <button
-                onClick={handleContinuarSinGPS}
-                className="w-full py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
-              >
-                Continuar sin GPS
-              </button>
-            </div>
           </div>
         </div>
       </div>

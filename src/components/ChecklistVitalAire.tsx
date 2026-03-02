@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   type EstadoItem,
   type ChecklistRegistro,
@@ -7,9 +7,12 @@ import {
   CategoriaItem
 } from '../types/checklist';
 import { saveChecklist } from '../services/checklistService';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
+import { useGPSTracking } from '../hooks/useGPSTracking';
+import { BienvenidaViajeModal } from './BienvenidaViajeModal';
+import { compressAndUploadImage } from '../utils/compressAndUploadImage';
 
 // ============================================================================
 // ITEMS ESPECÍFICOS DE VITAL AIRE (17 items)
@@ -234,8 +237,29 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
   const [novedadTemp, setNovedadTemp] = useState('');
   const [fotoNovedadTemp, setFotoNovedadTemp] = useState<string | null>(null);
   const [capturandoFotoNovedadModal, setCapturandoFotoNovedadModal] = useState(false);
-  const [showConfirmacionSinEvidencia, setShowConfirmacionSinEvidencia] = useState(false);
   const [capturandoFoto, setCapturandoFoto] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Protección contra doble-click
+
+  // GPS Tracking
+  const gpsTracking = useGPSTracking();
+  const [gpsHabilitadoConfig, setGpsHabilitadoConfig] = useState(false);
+  const [mostrarBienvenida, setMostrarBienvenida] = useState(false);
+  const [checklistGuardado, setChecklistGuardado] = useState<ChecklistRegistro | null>(null);
+
+  // Cargar configuración de GPS al montar
+  useEffect(() => {
+    const cargarConfigGPS = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, 'configuracion', 'gps_tracking'));
+        if (configDoc.exists()) {
+          setGpsHabilitadoConfig(configDoc.data().habilitado || false);
+        }
+      } catch (error) {
+        console.error('[ChecklistVitalAire] Error cargando config GPS:', error);
+      }
+    };
+    cargarConfigGPS();
+  }, []);
 
   // Filtrar choferes según búsqueda
   const choferesFiltrados = CHOFERES_VITAL_AIRE.filter(c =>
@@ -293,12 +317,9 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
     // Verificar si es ítem crítico sin foto
     const itemActual = items[currentItemIndex];
     if (itemActual.esCritico && !itemActual.fotoUrl) {
-      // Mostrar modal de confirmación
-      setShowConfirmacionSinEvidencia(true);
-      return;
+      showWarning('Ítem crítico sin evidencia fotográfica. Se registrará sin foto.');
     }
 
-    // Si no es crítico o ya tiene foto, proceder normalmente
     procederSinEvidencia();
   };
 
@@ -311,7 +332,6 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
     setItems(updatedItems);
     setShowComentario(false);
     setComentarioTemp('');
-    setShowConfirmacionSinEvidencia(false);
 
     // Avanzar al siguiente ítem
     if (currentItemIndex < totalItems - 1) {
@@ -342,23 +362,16 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
 
       setCapturandoFoto(true);
       try {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64String = reader.result as string;
-          const updatedItems = [...items];
-          updatedItems[currentItemIndex] = {
-            ...updatedItems[currentItemIndex],
-            fotoUrl: base64String
-          };
-          setItems(updatedItems);
-          setCapturandoFoto(false);
-          showSuccess('Foto capturada y guardada');
+        const path = `fotos/checklists/vitalaire_${Date.now()}_item${currentItemIndex}.jpg`;
+        const url = await compressAndUploadImage(file, path);
+        const updatedItems = [...items];
+        updatedItems[currentItemIndex] = {
+          ...updatedItems[currentItemIndex],
+          fotoUrl: url
         };
-        reader.onerror = () => {
-          setCapturandoFoto(false);
-          showError('Error al procesar la imagen');
-        };
-        reader.readAsDataURL(file);
+        setItems(updatedItems);
+        setCapturandoFoto(false);
+        showSuccess('Foto capturada y guardada');
       } catch (error) {
         console.error('[ChecklistVitalAire] Error capturando foto:', error);
         setCapturandoFoto(false);
@@ -382,17 +395,11 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
 
       setCapturandoFotoNovedadModal(true);
       try {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setFotoNovedadTemp(reader.result as string);
-          setCapturandoFotoNovedadModal(false);
-          showSuccess('Foto capturada');
-        };
-        reader.onerror = () => {
-          setCapturandoFotoNovedadModal(false);
-          showError('Error al procesar la imagen');
-        };
-        reader.readAsDataURL(file);
+        const path = `fotos/checklists/vitalaire_novedad_${Date.now()}.jpg`;
+        const url = await compressAndUploadImage(file, path);
+        setFotoNovedadTemp(url);
+        setCapturandoFotoNovedadModal(false);
+        showSuccess('Foto capturada');
       } catch (error) {
         console.error('[ChecklistVitalAire] Error capturando foto novedad:', error);
         setCapturandoFotoNovedadModal(false);
@@ -417,11 +424,14 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
   };
 
   const handleFinalizar = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     // Calcular resultado
     const itemsRechazados = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
-    // Si hay novedades extras, también es NO_APTO
-    const resultado = (itemsRechazados > 0 || novedades.length > 0) ? 'NO_APTO' : 'APTO';
+    // Solo items críticos NO_CONFORME determinan el resultado. Las novedades del botón son informativas.
+    const resultado = itemsRechazados > 0 ? 'NO_APTO' : 'APTO';
 
     const checklistData: ChecklistRegistro = {
       id: `checklist_${Date.now()}`,
@@ -492,10 +502,27 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
       // Notificar éxito
       showSuccess('Checklist guardado exitosamente');
 
+      // GPS automático si está habilitado
+      if (gpsHabilitadoConfig) {
+        setChecklistGuardado(checklistData);
+        const success = await gpsTracking.startTracking({
+          unidad: unidad.numero,
+          patente: unidad.patente,
+          chofer,
+          sector: 'vital_aire',
+        });
+        if (success) {
+          setIsSubmitting(false);
+          setMostrarBienvenida(true);
+          return;
+        }
+      }
+
       onComplete(checklistData);
     } catch (error) {
       console.error('[ChecklistVitalAire] Error guardando checklist:', error);
       showError('Error al guardar checklist. Intenta nuevamente.');
+      setIsSubmitting(false);
     }
   };
 
@@ -710,39 +737,6 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
   if (currentStep === 'items') {
     // Si está mostrando el modal de comentario
     if (showComentario) {
-      // Modal de Confirmación Sin Evidencia
-      const ConfirmacionSinEvidenciaModal = () => (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="text-center mb-4">
-              <div className="text-5xl mb-3">📸</div>
-              <h2 className="text-xl font-bold text-gray-800 mb-2">¿Continuar sin evidencia?</h2>
-              <p className="text-sm text-gray-600">
-                Este ítem es crítico y no has agregado evidencia fotográfica.
-              </p>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowConfirmacionSinEvidencia(false)}
-                className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={procederSinEvidencia}
-                className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
-                }}
-              >
-                Continuar sin foto
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-
       return (
         <>
           {/* Modal de Novedad Encontrada */}
@@ -819,7 +813,6 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
               </div>
             </div>
           )}
-          {showConfirmacionSinEvidencia && <ConfirmacionSinEvidenciaModal />}
           <FloatingNovedadButton />
 
           <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
@@ -1124,13 +1117,30 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
     );
   }
 
+  // Modal de bienvenida al iniciar GPS (debe estar ANTES del render resumen)
+  if (mostrarBienvenida) {
+    return (
+      <BienvenidaViajeModal
+        chofer={chofer}
+        unidad={unidad.numero}
+        patente={unidad.patente}
+        sector="vital_aire"
+        onDismiss={() => {
+          showSuccess('¡Checklist guardado correctamente!');
+          onComplete(checklistGuardado!);
+        }}
+      />
+    );
+  }
+
   // Render: Resumen Final
   if (currentStep === 'resumen') {
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
     const itemsNoConformes = items.filter(i => i.estado === 'NO_CONFORME').length;
     const itemsNoAplica = items.filter(i => i.estado === 'NO_APLICA').length;
     const itemsRechazadosCriticos = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
-    const resultado = (itemsRechazadosCriticos > 0 || novedades.length > 0) ? 'NO_APTO' : 'APTO';
+    // Solo items críticos NO_CONFORME determinan el resultado. Las novedades del botón son informativas.
+    const resultado = itemsRechazadosCriticos > 0 ? 'NO_APTO' : 'APTO';
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4 pb-20">
@@ -1196,7 +1206,7 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
               <p className="text-lg opacity-90">
                 {resultado === 'APTO'
                   ? 'Todas las verificaciones críticas OK'
-                  : `${itemsRechazadosCriticos + novedades.length} problema${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''} crítico${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''} detectado${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''}`
+                  : `${itemsRechazadosCriticos} problema${itemsRechazadosCriticos > 1 ? 's' : ''} crítico${itemsRechazadosCriticos > 1 ? 's' : ''} detectado${itemsRechazadosCriticos > 1 ? 's' : ''}`
                 }
               </p>
             </div>
@@ -1227,7 +1237,7 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
               )}
               {novedades.length > 0 && (
                 <div className="flex justify-between items-center p-4 bg-orange-50 rounded-xl">
-                  <span className="text-sm font-bold text-gray-700">🚨 Novedades Críticas:</span>
+                  <span className="text-sm font-bold text-gray-700">📋 Novedades (informativas):</span>
                   <span className="text-2xl font-bold text-orange-600">{novedades.length}</span>
                 </div>
               )}
@@ -1267,13 +1277,13 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
                     <div className="flex items-start gap-3">
                       <span className="text-2xl">🚨</span>
                       <div className="flex-1">
-                        <p className="text-sm font-bold text-orange-800">Novedad Crítica Encontrada</p>
+                        <p className="text-sm font-bold text-orange-800">Novedad Informativa</p>
                         <p className="text-xs text-orange-700 mt-1">{novedad.descripcion}</p>
                         {novedad.fotoUrl && (
                           <p className="text-xs text-green-600 mt-1">📸 Con foto adjunta</p>
                         )}
-                        <span className="inline-block mt-2 px-2 py-1 bg-orange-200 text-orange-800 rounded text-xs font-bold">
-                          ATENCIÓN INMEDIATA
+                        <span className="inline-block mt-2 px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">
+                          INFORMATIVA
                         </span>
                       </div>
                     </div>
@@ -1294,12 +1304,21 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
           <div className="space-y-3">
             <button
               onClick={handleFinalizar}
-              className="w-full py-5 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
+              disabled={isSubmitting}
+              className={`w-full py-5 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all ${isSubmitting ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'}`}
               style={{
                 background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
               }}
             >
-              Finalizar y Guardar Checklist
+              {isSubmitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                  Guardando...
+                </span>
+              ) : 'Finalizar y Guardar Checklist'}
             </button>
             <button
               onClick={() => {

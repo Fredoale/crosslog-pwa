@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from '@react-google-maps/api';
-import { collection, onSnapshot, query, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, getDoc, setDoc, getDocs, orderBy, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import toast from 'react-hot-toast';
 
 // Tipos de filtro por sector
 type FiltroSector = 'todos' | 'vrac' | 'distribucion' | 'vital_aire';
@@ -19,6 +20,13 @@ interface UbicacionUnidad {
   timestamp: Date;
   sector?: 'vrac' | 'distribucion' | 'vital_aire' | null;
   hdr?: string | null;
+}
+
+interface HistorialPunto {
+  lat: number;
+  lng: number;
+  speed: number;
+  timestamp: Date;
 }
 
 interface PanelFlotaProps {
@@ -79,6 +87,49 @@ function dispersarPosicion(baseLat: number, baseLng: number, index: number, tota
   };
 }
 
+// Iconos SVG por tipo de vehículo y sector
+function vehiculoSVG(sector: string | null | undefined, activo: boolean): string {
+  const op = activo ? '1' : '0.55';
+  switch (sector) {
+    case 'vrac':
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+        <circle cx="12" cy="12" r="10" fill="#3B82F6" stroke="#fff" stroke-width="2" opacity="${op}"/>
+        <circle cx="12" cy="12" r="4" fill="#fff"/>
+      </svg>`;
+    case 'distribucion':
+      // Camión chasis con caja
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 22" width="46" height="22">
+        <rect x="1" y="3" width="27" height="13" rx="2" fill="#BFCE2A" stroke="#fff" stroke-width="1.5" opacity="${op}"/>
+        <rect x="29" y="2" width="15" height="14" rx="3" fill="#9aad1e" stroke="#fff" stroke-width="1.5" opacity="${op}"/>
+        <rect x="32" y="5" width="9" height="5" rx="1" fill="rgba(255,255,255,0.65)"/>
+        <ellipse cx="10" cy="18" rx="4" ry="3" fill="#0f172a" stroke="#fff" stroke-width="1" opacity="${op}"/>
+        <ellipse cx="37" cy="18" rx="4" ry="3" fill="#0f172a" stroke="#fff" stroke-width="1" opacity="${op}"/>
+      </svg>`;
+    case 'vital_aire':
+      // Camioneta / van
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 20" width="36" height="20">
+        <rect x="1" y="3" width="19" height="12" rx="2" fill="#F97316" stroke="#fff" stroke-width="1.5" opacity="${op}"/>
+        <rect x="21" y="2" width="13" height="13" rx="3" fill="#ea6a0a" stroke="#fff" stroke-width="1.5" opacity="${op}"/>
+        <rect x="24" y="5" width="7" height="5" rx="1" fill="rgba(255,255,255,0.65)"/>
+        <ellipse cx="9" cy="17" rx="4" ry="2.5" fill="#0f172a" stroke="#fff" stroke-width="1" opacity="${op}"/>
+        <ellipse cx="28" cy="17" rx="4" ry="2.5" fill="#0f172a" stroke="#fff" stroke-width="1" opacity="${op}"/>
+      </svg>`;
+    default:
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28">
+        <circle cx="12" cy="12" r="10" fill="#6B7280" stroke="#fff" stroke-width="2" opacity="${op}"/>
+        <circle cx="12" cy="12" r="4" fill="#fff"/>
+      </svg>`;
+  }
+}
+
+// Tamaño y ancla del ícono según sector
+function vehiculoIconSize(sector: string | null | undefined): { w: number; h: number } {
+  if (sector === 'vrac') return { w: 35, h: 35 };
+  if (sector === 'distribucion') return { w: 51, h: 24 };
+  if (sector === 'vital_aire') return { w: 40, h: 22 };
+  return { w: 31, h: 31 };
+}
+
 export function PanelFlota({ onClose }: PanelFlotaProps) {
   const [ubicaciones, setUbicaciones] = useState<UbicacionUnidad[]>([]);
   const [selectedUnidad, setSelectedUnidad] = useState<UbicacionUnidad | null>(null);
@@ -88,16 +139,158 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
   const [loadingGpsConfig, setLoadingGpsConfig] = useState(true);
   const [filtroSector, setFiltroSector] = useState<FiltroSector>('todos');
   const [showSidebar, setShowSidebar] = useState(false); // Panel izquierdo colapsable
-  // Handler para click en marcador (toggle InfoWindow)
+  const [highlightedUnidad, setHighlightedUnidad] = useState<UbicacionUnidad | null>(null); // Unidad resaltada en sidebar
+  const sidebarListRef = useRef<HTMLDivElement>(null); // Ref al contenedor de la lista del sidebar
+  const prevUbicacionesRef = useRef<Map<string, UbicacionUnidad>>(new Map());
+  const [historialRuta, setHistorialRuta] = useState<HistorialPunto[]>([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(false);
+  const [historialUnidadId, setHistorialUnidadId] = useState<string | null>(null);
+  const [historialCargado, setHistorialCargado] = useState(false);
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const historialMarkersRef = useRef<google.maps.Marker[]>([]);
+  const [tooltipPunto, setTooltipPunto] = useState<HistorialPunto | null>(null);
+
+  const playBeep = () => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    } catch (_) {}
+  };
+
+  // Handler para click en marcador: abre sidebar y resalta la unidad
   const handleMarkerClick = useCallback((unidad: UbicacionUnidad) => {
-    // Si ya está seleccionada esta unidad, cerrar InfoWindow
-    if (selectedUnidad?.id === unidad.id) {
-      setSelectedUnidad(null);
-    } else {
-      // Si no, abrir InfoWindow de esta unidad
-      setSelectedUnidad(unidad);
+    setHighlightedUnidad(unidad);
+    setShowSidebar(true);
+    setSelectedUnidad(null);
+    setHistorialRuta([]);
+    setHistorialUnidadId(null);
+    setHistorialCargado(false);
+    setTooltipPunto(null);
+  }, []);
+
+  // Scroll al item resaltado cuando se abre el sidebar
+  useEffect(() => {
+    if (showSidebar && highlightedUnidad && sidebarListRef.current) {
+      // Pequeño delay para que el panel termine de abrir antes de hacer scroll
+      setTimeout(() => {
+        const el = sidebarListRef.current?.querySelector(`[data-unidad-id="${highlightedUnidad.id}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 350);
     }
-  }, [selectedUnidad]);
+  }, [showSidebar, highlightedUnidad]);
+
+  // Cargar historial de ruta del día para una unidad
+  const cargarHistorial = async (docId: string) => {
+    setLoadingHistorial(true);
+    setHistorialRuta([]);
+    setHistorialUnidadId(docId);
+    setHistorialCargado(false);
+    try {
+      const hoy = new Date().toLocaleDateString('en-CA'); // yyyy-MM-dd en hora local
+      const snap = await getDocs(
+        query(
+          collection(db, 'ubicaciones', docId, 'historial'),
+          where('fecha', '==', hoy),
+          orderBy('timestamp', 'asc')
+        )
+      );
+      const puntos: HistorialPunto[] = snap.docs.map(d => ({
+        lat: d.data().lat as number,
+        lng: d.data().lng as number,
+        speed: (d.data().speed as number) ?? 0,
+        timestamp: d.data().timestamp?.toDate() ?? new Date(),
+      }));
+      setHistorialRuta(puntos);
+      setHistorialCargado(true);
+    } catch (e) {
+      console.error('[Historial] Error:', e);
+      toast('Error al cargar el historial. Verificá la consola.', { duration: 4000 });
+      setHistorialCargado(true);
+    } finally {
+      setLoadingHistorial(false);
+    }
+  };
+
+  // Limpiar historial al cambiar de unidad seleccionada
+  const limpiarHistorial = () => {
+    setHistorialRuta([]);
+    setHistorialUnidadId(null);
+    setHistorialCargado(false);
+    setTooltipPunto(null);
+  };
+
+  // Color según velocidad
+  const speedColor = (speed: number) => {
+    if (speed <= 60) return '#22c55e';   // verde — seguro / detenido
+    if (speed <= 80) return '#f59e0b';   // amarillo — precaución
+    return '#ef4444';                    // rojo — exceso
+  };
+
+  // Polyline + marcadores de puntos + fitBounds — API directa de Google Maps
+  useEffect(() => {
+    if (!map) return;
+
+    // Limpiar estado anterior
+    if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
+    historialMarkersRef.current.forEach(m => m.setMap(null));
+    historialMarkersRef.current = [];
+    setTooltipPunto(null);
+
+    if (historialRuta.length > 1) {
+      // Polyline del recorrido
+      polylineRef.current = new google.maps.Polyline({
+        path: historialRuta.map(p => ({ lat: p.lat, lng: p.lng })),
+        strokeColor: '#22c55e',
+        strokeOpacity: 0.85,
+        strokeWeight: 4,
+        zIndex: 5,
+        map,
+      });
+
+      // Marcadores de puntos con color por velocidad
+      const bounds = new google.maps.LatLngBounds();
+      historialRuta.forEach(punto => {
+        bounds.extend({ lat: punto.lat, lng: punto.lng });
+        const color = speedColor(punto.speed);
+        const marker = new google.maps.Marker({
+          position: { lat: punto.lat, lng: punto.lng },
+          map,
+          icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" width="22" height="22">
+                <circle cx="11" cy="11" r="10" fill="${color}" opacity="0.22"/>
+                <circle cx="11" cy="11" r="5.5" fill="${color}" stroke="white" stroke-width="2"/>
+              </svg>
+            `),
+            scaledSize: new google.maps.Size(22, 22),
+            anchor: new google.maps.Point(11, 11),
+          },
+          zIndex: 6,
+        });
+
+        marker.addListener('click', () => setTooltipPunto(punto));
+
+        historialMarkersRef.current.push(marker);
+      });
+
+      // Auto-centrar para mostrar todo el recorrido
+      map.fitBounds(bounds, 60);
+    }
+
+    return () => {
+      if (polylineRef.current) { polylineRef.current.setMap(null); polylineRef.current = null; }
+      historialMarkersRef.current.forEach(m => m.setMap(null));
+      historialMarkersRef.current = [];
+    };
+  }, [historialRuta, map]);
 
   // Función para simular refresh (los datos ya son en tiempo real)
   const handleRefresh = () => {
@@ -174,6 +367,23 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
           hdr: data.hdr || null,
         });
       });
+      // Notificación al supervisor al detectar cambios de estado (solo horario 6am–18pm)
+      const hora = new Date().getHours();
+      if (hora >= 6 && hora < 18 && prevUbicacionesRef.current.size > 0) {
+        ubicacionesData.forEach(u => {
+          const prev = prevUbicacionesRef.current.get(u.id);
+          if (prev) {
+            if (!prev.activo && u.activo) {
+              toast(`🟢 INT-${u.unidad} salió de base`, { duration: 4000 });
+              playBeep();
+            } else if (!prev.enBase && u.enBase) {
+              toast(`🔵 INT-${u.unidad} llegó a ${u.baseNombre || 'base'}`, { duration: 4000 });
+              playBeep();
+            }
+          }
+        });
+      }
+      prevUbicacionesRef.current = new Map(ubicacionesData.map(u => [u.id, u]));
       setUbicaciones(ubicacionesData);
     });
 
@@ -245,13 +455,13 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
           <img src="/LogoCross.png" alt="Crosslog" className="h-7" />
         </div>
 
-        {/* Segunda fila: Controles */}
-        <div className="flex items-center justify-between px-3 py-2 border-t border-gray-700/30">
+        {/* Segunda fila: Hamburguesa + Filtros + Refresh + GPS */}
+        <div className="flex items-center justify-between px-3 py-1.5 border-t border-gray-700/30">
           {/* Izquierda: Hamburguesa + Filtros */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setShowSidebar(!showSidebar)}
-              className={`p-2 rounded-lg transition-all ${
+              className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
                 showSidebar
                   ? 'text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -259,91 +469,84 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
               style={showSidebar ? { backgroundColor: '#BFCE2A', color: '#1a2e35' } : {}}
               title="Lista de unidades"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <div className="flex gap-1">
+            <div className="flex gap-0.5">
               <button
                 onClick={() => setFiltroSector('todos')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
                   filtroSector === 'todos'
                     ? 'bg-white text-gray-800'
-                    : 'bg-gray-700/80 text-gray-300 hover:bg-gray-600'
+                    : 'bg-gray-700/80 text-gray-300'
                 }`}
               >
-                Todos ({contadores.todos})
+                T ({contadores.todos})
               </button>
               <button
                 onClick={() => setFiltroSector('vrac')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
                   filtroSector === 'vrac'
                     ? 'bg-blue-500 text-white'
-                    : 'bg-gray-700/80 text-gray-300 hover:bg-gray-600'
+                    : 'bg-gray-700/80 text-gray-300'
                 }`}
               >
-                VRAC ({contadores.vrac})
+                VR ({contadores.vrac})
               </button>
               <button
                 onClick={() => setFiltroSector('distribucion')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
                   filtroSector === 'distribucion'
                     ? 'text-gray-900'
-                    : 'bg-gray-700/80 text-gray-300 hover:bg-gray-600'
+                    : 'bg-gray-700/80 text-gray-300'
                 }`}
                 style={filtroSector === 'distribucion' ? { backgroundColor: '#BFCE2A' } : {}}
               >
-                DIST ({contadores.distribucion})
+                DI ({contadores.distribucion})
               </button>
               <button
                 onClick={() => setFiltroSector('vital_aire')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
                   filtroSector === 'vital_aire'
                     ? 'bg-orange-500 text-white'
-                    : 'bg-gray-700/80 text-gray-300 hover:bg-gray-600'
+                    : 'bg-gray-700/80 text-gray-300'
                 }`}
               >
-                VITAL ({contadores.vital_aire})
+                VA ({contadores.vital_aire})
               </button>
             </div>
           </div>
 
           {/* Derecha: Contadores + Refresh + GPS */}
-          <div className="flex items-center gap-1 sm:gap-2">
-            <span className="hidden sm:inline text-xs text-green-400 font-medium">{unidadesActivas.length} ruta</span>
-            <span className="sm:hidden text-[10px] text-green-400 font-medium">{unidadesActivas.length}🟢</span>
-            <span className="text-gray-500 hidden sm:inline">|</span>
-            <span className="hidden sm:inline text-xs text-blue-400 font-medium">{unidadesEnBase.length} base</span>
-            <span className="sm:hidden text-[10px] text-blue-400 font-medium">{unidadesEnBase.length}🔵</span>
-            <div className="flex items-center gap-1 ml-1">
-              <button
-                onClick={handleRefresh}
-                className={`p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-all flex items-center justify-center ${
-                  refreshing ? 'animate-spin' : ''
-                }`}
-                disabled={refreshing}
-                title="Actualizar"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
-              <button
-                onClick={toggleGpsHabilitado}
-                disabled={loadingGpsConfig}
-                className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${
-                  gpsHabilitado
-                    ? 'text-white'
-                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700'
-                } ${loadingGpsConfig ? 'opacity-50' : ''}`}
-                style={gpsHabilitado ? { backgroundColor: '#BFCE2A', color: '#1a2e35' } : {}}
-                title={gpsHabilitado ? 'GPS Activo' : 'GPS Inactivo'}
-              >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                </svg>
-              </button>
-            </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className="text-[10px] text-green-400 font-medium">{unidadesActivas.length}🟢</span>
+            <span className="text-[10px] text-blue-400 font-medium">{unidadesEnBase.length}🔵</span>
+            <button
+              onClick={handleRefresh}
+              className={`p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-all flex items-center justify-center ${
+                refreshing ? 'animate-spin' : ''
+              }`}
+              disabled={refreshing}
+              title="Actualizar"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <button
+              onClick={toggleGpsHabilitado}
+              disabled={loadingGpsConfig}
+              className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${
+                gpsHabilitado ? 'text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700'
+              } ${loadingGpsConfig ? 'opacity-50' : ''}`}
+              style={gpsHabilitado ? { backgroundColor: '#BFCE2A', color: '#1a2e35' } : {}}
+              title={gpsHabilitado ? 'GPS Activo' : 'GPS Inactivo'}
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -369,7 +572,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div ref={sidebarListRef} className="flex-1 overflow-y-auto p-2 space-y-1">
             {ubicacionesFiltradas.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <div className="text-3xl mb-2">📍</div>
@@ -388,20 +591,23 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                   'en-base': '🔵 Base',
                   'inactivo': '⚫ Inactivo'
                 }[estado];
-                const isSelected = selectedUnidad?.id === unidad.id;
+                const isHighlighted = highlightedUnidad?.id === unidad.id;
 
                 return (
                   <div
                     key={unidad.id}
+                    data-unidad-id={unidad.id}
                     className={`p-2 rounded-lg border cursor-pointer transition-all ${estiloFondo} ${
-                      isSelected ? 'ring-2 ring-green-400' : ''
+                      isHighlighted ? 'ring-2 ring-yellow-400' : ''
                     }`}
                     onClick={() => {
                       if (unidad.lat !== 0 && map) {
                         map.panTo({ lat: unidad.lat, lng: unidad.lng });
                         map.setZoom(15);
+                        limpiarHistorial();
                         setSelectedUnidad(unidad);
-                        setShowSidebar(false); // Cerrar panel izquierdo automáticamente
+                        setHighlightedUnidad(null);
+                        setShowSidebar(false);
                       }
                     }}
                   >
@@ -454,7 +660,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
             onLoad={onLoad}
             onUnmount={onUnmount}
             options={mapOptions}
-            onClick={() => setSelectedUnidad(null)} // Cerrar panel derecho al click en mapa
+            onClick={() => { setSelectedUnidad(null); limpiarHistorial(); }}
           >
             {/* Marcadores de Bases Crosslog */}
             {BASES_CROSSLOG.map((base) => (
@@ -530,19 +736,63 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                     position={{ lat: unidad.lat, lng: unidad.lng }}
                     onClick={() => handleMarkerClick(unidad)}
                     icon={{
-                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
-                          <circle cx="12" cy="12" r="10" fill="${colorSector}" stroke="#fff" stroke-width="2"/>
-                          <circle cx="12" cy="12" r="4" fill="#fff"/>
-                        </svg>
-                      `),
-                      scaledSize: new google.maps.Size(32, 32),
-                      anchor: new google.maps.Point(16, 16),
+                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(vehiculoSVG(unidad.sector, true)),
+                      scaledSize: new google.maps.Size(vehiculoIconSize(unidad.sector).w, vehiculoIconSize(unidad.sector).h),
+                      anchor: new google.maps.Point(vehiculoIconSize(unidad.sector).w / 2, vehiculoIconSize(unidad.sector).h / 2),
                     }}
                   />
                 </div>
               );
             })}
+
+            {/* Polyline historial: gestionado por useEffect con API directa */}
+
+            {/* Tooltip personalizado para puntos del historial */}
+            {tooltipPunto && (
+              <OverlayView
+                position={{ lat: tooltipPunto.lat, lng: tooltipPunto.lng }}
+                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+              >
+                <div style={{ display: 'inline-block', transform: 'translate(-50%, -100%)', paddingBottom: '10px' }}>
+                  <div style={{
+                    background: 'white',
+                    borderRadius: '8px',
+                    padding: '8px 28px 8px 10px',
+                    boxShadow: '0 3px 12px rgba(0,0,0,0.22)',
+                    fontSize: '13px',
+                    fontFamily: 'sans-serif',
+                    whiteSpace: 'nowrap',
+                    position: 'relative',
+                    border: '1px solid #e5e7eb',
+                  }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setTooltipPunto(null); }}
+                      style={{
+                        position: 'absolute',
+                        top: 5, right: 7,
+                        background: 'none', border: 'none',
+                        cursor: 'pointer', fontSize: '15px',
+                        color: '#9ca3af', padding: 0, lineHeight: 1,
+                        fontWeight: 'bold',
+                      }}
+                    >×</button>
+                    <div style={{ fontWeight: 600, marginBottom: 3 }}>
+                      ⏱️ {tooltipPunto.timestamp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </div>
+                    <div style={{ color: speedColor(tooltipPunto.speed), fontWeight: 700 }}>
+                      ⚡ {tooltipPunto.speed} km/h
+                    </div>
+                  </div>
+                  {/* Caret apuntando al punto */}
+                  <div style={{
+                    width: 0, height: 0, margin: '0 auto',
+                    borderLeft: '7px solid transparent',
+                    borderRight: '7px solid transparent',
+                    borderTop: '7px solid white',
+                  }} />
+                </div>
+              </OverlayView>
+            )}
 
             {/* Marcadores de unidades EN BASE */}
             {unidadesEnBase.map((unidad, index) => {
@@ -596,14 +846,9 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                     position={posicion}
                     onClick={() => handleMarkerClick(unidadConPosicion)}
                     icon={{
-                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28">
-                          <circle cx="12" cy="12" r="10" fill="#4B5563" stroke="#fff" stroke-width="2"/>
-                          <circle cx="12" cy="12" r="4" fill="#fff"/>
-                        </svg>
-                      `),
-                      scaledSize: new google.maps.Size(28, 28),
-                      anchor: new google.maps.Point(14, 14),
+                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(vehiculoSVG(unidad.sector, false)),
+                      scaledSize: new google.maps.Size(vehiculoIconSize(unidad.sector).w, vehiculoIconSize(unidad.sector).h),
+                      anchor: new google.maps.Point(vehiculoIconSize(unidad.sector).w / 2, vehiculoIconSize(unidad.sector).h / 2),
                     }}
                   />
                 </div>
@@ -636,7 +881,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                 </span>
               </div>
               <button
-                onClick={() => setSelectedUnidad(null)}
+                onClick={() => { setSelectedUnidad(null); limpiarHistorial(); }}
                 className="text-gray-400 hover:text-white text-lg"
               >
                 ✕
@@ -723,6 +968,57 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
               >
                   📍 Centrar en Mapa
               </button>
+
+              {/* Historial de ruta */}
+              <div className="border-t border-gray-700 pt-3 space-y-2">
+                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Ruta de hoy</p>
+                {historialUnidadId === selectedUnidad.id && historialCargado && historialRuta.length === 0 ? (
+                  // Query ejecutada pero sin datos
+                  <div className="space-y-2">
+                    <div className="bg-gray-700/40 rounded-lg p-3 text-center">
+                      <p className="text-gray-400 text-xs">Sin recorrido registrado hoy</p>
+                      <p className="text-gray-500 text-[10px] mt-1">El historial se genera con el nuevo APK</p>
+                    </div>
+                    <button
+                      onClick={limpiarHistorial}
+                      className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition-colors"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                ) : historialUnidadId === selectedUnidad.id && historialRuta.length > 0 ? (
+                  // Hay datos — mostrar stats y opción de ocultar
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-gray-700/60 rounded-lg p-2 text-center">
+                        <p className="text-[10px] text-gray-400">Puntos GPS</p>
+                        <p className="text-white font-bold text-sm">{historialRuta.length}</p>
+                      </div>
+                      <div className="bg-gray-700/60 rounded-lg p-2 text-center">
+                        <p className="text-[10px] text-gray-400">Vel. máx.</p>
+                        <p className="text-white font-bold text-sm">
+                          {Math.max(...historialRuta.map(p => p.speed)).toFixed(0)} km/h
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={limpiarHistorial}
+                      className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition-colors"
+                    >
+                      Ocultar ruta
+                    </button>
+                  </div>
+                ) : (
+                  // Estado inicial — botón para cargar
+                  <button
+                    onClick={() => cargarHistorial(selectedUnidad.id)}
+                    disabled={loadingHistorial}
+                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
+                  >
+                    {loadingHistorial ? '⏳ Cargando...' : '🗺️ Ver ruta de hoy'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           </div>

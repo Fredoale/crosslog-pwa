@@ -11,6 +11,7 @@ import ConsultaInterna from './components/ConsultaInterna';
 import { DashboardTaller } from './components/mantenimiento/DashboardTaller';
 import { useEntregasStore } from './stores/entregasStore';
 import { useTallerStore } from './stores/tallerStore';
+import { Capacitor } from '@capacitor/core';
 import { googleAuth } from './utils/googleAuth';
 import { showError } from './utils/toast';
 import type { Entrega, PerfilConsulta } from './types';
@@ -42,8 +43,12 @@ function App() {
 
   console.log('[App] mostrarResumen:', mostrarResumen, '(only when ALL completed and NO pending)');
 
-  // Initialize Google Auth
+  // Initialize Google Auth (solo en web — en APK se usa n8n)
   useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      console.log('[App] APK nativo → saltando init de Google Auth (usa n8n)');
+      return;
+    }
     console.log('[App] Initializing Google Auth...');
     googleAuth.init()
       .then(() => {

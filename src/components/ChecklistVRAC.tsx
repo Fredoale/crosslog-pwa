@@ -10,8 +10,10 @@ import { saveChecklist } from '../services/checklistService';
 import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning } from '../utils/toast';
+import { compressAndUploadImage } from '../utils/compressAndUploadImage';
 import { UNIDADES_VRAC, CISTERNAS_VRAC } from './CarouselSector';
 import { useGPSTracking } from '../hooks/useGPSTracking';
+import { BienvenidaViajeModal } from './BienvenidaViajeModal';
 
 // ============================================================================
 // CHOFERES DE VRAC (15 choferes)
@@ -63,7 +65,8 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
   const [filtroCisterna, setFiltroCisterna] = useState('');
   const [filtroChofer, setFiltroChofer] = useState('');
 
-  const [currentStep, setCurrentStep] = useState<'seleccion-unidad' | 'seleccion-cisterna' | 'seleccion-chofer' | 'odometro' | 'items' | 'resumen' | 'activar-gps' | 'tracking-activo'>(
+  const [mostrarBienvenida, setMostrarBienvenida] = useState(false);
+  const [currentStep, setCurrentStep] = useState<'seleccion-unidad' | 'seleccion-cisterna' | 'seleccion-chofer' | 'odometro' | 'items' | 'resumen'>(
     tienePropsCompletas ? 'odometro' : 'seleccion-unidad'
   );
 
@@ -104,7 +107,6 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
   const [novedadTemp, setNovedadTemp] = useState('');
   const [fotoNovedadTemp, setFotoNovedadTemp] = useState<string | null>(null);
   const [capturandoFotoNovedadModal, setCapturandoFotoNovedadModal] = useState(false);
-  const [showConfirmacionSinEvidencia, setShowConfirmacionSinEvidencia] = useState(false);
   const [capturandoFoto, setCapturandoFoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -174,8 +176,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
 
     const itemActual = items[currentItemIndex];
     if (itemActual.esCritico && !itemActual.fotoUrl) {
-      setShowConfirmacionSinEvidencia(true);
-      return;
+      showWarning('Ítem crítico sin evidencia fotográfica. Se registrará sin foto.');
     }
 
     procederSinEvidencia();
@@ -190,7 +191,6 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
     setItems(updatedItems);
     setShowComentario(false);
     setComentarioTemp('');
-    setShowConfirmacionSinEvidencia(false);
 
     if (currentItemIndex < totalItems - 1) {
       setCurrentItemIndex(currentItemIndex + 1);
@@ -220,23 +220,16 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
 
       setCapturandoFoto(true);
       try {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64String = reader.result as string;
-          const updatedItems = [...items];
-          updatedItems[currentItemIndex] = {
-            ...updatedItems[currentItemIndex],
-            fotoUrl: base64String
-          };
-          setItems(updatedItems);
-          setCapturandoFoto(false);
-          showSuccess('Foto capturada y guardada');
+        const path = `fotos/checklists/vrac_${Date.now()}_item${currentItemIndex}.jpg`;
+        const url = await compressAndUploadImage(file, path);
+        const updatedItems = [...items];
+        updatedItems[currentItemIndex] = {
+          ...updatedItems[currentItemIndex],
+          fotoUrl: url
         };
-        reader.onerror = () => {
-          setCapturandoFoto(false);
-          showError('Error al procesar la imagen');
-        };
-        reader.readAsDataURL(file);
+        setItems(updatedItems);
+        setCapturandoFoto(false);
+        showSuccess('Foto capturada y guardada');
       } catch (error) {
         console.error('[ChecklistVRAC] Error capturando foto:', error);
         setCapturandoFoto(false);
@@ -260,17 +253,11 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
 
       setCapturandoFotoNovedadModal(true);
       try {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setFotoNovedadTemp(reader.result as string);
-          setCapturandoFotoNovedadModal(false);
-          showSuccess('Foto capturada');
-        };
-        reader.onerror = () => {
-          setCapturandoFotoNovedadModal(false);
-          showError('Error al procesar la imagen');
-        };
-        reader.readAsDataURL(file);
+        const path = `fotos/checklists/vrac_novedad_${Date.now()}.jpg`;
+        const url = await compressAndUploadImage(file, path);
+        setFotoNovedadTemp(url);
+        setCapturandoFotoNovedadModal(false);
+        showSuccess('Foto capturada');
       } catch (error) {
         console.error('[ChecklistVRAC] Error capturando foto novedad:', error);
         setCapturandoFotoNovedadModal(false);
@@ -301,7 +288,8 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
 
     const itemsRechazados = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
     const itemsConformes = items.filter(i => i.estado === 'CONFORME').length;
-    const resultado = (itemsRechazados > 0 || novedades.length > 0) ? 'NO_APTO' : 'APTO';
+    // Solo items críticos NO_CONFORME determinan el resultado. Las novedades del botón son informativas.
+    const resultado = itemsRechazados > 0 ? 'NO_APTO' : 'APTO';
 
     const checklistData: ChecklistRegistro = {
       id: `checklist_${Date.now()}`,
@@ -378,7 +366,19 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
 
       // Verificar si GPS está habilitado en la configuración
       if (gpsHabilitadoConfig) {
-        setCurrentStep('activar-gps');
+        const success = await gpsTracking.startTracking({
+          unidad: unidad.numero,
+          patente: unidad.patente,
+          chofer,
+          checklistId: checklistData.id,
+          sector: 'vrac',
+        });
+        if (success) {
+          setIsSubmitting(false);
+          setMostrarBienvenida(true);
+        } else {
+          onComplete(checklistData);
+        }
       } else {
         // GPS deshabilitado - finalizar directamente
         onComplete(checklistData);
@@ -387,20 +387,6 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
       console.error('[ChecklistVRAC] Error guardando checklist:', error);
       showError('Error al guardar checklist. Intenta nuevamente.');
       setIsSubmitting(false); // Permitir reintentar en caso de error
-    }
-  };
-
-  // Manejar activación de GPS
-  const handleActivarGPS = async () => {
-    const success = await gpsTracking.startTracking({
-      unidad: unidad.numero,
-      patente: unidad.patente,
-      chofer: chofer,
-      checklistId: checklistGuardado?.id,
-    });
-
-    if (success) {
-      setCurrentStep('tracking-activo');
     }
   };
 
@@ -429,6 +415,10 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
         <div className="max-w-md mx-auto">
           {/* Header */}
           <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            {/* Franja sector VRAC */}
+            <div className="h-2 rounded-full mb-4" style={{
+              background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+            }} />
             <div className="text-center mb-4">
               <div className="text-5xl mb-3">🚛</div>
               <h1 className="text-2xl font-bold text-gray-800">Seleccionar Unidad</h1>
@@ -455,7 +445,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
                 value={filtroUnidad}
                 onChange={(e) => setFiltroUnidad(e.target.value)}
                 placeholder="Buscar por INT o patente..."
-                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
                 style={{ fontSize: '16px' }}
               />
               {filtroUnidad && (
@@ -520,6 +510,10 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
         <div className="max-w-md mx-auto">
           {/* Header */}
           <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            {/* Franja sector VRAC */}
+            <div className="h-2 rounded-full mb-4" style={{
+              background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+            }} />
             <div className="text-center mb-4">
               <div className="text-5xl mb-3">🛢️</div>
               <h1 className="text-2xl font-bold text-gray-800">Seleccionar Cisterna</h1>
@@ -546,7 +540,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
                 value={filtroCisterna}
                 onChange={(e) => setFiltroCisterna(e.target.value)}
                 placeholder="Buscar por número o patente..."
-                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
                 style={{ fontSize: '16px' }}
               />
               {filtroCisterna && (
@@ -611,6 +605,10 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
         <div className="max-w-md mx-auto">
           {/* Header */}
           <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+            {/* Franja sector VRAC */}
+            <div className="h-2 rounded-full mb-4" style={{
+              background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
+            }} />
             <div className="text-center mb-4">
               <div className="text-5xl mb-3">👤</div>
               <h1 className="text-2xl font-bold text-gray-800">Seleccionar Chofer</h1>
@@ -639,7 +637,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
                 value={filtroChofer}
                 onChange={(e) => setFiltroChofer(e.target.value)}
                 placeholder="Buscar por nombre..."
-                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                className="w-full px-4 py-3 text-base border-2 border-gray-300 rounded-xl focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
                 style={{ fontSize: '16px' }}
               />
               {filtroChofer && (
@@ -794,39 +792,6 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
   // RENDER: ITEMS DEL CHECKLIST
   // ============================================================================
   if (currentStep === 'items') {
-    // Modal de Confirmación Sin Evidencia
-    const ConfirmacionSinEvidenciaModal = () => (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-          <div className="text-center mb-4">
-            <div className="text-5xl mb-3">📸</div>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">¿Continuar sin evidencia?</h2>
-            <p className="text-sm text-gray-600">
-              Este ítem es crítico y no has agregado evidencia fotográfica.
-            </p>
-          </div>
-
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={() => setShowConfirmacionSinEvidencia(false)}
-              className="flex-1 py-4 px-6 text-gray-700 text-base font-bold rounded-xl border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 transition-all"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={procederSinEvidencia}
-              className="flex-1 py-4 px-6 text-white text-base font-bold rounded-xl shadow-lg transition-all active:scale-95"
-              style={{
-                background: 'linear-gradient(135deg, #f59e0b 0%, #f97316 100%)'
-              }}
-            >
-              Continuar sin foto
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-
     // Modal de Novedad - Renderizado condicional directo (no como componente para evitar pérdida de foco)
     const renderNovedadModal = () => {
       if (!showNovedadModal) return null;
@@ -909,7 +874,6 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
       return (
         <>
           {renderNovedadModal()}
-          {showConfirmacionSinEvidencia && <ConfirmacionSinEvidenciaModal />}
           <FloatingNovedadButton />
 
           <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
@@ -1060,7 +1024,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
                 )}
                 {currentItem.esCritico && (
                   <div className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold">
-                    ⛔ NO-GO
+                    🚨 CRÍTICO
                   </div>
                 )}
               </div>
@@ -1138,6 +1102,22 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
     );
   }
 
+  // Modal de bienvenida al iniciar GPS (debe estar ANTES del render resumen)
+  if (mostrarBienvenida) {
+    return (
+      <BienvenidaViajeModal
+        chofer={chofer}
+        unidad={unidad.numero}
+        patente={unidad.patente}
+        sector="vrac"
+        onDismiss={() => {
+          showSuccess('¡Checklist guardado correctamente!');
+          onComplete(checklistGuardado!);
+        }}
+      />
+    );
+  }
+
   // ============================================================================
   // RENDER: RESUMEN FINAL
   // ============================================================================
@@ -1146,7 +1126,8 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
     const itemsNoConformes = items.filter(i => i.estado === 'NO_CONFORME').length;
     const itemsNoAplica = items.filter(i => i.estado === 'NO_APLICA').length;
     const itemsRechazadosCriticos = items.filter(i => i.estado === 'NO_CONFORME' && i.esCritico).length;
-    const resultado = (itemsRechazadosCriticos > 0 || novedades.length > 0) ? 'NO_APTO' : 'APTO';
+    // Solo items críticos NO_CONFORME determinan el resultado. Las novedades del botón son informativas.
+    const resultado = itemsRechazadosCriticos > 0 ? 'NO_APTO' : 'APTO';
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4 pb-20">
@@ -1219,7 +1200,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
               <p className="text-lg opacity-90">
                 {resultado === 'APTO'
                   ? 'Todas las verificaciones críticas OK'
-                  : `${itemsRechazadosCriticos + novedades.length} problema${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''} crítico${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''} detectado${itemsRechazadosCriticos + novedades.length > 1 ? 's' : ''}`
+                  : `${itemsRechazadosCriticos} problema${itemsRechazadosCriticos > 1 ? 's' : ''} crítico${itemsRechazadosCriticos > 1 ? 's' : ''} detectado${itemsRechazadosCriticos > 1 ? 's' : ''}`
                 }
               </p>
             </div>
@@ -1250,7 +1231,7 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
               )}
               {novedades.length > 0 && (
                 <div className="flex justify-between items-center p-4 bg-orange-50 rounded-xl">
-                  <span className="text-sm font-bold text-gray-700">🚨 Novedades Críticas:</span>
+                  <span className="text-sm font-bold text-gray-700">📋 Novedades (informativas):</span>
                   <span className="text-2xl font-bold text-orange-600">{novedades.length}</span>
                 </div>
               )}
@@ -1290,13 +1271,13 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
                     <div className="flex items-start gap-3">
                       <span className="text-2xl">🚨</span>
                       <div className="flex-1">
-                        <p className="text-sm font-bold text-orange-800">Novedad Crítica Encontrada</p>
+                        <p className="text-sm font-bold text-orange-800">Novedad Informativa</p>
                         <p className="text-xs text-orange-700 mt-1">{novedad.descripcion}</p>
                         {novedad.fotoUrl && (
                           <p className="text-xs text-green-600 mt-1">📸 Con foto adjunta</p>
                         )}
-                        <span className="inline-block mt-2 px-2 py-1 bg-orange-200 text-orange-800 rounded text-xs font-bold">
-                          ATENCIÓN INMEDIATA
+                        <span className="inline-block mt-2 px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">
+                          INFORMATIVA
                         </span>
                       </div>
                     </div>
@@ -1344,237 +1325,6 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
               ← Revisar Ítems
             </button>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ============================================================================
-  // RENDER: ACTIVAR GPS
-  // ============================================================================
-  if (currentStep === 'activar-gps') {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="p-6 text-center" style={{
-              background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)'
-            }}>
-              <div className="text-6xl mb-3">📍</div>
-              <h1 className="text-2xl font-bold text-white">Activar Seguimiento GPS</h1>
-              <p className="text-cyan-100 mt-2">Para tu seguridad y control de ruta</p>
-            </div>
-
-            {/* Contenido */}
-            <div className="p-6 space-y-4">
-              <div className="bg-cyan-50 rounded-xl p-4">
-                <p className="text-sm text-cyan-800">
-                  <strong>✅ Checklist completado</strong><br />
-                  Unidad INT-{unidad.numero} • {chofer}
-                </p>
-              </div>
-
-              <div className="space-y-2 text-sm text-gray-600">
-                <p className="flex items-center gap-2">
-                  <span>🔒</span>
-                  <span>Tu ubicación se comparte solo con supervisores</span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <span>📱</span>
-                  <span>Mantén la app abierta durante el recorrido</span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <span>🔋</span>
-                  <span>La pantalla permanecerá activa</span>
-                </p>
-              </div>
-
-              {gpsTracking.error && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                  <p className="text-sm text-red-700 font-semibold">⚠️ {gpsTracking.error}</p>
-                  <p className="text-xs text-red-600 mt-1">
-                    Verifica que la ubicación esté activada en tu dispositivo
-                  </p>
-                </div>
-              )}
-
-              {/* Botón Activar */}
-              <button
-                onClick={handleActivarGPS}
-                className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
-                style={{
-                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
-                }}
-              >
-                Activar Ubicación
-              </button>
-
-              <p className="text-xs text-center text-gray-400">
-                Al activar, aceptas compartir tu ubicación durante la ruta
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ============================================================================
-  // RENDER: TRACKING ACTIVO
-  // ============================================================================
-  if (currentStep === 'tracking-activo') {
-    // Si llegó a la base, mostrar pantalla de llegada
-    if (gpsTracking.arrivedAtBase) {
-      return (
-        <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col p-4">
-          <div className="flex-1 flex flex-col items-center justify-center">
-            <div className="max-w-md w-full text-center">
-              {/* Indicador de llegada */}
-              <div className="mb-8">
-                <div className="relative inline-block">
-                  <div className="w-32 h-32 rounded-full bg-blue-500 flex items-center justify-center">
-                    <span className="text-6xl">🏠</span>
-                  </div>
-                  <div className="absolute -top-2 -right-2 w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                    <span className="text-xl">✓</span>
-                  </div>
-                </div>
-              </div>
-
-              <h1 className="text-3xl font-bold text-white mb-2">¡Llegaste a Base!</h1>
-              <p className="text-blue-400 text-lg mb-8">Base Los Cardales</p>
-
-              {/* Info de la unidad */}
-              <div className="bg-white/10 backdrop-blur rounded-2xl p-6 mb-6">
-                <div className="grid grid-cols-2 gap-4 text-left">
-                  <div>
-                    <p className="text-gray-400 text-xs">UNIDAD</p>
-                    <p className="text-white font-bold text-lg">INT-{unidad.numero}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-400 text-xs">CISTERNA</p>
-                    <p className="text-white font-bold text-lg">{cisterna.numero}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-400 text-xs">CHOFER</p>
-                    <p className="text-white font-bold">{chofer}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Mensaje de éxito */}
-              <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-4 mb-6">
-                <p className="text-green-300 text-sm font-semibold">
-                  ✅ Viaje completado
-                </p>
-                <p className="text-green-200/80 text-xs mt-1">
-                  El tracking se detuvo automáticamente
-                </p>
-              </div>
-
-              {/* Botón para nuevo checklist */}
-              <button
-                onClick={() => {
-                  setCurrentStep('seleccion-unidad');
-                  setChecklistGuardado(null);
-                }}
-                className="w-full py-4 rounded-xl font-bold text-white transition-all"
-                style={{ background: 'linear-gradient(135deg, #BFCE2A 0%, #a3b824 100%)' }}
-              >
-                Nuevo Viaje
-              </button>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="text-center pb-4">
-            <p className="text-gray-500 text-xs">
-              Crosslog PWA • Viaje Finalizado
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // Tracking activo normal
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col p-4">
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="max-w-md w-full text-center">
-            {/* Indicador de tracking */}
-            <div className="mb-8">
-              <div className="relative inline-block">
-                <div className="w-32 h-32 rounded-full bg-green-500 flex items-center justify-center animate-pulse">
-                  <span className="text-6xl">📍</span>
-                </div>
-                <div className="absolute -top-2 -right-2 w-8 h-8 bg-green-400 rounded-full animate-ping"></div>
-              </div>
-            </div>
-
-            <h1 className="text-3xl font-bold text-white mb-2">Ubicación Activa</h1>
-            <p className="text-green-400 text-lg mb-8">Tu supervisor puede ver tu ubicación</p>
-
-            {/* Info de la unidad */}
-            <div className="bg-white/10 backdrop-blur rounded-2xl p-6 mb-6">
-              <div className="grid grid-cols-2 gap-4 text-left">
-                <div>
-                  <p className="text-gray-400 text-xs">UNIDAD</p>
-                  <p className="text-white font-bold text-lg">INT-{unidad.numero}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-xs">CISTERNA</p>
-                  <p className="text-white font-bold text-lg">{cisterna.numero}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-400 text-xs">CHOFER</p>
-                  <p className="text-white font-bold">{chofer}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Estado de conexión */}
-            {gpsTracking.error ? (
-              <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 mb-6">
-                <p className="text-red-300 text-sm font-semibold">
-                  ❌ Error de conexión
-                </p>
-                <p className="text-red-200/80 text-xs mt-1">
-                  {gpsTracking.error}
-                </p>
-              </div>
-            ) : gpsTracking.lastUpdate ? (
-              <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-3 mb-6">
-                <p className="text-green-300 text-sm">
-                  ✅ Última actualización: {gpsTracking.lastUpdate.toLocaleTimeString('es-AR')}
-                </p>
-              </div>
-            ) : (
-              <p className="text-gray-400 text-sm mb-6">
-                Conectando con el servidor...
-              </p>
-            )}
-
-            {/* Mensaje importante */}
-            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 mb-6">
-              <p className="text-yellow-300 text-sm font-semibold">
-                ⚠️ No cierres esta app
-              </p>
-              <p className="text-yellow-200/80 text-xs mt-1">
-                Puedes minimizar pero no cerrar para mantener el seguimiento activo
-              </p>
-            </div>
-
-            {/* Botón de finalizar (oculto para el chofer según requerimiento) */}
-            {/* El tracking solo se detiene si cierra la app o llega a base */}
-          </div>
-        </div>
-
-        {/* Footer con info */}
-        <div className="text-center pb-4">
-          <p className="text-gray-500 text-xs">
-            Crosslog PWA • Tracking GPS Activo
-          </p>
         </div>
       </div>
     );
