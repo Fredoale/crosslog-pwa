@@ -7,7 +7,7 @@ import {
   CategoriaItem
 } from '../types/checklist';
 import { saveChecklistDistribucion, checkChecklistExists } from '../services/checklistService';
-import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
 import { TODAS_LAS_UNIDADES } from './CarouselSector';
@@ -153,6 +153,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
   const [mostrarBienvenida, setMostrarBienvenida] = useState(false);
   const [checking, setChecking] = useState(true);
   const [odometro, setOdometro] = useState('');
+  const [ultimoOdometro, setUltimoOdometro] = useState<number | null>(null);
   const [checklistSaved, setChecklistSaved] = useState(false);
   const [gpsHabilitadoConfig, setGpsHabilitadoConfig] = useState<boolean>(false);
 
@@ -170,6 +171,29 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
     };
     cargarConfigGPS();
   }, []);
+
+  // Pre-cargar último odómetro calculado al montar
+  useEffect(() => {
+    if (!unidad) return;
+    const cargarUltimoOdometro = async () => {
+      try {
+        const ubicDoc = await getDoc(doc(db, 'ubicaciones', `INT-${unidad}`));
+        if (!ubicDoc.exists()) return;
+        const checklistId = ubicDoc.data()?.checklistId;
+        if (!checklistId) return;
+        const checklistDoc = await getDoc(doc(db, 'checklists', checklistId));
+        if (!checklistDoc.exists()) return;
+        const valor = checklistDoc.data()?.odometroFinal?.valor;
+        if (valor) {
+          setUltimoOdometro(Math.round(valor));
+          setOdometro(String(Math.round(valor)));
+        }
+      } catch (e) {
+        console.warn('[ChecklistDistribucion] No se pudo cargar último odómetro:', e);
+      }
+    };
+    cargarUltimoOdometro();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // GPS Tracking
   const {
@@ -233,7 +257,6 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
             });
 
             if (success) {
-              showInfo('GPS reactivado automáticamente');
               setChecklistSaved(true);
               setChecking(false);
               return;
@@ -502,6 +525,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
           checklistId: `checklist_dist_${hdr}`,
           sector: 'distribucion',
           hdr,
+          odometroInicial: parseInt(odometro) || 0,
         });
         if (success) {
           // Guardar en Firebase que este HDR activó GPS
@@ -623,9 +647,15 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
               inputMode="numeric"
               autoFocus
             />
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              Ejemplo: 486383
-            </p>
+            {ultimoOdometro !== null ? (
+              <p className="text-xs text-green-600 mt-2 text-center font-medium">
+                ↑ Último viaje registrado: {ultimoOdometro.toLocaleString('es-AR')} km · Editable
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                Ejemplo: 486383
+              </p>
+            )}
 
             {/* Botones */}
             <div className="flex gap-3 mt-6">
@@ -1047,137 +1077,9 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
         hdr={hdr}
         onDismiss={() => {
           showSuccess('¡Checklist guardado correctamente!');
-          setMostrarBienvenida(false);
+          onComplete();
         }}
       />
-    );
-  }
-
-  // GPS activo pero aún en base (antes del resumen para que no se muestre el resumen)
-  if (isTracking && !hasLeftBase && !arrivedAtBase) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 flex flex-col p-4">
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="max-w-md w-full text-center">
-            <div className="mb-8">
-              <div className="w-32 h-32 rounded-full bg-gray-700 flex items-center justify-center mx-auto">
-                <span className="text-6xl">🏭</span>
-              </div>
-            </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Aún en Base</h1>
-            <p className="text-gray-400 text-lg mb-8">El seguimiento iniciará al salir</p>
-            <div className="bg-white/10 backdrop-blur rounded-2xl p-6 mb-6">
-              <div className="grid grid-cols-2 gap-4 text-left">
-                <div>
-                  <p className="text-gray-400 text-xs">UNIDAD</p>
-                  <p className="text-white font-bold text-lg">INT-{unidad}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-xs">HDR</p>
-                  <p className="text-white font-bold text-lg">{hdr}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-400 text-xs">CHOFER</p>
-                  <p className="text-white font-bold">{chofer}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4">
-              <p className="text-yellow-300 text-sm font-semibold">⏳ Esperando salida</p>
-              <p className="text-yellow-200/80 text-xs mt-1">
-                El mapa mostrará la unidad "En Ruta" cuando se aleje de la base
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="text-center pb-4">
-          <p className="text-gray-500 text-xs">Crosslog PWA • GPS Activo</p>
-        </div>
-      </div>
-    );
-  }
-
-  // GPS activo en ruta
-  if (isTracking) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="text-center mb-6">
-              <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse" style={{
-                background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)'
-              }}>
-                <span className="text-5xl">📍</span>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-800 mb-2">GPS Activo</h1>
-              <p className="text-gray-600">Tu ubicación está siendo compartida</p>
-            </div>
-            <div className="space-y-2 rounded-xl p-4 border-2 mb-6" style={{
-              backgroundColor: '#f0f9e8', borderColor: '#a8e063'
-            }}>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>📋 HDR:</span>
-                <span className="text-sm font-bold text-gray-800">{hdr}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>🚛 UNIDAD:</span>
-                <span className="text-sm font-bold text-gray-800">INT-{unidad}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>👤 CHOFER:</span>
-                <span className="text-sm font-bold text-gray-800">{chofer}</span>
-              </div>
-              {lastUpdate && (
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold" style={{ color: '#56ab2f' }}>⏱️ ÚLTIMA ACT:</span>
-                  <span className="text-sm font-bold text-gray-800">
-                    {lastUpdate.toLocaleTimeString('es-AR')}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="bg-blue-50 border-l-4 border-blue-500 rounded p-3 mb-6">
-              <p className="text-sm text-blue-800">
-                ℹ️ El GPS se apagará automáticamente al llegar a la base.
-                Mantén la aplicación abierta para el seguimiento.
-              </p>
-            </div>
-            <button
-              onClick={onComplete}
-              className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
-              style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
-            >
-              Continuar con las entregas
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Llegó a la base por geofence
-  if (arrivedAtBase) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 p-4">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="text-center mb-6">
-              <div className="w-24 h-24 rounded-full mx-auto mb-4 flex items-center justify-center bg-blue-100">
-                <span className="text-5xl">🏠</span>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-800 mb-2">¡Llegaste a la Base!</h1>
-              <p className="text-gray-600">El GPS se ha detenido automáticamente</p>
-            </div>
-            <button
-              onClick={onComplete}
-              className="w-full py-4 px-6 text-white text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95"
-              style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
-            >
-              Finalizar
-            </button>
-          </div>
-        </div>
-      </div>
     );
   }
 

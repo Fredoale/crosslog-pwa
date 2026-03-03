@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { collection, query, getDocs, where } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { sheetsApi } from '../utils/sheetsApi';
 import type { HDRConsulta, FleteroEmpresa } from '../types';
+import type { ChecklistRegistro, OrdenTrabajo } from '../types/checklist';
 import DetalleViaje from './DetalleViaje';
 import AuthInterno from './AuthInterno';
 import Indicadores from './Indicadores';
@@ -8,11 +11,13 @@ import { GestionDocumentosPage } from './admin/GestionDocumentosPage';
 import { QRCodesPage } from './QRCodesPage';
 import { MarketplaceSection } from './marketplace/MarketplaceSection';
 import DashboardMantenimiento from './mantenimiento/DashboardMantenimiento';
+import HistorialViajes from './HistorialViajes';
 import { getClientFullName } from '../utils/clienteMapping';
 import { GlobalHeader } from './GlobalHeader';
 import { ContextBar } from './ContextBar';
 import { ModuloCarousel } from './ModuloCarousel';
 import { showWarning } from '../utils/toast';
+import { UNIDADES_CONFIG, obtenerAlertasFlota } from '../services/cubiertasService';
 
 interface ConsultaInternaProps {
   onBack: () => void;
@@ -42,7 +47,7 @@ const RESULTS_PER_PAGE = 7;
 const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
   const [authenticated, setAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<'inicio' | 'operaciones' | 'administracion' | 'recursos'>('inicio');
-  const [viewMode, setViewMode] = useState<'menu' | 'search' | 'indicadores' | 'recursos' | 'documentos' | 'marketplace' | 'qrcodes' | 'mantenimiento'>('menu');
+  const [viewMode, setViewMode] = useState<'menu' | 'search' | 'indicadores' | 'recursos' | 'documentos' | 'marketplace' | 'qrcodes' | 'mantenimiento' | 'viajes'>('menu');
   const [searchType, setSearchType] = useState<'hdr' | 'remito' | 'fletero'>('hdr');
   const [searchValue, setSearchValue] = useState('');
   const [selectedFletero, setSelectedFletero] = useState<FleteroEmpresa | ''>('');
@@ -56,6 +61,20 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
     const stored = localStorage.getItem('crosslog_marketplace_fleteros_enabled');
     return stored === 'true';
   });
+
+  // Estados para Panel Inteligente
+  const [moduloSeleccionado, setModuloSeleccionado] = useState<'vrac' | 'distribucion' | 'vital-aire'>('vrac');
+  const [metricasPanel, setMetricasPanel] = useState<{
+    vrac: { checklistsHoy: number; checklistsTotal: number; otsActivas: number;neumaticosCriticos: number; neumaticosRegulares: number };
+    distribucion: { checklistsHoy: number; checklistsTotal: number; otsActivas: number;neumaticosCriticos: number; neumaticosRegulares: number };
+    'vital-aire': { checklistsHoy: number; checklistsTotal: number; otsActivas: number;neumaticosCriticos: number; neumaticosRegulares: number };
+  }>({
+    vrac: { checklistsHoy: 0, checklistsTotal: 0, otsActivas: 0,neumaticosCriticos: 0, neumaticosRegulares: 0 },
+    distribucion: { checklistsHoy: 0, checklistsTotal: 0, otsActivas: 0,neumaticosCriticos: 0, neumaticosRegulares: 0 },
+    'vital-aire': { checklistsHoy: 0, checklistsTotal: 0, otsActivas: 0, neumaticosCriticos: 0, neumaticosRegulares: 0 }
+  });
+  const [loadingMetricas, setLoadingMetricas] = useState(false);
+  const [tabInicialMantenimiento, setTabInicialMantenimiento] = useState<'checklists' | 'kanban' | 'cubiertas'>('kanban');
 
   // Carousel states for TAB INICIO
   // Carousels ahora manejados por Swiper (eliminados estados manuales)
@@ -139,6 +158,98 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
     if (authenticated && !result && !loading) {
       loadAllHDRs();
     }
+  }, [authenticated]);
+
+  // Cargar métricas del Panel Inteligente
+  useEffect(() => {
+    if (!authenticated) return;
+
+    const cargarMetricas = async () => {
+      setLoadingMetricas(true);
+      try {
+        // Fuente única de unidades: cubiertasService (incluye INT-61 y es la lista oficial)
+        const unidadesVRAC = UNIDADES_CONFIG.filter(u => u.sector === 'vrac').map(u => u.numero);
+        const unidadesVitalAire = UNIDADES_CONFIG.filter(u => u.sector === 'vital-aire').map(u => u.numero);
+        const unidadesDistribucion = UNIDADES_CONFIG.filter(u => u.sector === 'distribucion').map(u => u.numero);
+
+        // Cargar checklists de la colección
+        const checklistsSnap = await getDocs(collection(db, 'checklists'));
+        const checklists = checklistsSnap.docs.map((doc, i) => {
+          const data = doc.data();
+          const ts = data.timestamp;
+          if (i === 0) {
+            console.log('[DEBUG] ts typeof:', typeof ts, '| ts:', ts, '| has toDate:', ts && typeof ts.toDate === 'function', '| ts.seconds:', ts?.seconds);
+          }
+          const converted = ts?.seconds !== undefined
+            ? new Date(ts.seconds * 1000)
+            : (ts && typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts));
+          return {
+            ...data,
+            timestamp: converted
+          };
+        }) as ChecklistRegistro[];
+
+        // Cargar OTs activas
+        const otsSnap = await getDocs(query(
+          collection(db, 'ordenes_trabajo'),
+          where('estado', 'in', ['PENDIENTE', 'EN_PROCESO', 'ESPERANDO_REPUESTOS'])
+        ));
+        const ots = otsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as OrdenTrabajo[];
+
+        // Alertas reales de cubiertas desde Firestore
+        const alertas = await obtenerAlertasFlota();
+        const cubiertasCriticas = { vrac: 0, distribucion: 0, 'vital-aire': 0 };
+        const cubiertasRegulares = { vrac: 0, distribucion: 0, 'vital-aire': 0 };
+        alertas.forEach(alerta => {
+          const cfg = UNIDADES_CONFIG.find(u => u.numero === alerta.unidadNumero);
+          if (!cfg) return;
+          const sector = cfg.sector as 'vrac' | 'distribucion' | 'vital-aire';
+          if (alerta.tipo === 'DESGASTE_CRITICO') cubiertasCriticas[sector]++;
+          else if (alerta.tipo === 'DESGASTE_REGULAR') cubiertasRegulares[sector]++;
+        });
+
+        // Calcular métricas por sector
+        // "total" = cantidad de unidades activas del sector (para % de cumplimiento diario)
+        const calcularMetricasSector = (unidades: string[], sector: string) => {
+          const checklistsSector = checklists.filter(c => {
+            if (c.sector === sector) return true;
+            return unidades.includes(c.unidad?.numero);
+          });
+
+          const hoyStr = new Date().toLocaleDateString('en-CA'); // yyyy-MM-dd local
+          const checklistsHoy = checklistsSector.filter(c => {
+            const fechaStr = new Date(c.timestamp).toLocaleDateString('en-CA');
+            return fechaStr === hoyStr;
+          }).length;
+
+          const otsSector = ots.filter(ot => unidades.includes(ot.unidad.numero));
+
+          return {
+            checklistsHoy,
+            checklistsTotal: unidades.length, // unidades activas del sector, no histórico
+            otsActivas: otsSector.length,
+            neumaticosCriticos: cubiertasCriticas[sector as keyof typeof cubiertasCriticas] || 0,
+            neumaticosRegulares: cubiertasRegulares[sector as keyof typeof cubiertasRegulares] || 0
+          };
+        };
+
+        setMetricasPanel({
+          vrac: calcularMetricasSector(unidadesVRAC, 'vrac'),
+          distribucion: calcularMetricasSector(unidadesDistribucion, 'distribucion'),
+          'vital-aire': calcularMetricasSector(unidadesVitalAire, 'vital-aire')
+        });
+
+      } catch (error) {
+        console.error('[ConsultaInterna] Error cargando métricas:', error);
+      } finally {
+        setLoadingMetricas(false);
+      }
+    };
+
+    cargarMetricas();
+    // Refrescar cada 5 minutos para mostrar datos actualizados
+    const intervalo = setInterval(cargarMetricas, 5 * 60 * 1000);
+    return () => clearInterval(intervalo);
   }, [authenticated]);
 
   // Auto-search when fletero is selected
@@ -373,6 +484,101 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
               <div className="bg-gradient-to-r from-[#56ab2f] to-[#a8e063] rounded-2xl shadow-xl p-6 sm:p-8 text-white">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-2">Bienvenido al Portal Crosslog</h2>
                 <p className="text-green-50 text-sm sm:text-base">Acceso rápido a todas las herramientas y módulos del sistema</p>
+              </div>
+
+              {/* Panel Inteligente - Métricas por Módulo */}
+              <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                {/* Tabs de módulos */}
+                <div className="flex border-b border-gray-200">
+                  <button
+                    onClick={() => setModuloSeleccionado('vrac')}
+                    className={`flex-1 px-4 py-3 font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
+                      moduloSeleccionado === 'vrac'
+                        ? 'bg-cyan-50 text-cyan-600 border-b-2 border-cyan-500'
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-lg">🛢️</span>
+                    <span className="hidden sm:inline">VRAC</span>
+                  </button>
+                  <button
+                    onClick={() => setModuloSeleccionado('distribucion')}
+                    className={`flex-1 px-4 py-3 font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
+                      moduloSeleccionado === 'distribucion'
+                        ? 'bg-green-50 text-green-600 border-b-2 border-green-500'
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-lg">📦</span>
+                    <span className="hidden sm:inline">DISTRIBUCIÓN</span>
+                  </button>
+                  <button
+                    onClick={() => setModuloSeleccionado('vital-aire')}
+                    className={`flex-1 px-4 py-3 font-semibold text-sm transition-all flex items-center justify-center gap-2 ${
+                      moduloSeleccionado === 'vital-aire'
+                        ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500'
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-lg">🚐</span>
+                    <span className="hidden sm:inline">VITAL AIRE</span>
+                  </button>
+                </div>
+
+                {/* Métricas del módulo seleccionado */}
+                <div className="p-4">
+                  {loadingMetricas ? (
+                    <div className="flex items-center justify-center py-6">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#56ab2f]"></div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                      {/* Checklists */}
+                      <div
+                        className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-3 sm:p-4 border border-green-100 cursor-pointer hover:shadow-md transition-all hover:scale-[1.02] text-center"
+                        onClick={() => { setTabInicialMantenimiento('checklists'); setViewMode('mantenimiento'); }}
+                      >
+                        <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Checklists</p>
+                        <div className="text-xl sm:text-2xl font-bold text-green-700">
+                          {metricasPanel[moduloSeleccionado].checklistsHoy}
+                          <span className="text-xs sm:text-sm font-normal text-gray-500"> / {metricasPanel[moduloSeleccionado].checklistsTotal}</span>
+                        </div>
+                        <p className="text-[10px] sm:text-xs text-gray-500 mt-1">hoy / total</p>
+                      </div>
+
+                      {/* OTs Activas */}
+                      <div
+                        className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-3 sm:p-4 border border-purple-100 cursor-pointer hover:shadow-md transition-all hover:scale-[1.02] text-center"
+                        onClick={() => { setTabInicialMantenimiento('kanban'); setViewMode('mantenimiento'); }}
+                      >
+                        <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">OTs Activas</p>
+                        <div className="text-xl sm:text-2xl font-bold text-purple-700">
+                          {metricasPanel[moduloSeleccionado].otsActivas}
+                        </div>
+                        <p className="text-[10px] sm:text-xs text-gray-500 mt-1">pendientes</p>
+                      </div>
+
+                      {/* Neumáticos */}
+                      <div
+                        className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-3 sm:p-4 border border-amber-100 cursor-pointer hover:shadow-md transition-all hover:scale-[1.02] text-center"
+                        onClick={() => { setTabInicialMantenimiento('cubiertas'); setViewMode('mantenimiento'); }}
+                      >
+                        <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Neumáticos</p>
+                        <div className="flex items-center justify-center gap-2 sm:gap-3">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs sm:text-sm font-bold bg-red-100 text-red-700">
+                            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                            {metricasPanel[moduloSeleccionado].neumaticosCriticos}
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs sm:text-sm font-bold bg-yellow-100 text-yellow-700">
+                            <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                            {metricasPanel[moduloSeleccionado].neumaticosRegulares}
+                          </span>
+                        </div>
+                        <p className="text-[10px] sm:text-xs text-gray-500 mt-1">críticos / regulares</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Acceso Rápido Grid */}
@@ -633,6 +839,20 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
                     </p>
                   </div>
                 </button>
+
+                {/* Viajes y Rutas */}
+                <button
+                  onClick={() => setViewMode('viajes')}
+                  className="bg-white rounded-2xl shadow-xl p-8 border-2 border-transparent hover:border-[#a8e063] transition-all hover:shadow-2xl group"
+                >
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-br from-[#a8e063] to-[#56ab2f] rounded-full flex items-center justify-center group-hover:scale-110 transition-transform text-4xl">
+                      🗺️
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Viajes y Rutas</h3>
+                    <p className="text-sm text-gray-600">Historial de viajes por unidad</p>
+                  </div>
+                </button>
               </div>
             </div>
           )}
@@ -815,8 +1035,16 @@ const ConsultaInterna: React.FC<ConsultaInternaProps> = ({ onBack }) => {
           color="indigo"
         />
         <div className="max-w-7xl mx-auto">
-          <DashboardMantenimiento onBack={() => setViewMode('menu')} />
+          <DashboardMantenimiento onBack={() => setViewMode('menu')} tabInicial={tabInicialMantenimiento} />
         </div>
+      </div>
+    );
+  }
+
+  if (viewMode === 'viajes') {
+    return (
+      <div className="h-screen flex flex-col bg-gray-900">
+        <HistorialViajes onClose={() => setViewMode('menu')} />
       </div>
     );
   }

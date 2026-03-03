@@ -11,6 +11,21 @@ import type { CargaCombustible, TipoCombustible } from '../../types/checklist';
 import { saveCargaCombustible } from '../../services/combustibleService';
 import { showSuccess, showError, showWarning } from '../../utils/toast';
 
+// Configuración de capacidad máxima de tanque por tipo de unidad
+const CAPACIDAD_MAXIMA_LITROS: Record<string, number> = {
+  // Tractores VRAC: 700L
+  '806': 700, '805': 700, '40': 700, '48': 700, '50': 700,
+  '802': 700, '810': 700, '812': 700, '814': 700, '815': 700,
+  '45': 700, '41': 700, '46': 700, '813': 700,
+  // Camionetas/Chasis: 100L
+  '64': 100, '63': 100, '62': 100, '817': 100, '54': 100, '816': 100,
+};
+const CAPACIDAD_DEFAULT = 700; // Por defecto para unidades no configuradas
+
+function obtenerCapacidadMaxima(unidadNumero: string): number {
+  return CAPACIDAD_MAXIMA_LITROS[unidadNumero] || CAPACIDAD_DEFAULT;
+}
+
 interface FormularioCargaCombustibleProps {
   unidad: {
     numero: string;
@@ -23,7 +38,7 @@ interface FormularioCargaCombustibleProps {
 
 export function FormularioCargaCombustible({
   unidad,
-  chofer,
+  chofer: choferInicial,
   onComplete,
   onCancel
 }: FormularioCargaCombustibleProps) {
@@ -36,6 +51,10 @@ export function FormularioCargaCombustible({
   const [tipoCombustible, setTipoCombustible] = useState<TipoCombustible>('COMÚN');
   const [estacionServicio, setEstacionServicio] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const [nombreChofer, setNombreChofer] = useState(choferInicial);
+
+  // Capacidad máxima del tanque para esta unidad
+  const capacidadMaxima = obtenerCapacidadMaxima(unidad.numero);
 
   // Estados de carga
   const [loading, setLoading] = useState(false);
@@ -126,6 +145,11 @@ export function FormularioCargaCombustible({
 
   const handleContinuar = () => {
     // Validaciones
+    if (!nombreChofer.trim()) {
+      showWarning('Por favor ingresa el nombre del chofer');
+      return;
+    }
+
     if (!kilometrajeActual || parseFloat(kilometrajeActual) <= 0) {
       showWarning('Por favor ingresa el kilometraje actual');
       return;
@@ -133,6 +157,13 @@ export function FormularioCargaCombustible({
 
     if (!litrosCargados || parseFloat(litrosCargados) <= 0) {
       showWarning('Por favor ingresa los litros cargados');
+      return;
+    }
+
+    // Validar capacidad máxima del tanque
+    const litros = parseFloat(litrosCargados);
+    if (litros > capacidadMaxima) {
+      showError(`La cantidad de litros (${litros}L) excede la capacidad máxima del tanque (${capacidadMaxima}L)`);
       return;
     }
 
@@ -169,7 +200,7 @@ export function FormularioCargaCombustible({
         costoTotal: parseFloat(costoTotal),
         estacionServicio: estacionServicio || undefined,
         observaciones: observaciones || undefined,
-        operador: chofer
+        operador: nombreChofer.trim()
       };
 
       console.log('[FormularioCombustible] Datos de la carga:', carga);
@@ -210,7 +241,7 @@ export function FormularioCargaCombustible({
             <div className="bg-gray-50 rounded-lg p-4">
               <h3 className="font-semibold text-gray-700 mb-2">Unidad</h3>
               <p className="text-lg font-bold text-gray-800">INT-{unidad.numero} - {unidad.patente}</p>
-              <p className="text-sm text-gray-600 mt-1">Operador: {chofer}</p>
+              <p className="text-sm text-gray-600 mt-1">Chofer: {nombreChofer}</p>
             </div>
 
             {/* Datos de la carga */}
@@ -342,7 +373,21 @@ export function FormularioCargaCombustible({
           <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
             <h3 className="font-semibold text-blue-800 mb-2">Unidad Seleccionada</h3>
             <p className="text-lg font-bold text-blue-900">INT-{unidad.numero} - {unidad.patente}</p>
-            <p className="text-sm text-blue-700 mt-1">Operador: {chofer}</p>
+            <p className="text-xs text-blue-600 mt-1">Capacidad máxima: {capacidadMaxima} litros</p>
+          </div>
+
+          {/* Nombre del Chofer */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Nombre del Chofer *
+            </label>
+            <input
+              type="text"
+              value={nombreChofer}
+              onChange={(e) => setNombreChofer(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+              placeholder="Nombre completo del chofer"
+            />
           </div>
 
           {loadingKm && (
@@ -377,17 +422,30 @@ export function FormularioCargaCombustible({
               {/* Litros cargados */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Litros Cargados *
+                  Litros Cargados * <span className="text-xs font-normal text-gray-500">(máx: {capacidadMaxima}L)</span>
                 </label>
                 <input
                   type="number"
                   step="0.01"
                   value={litrosCargados}
                   onChange={(e) => setLitrosCargados(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-lg font-semibold"
+                  className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 transition-all text-lg font-semibold ${
+                    litrosCargados && parseFloat(litrosCargados) > capacidadMaxima
+                      ? 'border-red-500 focus:border-red-500 focus:ring-red-200 bg-red-50'
+                      : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
+                  }`}
                   placeholder="Ej: 45.50"
                   min="0"
+                  max={capacidadMaxima}
                 />
+                {litrosCargados && parseFloat(litrosCargados) > capacidadMaxima && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    Excede la capacidad máxima del tanque ({capacidadMaxima}L)
+                  </p>
+                )}
               </div>
 
               {/* Tipo de combustible */}

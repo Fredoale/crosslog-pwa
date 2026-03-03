@@ -77,6 +77,14 @@ public class CrosslogGpsService extends Service {
     private String hdr = "";
     private boolean hasLeftBase = false;
 
+    // Odómetro y distancia acumulada
+    private double odometroInicialKm = 0.0;
+    private double distanciaAcumuladaKm = 0.0;
+    private double latAnterior = Double.NaN;
+    private double lngAnterior = Double.NaN;
+    private long timestampAnterior = 0;
+    private String viajeIdActual = "";
+
     // ========================================================
     // CICLO DE VIDA DEL SERVICIO
     // ========================================================
@@ -95,6 +103,8 @@ public class CrosslogGpsService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         // Detener si se recibe la acción STOP
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            nm.cancel(NOTIFICATION_ID);
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -103,13 +113,19 @@ public class CrosslogGpsService extends Service {
 
         if (intent != null) {
             // Inicio normal — leer config del Intent y guardar en SharedPreferences
-            unidad      = getExtra(intent, "unidad", "");
-            patente     = getExtra(intent, "patente", "");
-            chofer      = getExtra(intent, "chofer", "");
-            checklistId = getExtra(intent, "checklistId", "");
-            sector      = getExtra(intent, "sector", "vrac");
-            hdr         = getExtra(intent, "hdr", "");
-            hasLeftBase = false;
+            unidad           = getExtra(intent, "unidad", "");
+            patente          = getExtra(intent, "patente", "");
+            chofer           = getExtra(intent, "chofer", "");
+            checklistId      = getExtra(intent, "checklistId", "");
+            sector           = getExtra(intent, "sector", "vrac");
+            hdr              = getExtra(intent, "hdr", "");
+            odometroInicialKm = intent.getDoubleExtra("odometroInicial", 0.0);
+            hasLeftBase      = false;
+            distanciaAcumuladaKm = 0.0;
+            latAnterior = Double.NaN;
+            lngAnterior = Double.NaN;
+            timestampAnterior = 0;
+            viajeIdActual = "viaje_" + unidad + "_" + System.currentTimeMillis();
 
             prefs.edit()
                 .putString("unidad",      unidad)
@@ -118,19 +134,46 @@ public class CrosslogGpsService extends Service {
                 .putString("checklistId", checklistId)
                 .putString("sector",      sector)
                 .putString("hdr",         hdr)
+                .putString("viajeId",     viajeIdActual)
                 .putBoolean("hasLeftBase", false)
+                .putFloat("odometroInicial", (float) odometroInicialKm)
+                .putFloat("distanciaAcumulada", 0.0f)
                 .apply();
-            Log.d(TAG, "✅ Servicio iniciado para INT-" + unidad);
+            Log.d(TAG, "✅ Servicio iniciado para INT-" + unidad + " | Odóm. inicial: " + odometroInicialKm + " km");
+            // Limpiar kmRecorridos del viaje anterior al iniciar sesión nueva
+            db.collection("ubicaciones").document("INT-" + unidad)
+                .update("kmRecorridos", com.google.firebase.firestore.FieldValue.delete())
+                .addOnFailureListener(e -> Log.w(TAG, "kmRecorridos ya no existía o error al limpiar: " + e.getMessage()));
+            // Crear documento de viaje al iniciar sesión nueva
+            Map<String, Object> viajeData = new HashMap<>();
+            viajeData.put("unidad", unidad);
+            viajeData.put("patente", patente);
+            viajeData.put("chofer", chofer);
+            viajeData.put("sector", sector);
+            viajeData.put("hdr", hdr.isEmpty() ? null : hdr);
+            viajeData.put("fechaInicio", FieldValue.serverTimestamp());
+            viajeData.put("fechaFin", null);
+            viajeData.put("kmRecorridos", null);
+            viajeData.put("baseNombre", null);
+            viajeData.put("checklistId", checklistId);
+            viajeData.put("estado", "en_curso");
+            db.collection("viajes").document(viajeIdActual)
+                .set(viajeData)
+                .addOnSuccessListener(v -> Log.d(TAG, "✅ Viaje creado: " + viajeIdActual))
+                .addOnFailureListener(e -> Log.w(TAG, "❌ Error creando viaje: " + e.getMessage()));
         } else {
             // Reinicio por START_STICKY — restaurar config desde SharedPreferences
-            unidad      = prefs.getString("unidad",      "");
-            patente     = prefs.getString("patente",     "");
-            chofer      = prefs.getString("chofer",      "");
-            checklistId = prefs.getString("checklistId", "");
-            sector      = prefs.getString("sector",      "vrac");
-            hdr         = prefs.getString("hdr",         "");
-            hasLeftBase = prefs.getBoolean("hasLeftBase", false);
-            Log.d(TAG, "🔄 Servicio reiniciado por sistema para INT-" + unidad + " | hasLeftBase=" + hasLeftBase);
+            unidad            = prefs.getString("unidad",      "");
+            patente           = prefs.getString("patente",     "");
+            chofer            = prefs.getString("chofer",      "");
+            checklistId       = prefs.getString("checklistId", "");
+            sector            = prefs.getString("sector",      "vrac");
+            hdr               = prefs.getString("hdr",         "");
+            viajeIdActual     = prefs.getString("viajeId",     "");
+            hasLeftBase       = prefs.getBoolean("hasLeftBase", false);
+            odometroInicialKm = prefs.getFloat("odometroInicial", 0.0f);
+            distanciaAcumuladaKm = prefs.getFloat("distanciaAcumulada", 0.0f);
+            Log.d(TAG, "🔄 Servicio reiniciado por sistema para INT-" + unidad + " | hasLeftBase=" + hasLeftBase + " | km acum=" + distanciaAcumuladaKm);
         }
 
         // Iniciar foreground con notificación persistente
@@ -164,8 +207,22 @@ public class CrosslogGpsService extends Service {
                 if (result.getLastLocation() != null) {
                     double lat = result.getLastLocation().getLatitude();
                     double lng = result.getLastLocation().getLongitude();
-                    float speedMs = result.getLastLocation().getSpeed();
-                    double speedKmh = Math.round(speedMs * 3.6 * 10.0) / 10.0;
+
+                    // Calcular velocidad desde posición/tiempo (getSpeed() suele devolver 0)
+                    double speedKmh = 0.0;
+                    long ahora = System.currentTimeMillis();
+                    float gpsSpeedMs = result.getLastLocation().getSpeed();
+                    if (result.getLastLocation().hasSpeed() && gpsSpeedMs > 0.5f) {
+                        speedKmh = Math.round(gpsSpeedMs * 3.6 * 10.0) / 10.0;
+                    } else if (!Double.isNaN(latAnterior) && timestampAnterior > 0) {
+                        double distMetros = calcularDistancia(latAnterior, lngAnterior, lat, lng);
+                        double tiempoSeg = (ahora - timestampAnterior) / 1000.0;
+                        if (tiempoSeg > 1.0 && distMetros > 5.0) {
+                            speedKmh = Math.round((distMetros / tiempoSeg * 3.6) * 10.0) / 10.0;
+                        }
+                    }
+                    timestampAnterior = ahora;
+
                     Log.d(TAG, "📍 Posición recibida: " + lat + ", " + lng + " | " + speedKmh + " km/h");
                     processLocation(lat, lng, speedKmh);
                 }
@@ -196,6 +253,8 @@ public class CrosslogGpsService extends Service {
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean("hasLeftBase", true).apply();
             updateNotification("INT-" + unidad + " · En ruta \uD83D\uDE9B");
             Log.d(TAG, "🚀 Salió de base (" + (int) distancia + "m)");
+            latAnterior = lat;
+            lngAnterior = lng;
             if (eventCallback != null) {
                 Map<String, Object> data = new HashMap<>();
                 data.put("unidad", unidad);
@@ -203,17 +262,58 @@ public class CrosslogGpsService extends Service {
             }
         }
 
+        // Acumular distancia recorrida (solo después de salir de base)
+        if (hasLeftBase && !Double.isNaN(latAnterior)) {
+            double segmentoKm = calcularDistancia(latAnterior, lngAnterior, lat, lng) / 1000.0;
+            distanciaAcumuladaKm += segmentoKm;
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                .putFloat("distanciaAcumulada", (float) distanciaAcumuladaKm).apply();
+        }
+        latAnterior = lat;
+        lngAnterior = lng;
+
         // Detectar llegada a base (solo si ya salió antes)
         if (hasLeftBase && distancia <= GEOFENCE_RADIUS) {
-            Log.d(TAG, "🎯 Llegó a base: " + baseNombre);
-            updateNotification("INT-" + unidad + " · Lleg\u00F3 a " + baseNombre + " \u2705");
+            Log.d(TAG, "🎯 Llegó a base: " + baseNombre + " | Km recorridos: " + Math.round(distanciaAcumuladaKm * 10.0) / 10.0);
+            guardarKmEnFirestore();
             writeToFirebase(BASES[nearestIdx][0], BASES[nearestIdx][1], 0.0, false, true, baseNombre);
+            // Actualizar documento de viaje al completarse
+            if (!viajeIdActual.isEmpty()) {
+                Map<String, Object> viajeUpdate = new HashMap<>();
+                viajeUpdate.put("estado", "completado");
+                viajeUpdate.put("fechaFin", FieldValue.serverTimestamp());
+                viajeUpdate.put("kmRecorridos", Math.round(distanciaAcumuladaKm * 10.0) / 10.0);
+                viajeUpdate.put("baseNombre", baseNombre);
+                db.collection("viajes").document(viajeIdActual)
+                    .update(viajeUpdate)
+                    .addOnSuccessListener(v -> Log.d(TAG, "✅ Viaje completado: " + viajeIdActual))
+                    .addOnFailureListener(e -> Log.w(TAG, "❌ Error actualizando viaje: " + e.getMessage()));
+            }
             if (eventCallback != null) {
                 Map<String, Object> data = new HashMap<>();
                 data.put("unidad", unidad);
                 data.put("baseNombre", baseNombre);
                 eventCallback.onEvent(EVENT_BASE, data);
             }
+            // Notificaci\u00F3n de llegada con bot\u00F3n "Cerrar"
+            Intent stopIntent = new Intent(this, CrosslogGpsService.class);
+            stopIntent.setAction(ACTION_STOP);
+            PendingIntent stopPI = PendingIntent.getService(
+                this, 1, stopIntent,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+            PendingIntent tapPI = PendingIntent.getActivity(
+                this, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE);
+            Notification llegadaNotif = new Notification.Builder(this, CHANNEL_ID)
+                .setContentTitle("CROSSLOG GPS")
+                .setContentText("INT-" + unidad + " \u00B7 Lleg\u00F3 a " + baseNombre + " \u2705")
+                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setContentIntent(tapPI)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cerrar", stopPI)
+                .build();
+            stopForeground(false);
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            nm.notify(NOTIFICATION_ID, llegadaNotif);
             stopSelf();
             return;
         }
@@ -266,6 +366,38 @@ public class CrosslogGpsService extends Service {
             .collection("historial")
             .add(histEntry)
             .addOnFailureListener(e -> Log.e(TAG, "❌ Historial error: " + e.getMessage()));
+    }
+
+    // ========================================================
+    // GUARDAR KM Y ODÓMETRO FINAL EN FIRESTORE
+    // ========================================================
+
+    private void guardarKmEnFirestore() {
+        double kmTotal = Math.round(distanciaAcumuladaKm * 10.0) / 10.0;
+        double odometroFinalValor = Math.round((odometroInicialKm + kmTotal) * 10.0) / 10.0;
+        Log.d(TAG, "💾 Guardando km: " + kmTotal + " km | Odóm. final: " + odometroFinalValor + " km");
+
+        // Actualizar ubicaciones para display en PanelFlota
+        Map<String, Object> ubicUpdate = new HashMap<>();
+        ubicUpdate.put("kmRecorridos", kmTotal);
+        db.collection("ubicaciones").document("INT-" + unidad)
+            .update(ubicUpdate)
+            .addOnFailureListener(e -> Log.e(TAG, "❌ Error guardando km en ubicaciones: " + e.getMessage()));
+
+        // Actualizar checklist con odometroFinal y kmRecorridos
+        if (!checklistId.isEmpty()) {
+            Map<String, Object> odometroFinal = new HashMap<>();
+            odometroFinal.put("valor", odometroFinalValor);
+            odometroFinal.put("fecha_hora", FieldValue.serverTimestamp());
+
+            Map<String, Object> checklistUpdate = new HashMap<>();
+            checklistUpdate.put("kmRecorridos", kmTotal);
+            checklistUpdate.put("odometroFinal", odometroFinal);
+            db.collection("checklists").document(checklistId)
+                .update(checklistUpdate)
+                .addOnSuccessListener(v -> Log.d(TAG, "✅ odometroFinal guardado en checklist: " + checklistId))
+                .addOnFailureListener(e -> Log.e(TAG, "❌ Error guardando km en checklist: " + e.getMessage()));
+        }
     }
 
     // ========================================================

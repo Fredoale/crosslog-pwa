@@ -3,6 +3,8 @@ import { GoogleMap, useJsApiLoader, Marker, OverlayView } from '@react-google-ma
 import { collection, onSnapshot, query, doc, getDoc, setDoc, getDocs, orderBy, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import toast from 'react-hot-toast';
+import { buscarTarifa } from '../utils/tarifas';
+import HistorialViajes from './HistorialViajes';
 
 // Tipos de filtro por sector
 type FiltroSector = 'todos' | 'vrac' | 'distribucion' | 'vital_aire';
@@ -20,6 +22,7 @@ interface UbicacionUnidad {
   timestamp: Date;
   sector?: 'vrac' | 'distribucion' | 'vital_aire' | null;
   hdr?: string | null;
+  kmRecorridos?: number;
 }
 
 interface HistorialPunto {
@@ -87,47 +90,34 @@ function dispersarPosicion(baseLat: number, baseLng: number, index: number, tota
   };
 }
 
-// Iconos SVG por tipo de vehículo y sector
-function vehiculoSVG(sector: string | null | undefined, activo: boolean): string {
-  const op = activo ? '1' : '0.55';
-  switch (sector) {
-    case 'vrac':
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
-        <circle cx="12" cy="12" r="10" fill="#3B82F6" stroke="#fff" stroke-width="2" opacity="${op}"/>
-        <circle cx="12" cy="12" r="4" fill="#fff"/>
-      </svg>`;
-    case 'distribucion':
-      // Camión chasis con caja
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 22" width="46" height="22">
-        <rect x="1" y="3" width="27" height="13" rx="2" fill="#BFCE2A" stroke="#fff" stroke-width="1.5" opacity="${op}"/>
-        <rect x="29" y="2" width="15" height="14" rx="3" fill="#9aad1e" stroke="#fff" stroke-width="1.5" opacity="${op}"/>
-        <rect x="32" y="5" width="9" height="5" rx="1" fill="rgba(255,255,255,0.65)"/>
-        <ellipse cx="10" cy="18" rx="4" ry="3" fill="#0f172a" stroke="#fff" stroke-width="1" opacity="${op}"/>
-        <ellipse cx="37" cy="18" rx="4" ry="3" fill="#0f172a" stroke="#fff" stroke-width="1" opacity="${op}"/>
-      </svg>`;
-    case 'vital_aire':
-      // Camioneta / van
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 20" width="36" height="20">
-        <rect x="1" y="3" width="19" height="12" rx="2" fill="#F97316" stroke="#fff" stroke-width="1.5" opacity="${op}"/>
-        <rect x="21" y="2" width="13" height="13" rx="3" fill="#ea6a0a" stroke="#fff" stroke-width="1.5" opacity="${op}"/>
-        <rect x="24" y="5" width="7" height="5" rx="1" fill="rgba(255,255,255,0.65)"/>
-        <ellipse cx="9" cy="17" rx="4" ry="2.5" fill="#0f172a" stroke="#fff" stroke-width="1" opacity="${op}"/>
-        <ellipse cx="28" cy="17" rx="4" ry="2.5" fill="#0f172a" stroke="#fff" stroke-width="1" opacity="${op}"/>
-      </svg>`;
-    default:
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28">
-        <circle cx="12" cy="12" r="10" fill="#6B7280" stroke="#fff" stroke-width="2" opacity="${op}"/>
-        <circle cx="12" cy="12" r="4" fill="#fff"/>
-      </svg>`;
-  }
+
+// Distancia entre dos coordenadas en km (Haversine)
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Tamaño y ancla del ícono según sector
-function vehiculoIconSize(sector: string | null | undefined): { w: number; h: number } {
-  if (sector === 'vrac') return { w: 35, h: 35 };
-  if (sector === 'distribucion') return { w: 51, h: 24 };
-  if (sector === 'vital_aire') return { w: 40, h: 22 };
-  return { w: 31, h: 31 };
+// Iconos SVG por sector — todos círculos, colores distintos
+function vehiculoSVG(sector: string | null | undefined, activo: boolean): string {
+  const op = activo ? '1' : '0.55';
+  const color =
+    sector === 'vrac'        ? '#3B82F6' :
+    sector === 'distribucion' ? '#BFCE2A' :
+    sector === 'vital_aire'  ? '#F97316' :
+    '#6B7280';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+    <circle cx="12" cy="12" r="10" fill="${color}" stroke="#fff" stroke-width="2" opacity="${op}"/>
+    <circle cx="12" cy="12" r="4" fill="#fff"/>
+  </svg>`;
+}
+
+// Tamaño del ícono — igual para todos los sectores
+function vehiculoIconSize(_sector: string | null | undefined): { w: number; h: number } {
+  return { w: 35, h: 35 };
 }
 
 export function PanelFlota({ onClose }: PanelFlotaProps) {
@@ -142,10 +132,12 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
   const [highlightedUnidad, setHighlightedUnidad] = useState<UbicacionUnidad | null>(null); // Unidad resaltada en sidebar
   const sidebarListRef = useRef<HTMLDivElement>(null); // Ref al contenedor de la lista del sidebar
   const prevUbicacionesRef = useRef<Map<string, UbicacionUnidad>>(new Map());
+  const [showHistorial, setShowHistorial] = useState(false);
   const [historialRuta, setHistorialRuta] = useState<HistorialPunto[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [historialUnidadId, setHistorialUnidadId] = useState<string | null>(null);
   const [historialCargado, setHistorialCargado] = useState(false);
+  const historialCancelRef = useRef(false);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const historialMarkersRef = useRef<google.maps.Marker[]>([]);
   const [tooltipPunto, setTooltipPunto] = useState<HistorialPunto | null>(null);
@@ -189,6 +181,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
 
   // Cargar historial de ruta del día para una unidad
   const cargarHistorial = async (docId: string) => {
+    historialCancelRef.current = false;
     setLoadingHistorial(true);
     setHistorialRuta([]);
     setHistorialUnidadId(docId);
@@ -202,6 +195,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
           orderBy('timestamp', 'asc')
         )
       );
+      if (historialCancelRef.current) return;
       const puntos: HistorialPunto[] = snap.docs.map(d => ({
         lat: d.data().lat as number,
         lng: d.data().lng as number,
@@ -211,16 +205,19 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
       setHistorialRuta(puntos);
       setHistorialCargado(true);
     } catch (e) {
+      if (historialCancelRef.current) return;
       console.error('[Historial] Error:', e);
       toast('Error al cargar el historial. Verificá la consola.', { duration: 4000 });
       setHistorialCargado(true);
     } finally {
-      setLoadingHistorial(false);
+      if (!historialCancelRef.current) setLoadingHistorial(false);
     }
   };
 
   // Limpiar historial al cambiar de unidad seleccionada
   const limpiarHistorial = () => {
+    historialCancelRef.current = true;
+    setLoadingHistorial(false);
     setHistorialRuta([]);
     setHistorialUnidadId(null);
     setHistorialCargado(false);
@@ -365,6 +362,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
           // Inferir sector: si tiene HDR es distribución, si no es VRAC
           sector: data.sector || (data.hdr ? 'distribucion' : 'vrac'),
           hdr: data.hdr || null,
+          kmRecorridos: data.kmRecorridos ?? undefined,
         });
       });
       // Notificación al supervisor al detectar cambios de estado (solo horario 6am–18pm)
@@ -438,7 +436,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
   }
 
   return (
-    <div className="h-screen w-screen bg-gray-900 flex flex-col overflow-hidden">
+    <div className="h-screen w-screen bg-gray-900 flex flex-col overflow-hidden relative">
       {/* Header - parte del flujo normal */}
       <div className="flex-shrink-0 bg-gray-900 z-20">
         {/* Primera fila: Volver + Logo */}
@@ -639,6 +637,15 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                 );
               })
             )}
+          </div>
+          <div className="flex-shrink-0 border-t border-gray-700 p-3">
+            <button
+              onClick={() => setShowHistorial(true)}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-700/50 hover:bg-gray-600/70 text-gray-300 text-sm font-medium transition-colors"
+            >
+              <span>🗺️</span>
+              <span>Viajes y Rutas</span>
+            </button>
           </div>
           </div>
         </div>
@@ -889,91 +896,71 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
             </div>
 
             {/* Contenido del panel */}
-            <div className="flex-1 p-4 space-y-4">
-              {/* Estado */}
-              <div className={`p-3 rounded-lg ${
+            <div className="flex-1 p-4 space-y-3 overflow-y-auto">
+
+              {/* === 1: Estado compacto + botón centrar === */}
+              <div className={`flex items-center gap-3 p-3 rounded-lg ${
                 selectedUnidad.activo
                   ? 'bg-green-900/50 border border-green-700'
                   : selectedUnidad.enBase
                   ? 'bg-blue-900/50 border border-blue-700'
                   : 'bg-gray-700/50 border border-gray-600'
               }`}>
-                <div className="text-center">
-                  <span className="text-2xl">
-                    {selectedUnidad.activo ? '🟢' : selectedUnidad.enBase ? '🔵' : '⚫'}
-                  </span>
-                  <p className="text-white font-bold mt-1">
+                <span className="text-2xl flex-shrink-0">
+                  {selectedUnidad.activo ? '🟢' : selectedUnidad.enBase ? '🔵' : '⚫'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold text-sm leading-tight">
                     {selectedUnidad.activo ? 'En Ruta' : selectedUnidad.enBase ? 'En Base' : 'Inactivo'}
                   </p>
                   {selectedUnidad.enBase && selectedUnidad.baseNombre && (
-                    <p className="text-xs text-gray-400">{selectedUnidad.baseNombre}</p>
+                    <p className="text-xs text-gray-400 truncate">{selectedUnidad.baseNombre}</p>
                   )}
+                  <p className="text-[11px] text-gray-500 mt-0.5">{tiempoTranscurrido(selectedUnidad.timestamp)}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (map) {
+                      map.panTo({ lat: selectedUnidad.lat, lng: selectedUnidad.lng });
+                      map.setZoom(16);
+                    }
+                  }}
+                  title="Centrar en mapa"
+                  className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-gray-600 hover:bg-gray-500 text-gray-200 hover:text-white rounded-lg text-sm font-bold transition-colors"
+                >
+                  ↗
+                </button>
+              </div>
+
+              {/* === 2: Patente + Chofer en 2 columnas === */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-gray-700/40 rounded-lg p-3">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide">Patente</p>
+                  <p className="text-white font-bold text-sm mt-0.5">🚙 {selectedUnidad.patente}</p>
+                </div>
+                <div className="bg-gray-700/40 rounded-lg p-3 min-w-0">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide">Chofer</p>
+                  <p className="text-white font-semibold text-sm mt-0.5 truncate" title={selectedUnidad.chofer}>
+                    👤 {selectedUnidad.chofer}
+                  </p>
                 </div>
               </div>
 
-              {/* Información */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 text-white">
-                  <span className="text-xl">🚙</span>
-                  <div>
-                    <p className="text-xs text-gray-400">Patente</p>
-                    <p className="font-bold">{selectedUnidad.patente}</p>
+              {/* HDR — solo si existe */}
+              {selectedUnidad.hdr && (
+                <div className="bg-gray-700/40 rounded-lg p-3 flex items-center gap-2">
+                  <span className="text-base flex-shrink-0">📋</span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide">Hoja de Ruta</p>
+                    <p className="text-blue-400 font-bold text-sm truncate">{selectedUnidad.hdr}</p>
                   </div>
                 </div>
+              )}
 
-                <div className="flex items-center gap-3 text-white">
-                  <span className="text-xl">👤</span>
-                  <div>
-                    <p className="text-xs text-gray-400">Chofer</p>
-                    <p className="font-bold">{selectedUnidad.chofer}</p>
-                  </div>
-                </div>
-
-                {selectedUnidad.hdr && (
-                  <div className="flex items-center gap-3 text-white">
-                    <span className="text-xl">📋</span>
-                    <div>
-                      <p className="text-xs text-gray-400">Hoja de Ruta</p>
-                      <p className="font-bold text-blue-400">{selectedUnidad.hdr}</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3 text-white">
-                  <span className="text-xl">⏱️</span>
-                  <div>
-                    <p className="text-xs text-gray-400">Última actualización</p>
-                    <p className="font-bold">{tiempoTranscurrido(selectedUnidad.timestamp)}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 text-white">
-                  <span className="text-xl">📍</span>
-                  <div>
-                    <p className="text-xs text-gray-400">Coordenadas</p>
-                    <p className="font-mono text-xs">{selectedUnidad.lat.toFixed(5)}, {selectedUnidad.lng.toFixed(5)}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Botón centrar */}
-              <button
-                onClick={() => {
-                  if (map) {
-                    map.panTo({ lat: selectedUnidad.lat, lng: selectedUnidad.lng });
-                    map.setZoom(16);
-                  }
-                }}
-                className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-colors"
-              >
-                  📍 Centrar en Mapa
-              </button>
-
-              {/* Historial de ruta */}
+              {/* === 3: Ruta de hoy === */}
               <div className="border-t border-gray-700 pt-3 space-y-2">
                 <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Ruta de hoy</p>
                 {historialUnidadId === selectedUnidad.id && historialCargado && historialRuta.length === 0 ? (
-                  // Query ejecutada pero sin datos
                   <div className="space-y-2">
                     <div className="bg-gray-700/40 rounded-lg p-3 text-center">
                       <p className="text-gray-400 text-xs">Sin recorrido registrado hoy</p>
@@ -987,7 +974,6 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                     </button>
                   </div>
                 ) : historialUnidadId === selectedUnidad.id && historialRuta.length > 0 ? (
-                  // Hay datos — mostrar stats y opción de ocultar
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <div className="bg-gray-700/60 rounded-lg p-2 text-center">
@@ -1001,6 +987,66 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                         </p>
                       </div>
                     </div>
+                    {/* Card km recorridos + tarifa */}
+                    {(() => {
+                      const kmGPS = historialRuta.length >= 2
+                        ? Math.round(historialRuta.reduce((total, p, i) => {
+                            if (i === 0) return 0;
+                            return total + haversineKm(historialRuta[i-1].lat, historialRuta[i-1].lng, p.lat, p.lng);
+                          }, 0) * 10) / 10
+                        : 0;
+                      const kmParaTarifa = selectedUnidad.kmRecorridos ?? kmGPS;
+                      const tarifa = selectedUnidad.sector === 'distribucion' ? buscarTarifa(kmParaTarifa) : null;
+                      const exportarCSV = () => {
+                        const u = selectedUnidad;
+                        const fecha = new Date().toLocaleDateString('en-CA');
+                        const SEP = ';';
+                        const encabezado = `sep=${SEP}\nINT-${u.unidad} | ${u.patente} | ${u.chofer} | ${fecha} | ${kmGPS} km\n`;
+                        const columnas = ['Fecha','Hora','Latitud','Longitud','Velocidad (km/h)','Km acumulado'].join(SEP) + '\n';
+                        let kmAcum = 0;
+                        const filas = historialRuta.map((p, i) => {
+                          if (i > 0) kmAcum += haversineKm(historialRuta[i-1].lat, historialRuta[i-1].lng, p.lat, p.lng);
+                          return [
+                            p.timestamp.toLocaleDateString('es-AR'),
+                            p.timestamp.toLocaleTimeString('es-AR'),
+                            p.lat.toFixed(6).replace('.', ','),
+                            p.lng.toFixed(6).replace('.', ','),
+                            p.speed.toFixed(1).replace('.', ','),
+                            (Math.round(kmAcum * 10) / 10).toFixed(1).replace('.', ',')
+                          ].join(SEP);
+                        }).join('\n');
+                        const blob = new Blob(['\uFEFF' + encabezado + columnas + filas], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `historial_INT${u.unidad}_${fecha}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      };
+                      return (
+                        <div className="bg-blue-900/40 border border-blue-700/50 rounded-lg p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-blue-300 font-bold text-sm">
+                                🛣️ {selectedUnidad.kmRecorridos ?? kmGPS} km recorridos
+                              </p>
+                              {selectedUnidad.sector === 'distribucion' && (
+                                <p className="text-[10px] text-amber-400 mt-1 truncate" title={tarifa ? `${tarifa.ruta} · ${tarifa.cliente} · ref. ${tarifa.km} km` : 'REPARTO'}>
+                                  🗺️ {tarifa ? `${tarifa.ruta} · ${tarifa.cliente} · ${tarifa.km} km` : 'REPARTO'}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              onClick={exportarCSV}
+                              className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1.5 rounded-lg transition-colors"
+                              title="Descargar CSV del recorrido"
+                            >
+                              ↓ CSV
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <button
                       onClick={limpiarHistorial}
                       className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition-colors"
@@ -1009,7 +1055,6 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                     </button>
                   </div>
                 ) : (
-                  // Estado inicial — botón para cargar
                   <button
                     onClick={() => cargarHistorial(selectedUnidad.id)}
                     disabled={loadingHistorial}
@@ -1019,11 +1064,28 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                   </button>
                 )}
               </div>
+
+              {/* === 4: Performance Service (reservado) === */}
+              <div className="border-t border-gray-700 pt-3">
+                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-2">Servicios</p>
+                <div className="bg-gray-700/20 rounded-lg p-3 text-center">
+                  <p className="text-gray-500 text-xs">🔧 Performance Service</p>
+                  <p className="text-gray-600 text-[10px] mt-1">Próximamente</p>
+                </div>
+              </div>
+
             </div>
           </div>
           </div>
         )}
       </div>
+
+      {/* Overlay Historial de Viajes */}
+      {showHistorial && (
+        <div className="absolute inset-0 z-50 bg-gray-900 overflow-auto">
+          <HistorialViajes onClose={() => setShowHistorial(false)} />
+        </div>
+      )}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import {
   type Novedad
 } from '../types/checklist';
 import { saveChecklist } from '../services/checklistService';
-import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning } from '../utils/toast';
 import { compressAndUploadImage } from '../utils/compressAndUploadImage';
@@ -90,6 +90,30 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
     cargarConfigGPS();
   }, []);
   const [odometro, setOdometro] = useState('');
+  const [ultimoOdometro, setUltimoOdometro] = useState<number | null>(null);
+
+  // Pre-cargar último odómetro calculado al entrar al paso
+  useEffect(() => {
+    if (currentStep !== 'odometro' || !unidad.numero) return;
+    const cargarUltimoOdometro = async () => {
+      try {
+        const ubicDoc = await getDoc(doc(db, 'ubicaciones', `INT-${unidad.numero}`));
+        if (!ubicDoc.exists()) return;
+        const checklistId = ubicDoc.data()?.checklistId;
+        if (!checklistId) return;
+        const checklistDoc = await getDoc(doc(db, 'checklists', checklistId));
+        if (!checklistDoc.exists()) return;
+        const valor = checklistDoc.data()?.odometroFinal?.valor;
+        if (valor && !odometro) {
+          setUltimoOdometro(Math.round(valor));
+          setOdometro(String(Math.round(valor)));
+        }
+      } catch (e) {
+        console.warn('[ChecklistVRAC] No se pudo cargar último odómetro:', e);
+      }
+    };
+    cargarUltimoOdometro();
+  }, [currentStep]); // eslint-disable-line react-hooks/exhaustive-deps
   const [items, setItems] = useState<ItemChecklist[]>(
     ITEMS_CHECKLIST.map(item => ({
       ...item,
@@ -366,12 +390,31 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
 
       // Verificar si GPS está habilitado en la configuración
       if (gpsHabilitadoConfig) {
+        // Cerrar viaje anterior en_curso para esta unidad (si existe)
+        try {
+          const qViajes = query(
+            collection(db, 'viajes'),
+            where('unidad', '==', unidad.numero),
+            where('estado', '==', 'en_curso')
+          );
+          const snap = await getDocs(qViajes);
+          for (const d of snap.docs) {
+            await updateDoc(d.ref, {
+              estado: 'interrumpido',
+              fechaFin: serverTimestamp(),
+            });
+          }
+        } catch (e) {
+          console.warn('[ChecklistVRAC] No se pudo cerrar viaje anterior:', e);
+        }
+
         const success = await gpsTracking.startTracking({
           unidad: unidad.numero,
           patente: unidad.patente,
           chofer,
           checklistId: checklistData.id,
           sector: 'vrac',
+          odometroInicial: checklistData.odometroInicial?.valor ?? 0,
         });
         if (success) {
           setIsSubmitting(false);
@@ -753,9 +796,15 @@ export function ChecklistVRAC({ unidad: unidadProp, cisterna: cisternaProp, chof
               inputMode="numeric"
               autoFocus
             />
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              Ejemplo: 486383
-            </p>
+            {ultimoOdometro !== null ? (
+              <p className="text-xs text-green-600 mt-2 text-center font-medium">
+                ↑ Último viaje registrado: {ultimoOdometro.toLocaleString('es-AR')} km · Editable
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                Ejemplo: 486383
+              </p>
+            )}
 
             {/* Botones */}
             <div className="flex gap-3 mt-6">
