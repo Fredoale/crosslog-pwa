@@ -30,6 +30,7 @@ import {
   eliminarCubierta,
 } from '../../services/cubiertasService';
 import { showSuccess, showError } from '../../utils/toast';
+import { getEstadisticasUnidad, getChecklistsByUnidad } from '../../services/checklistService';
 
 interface PanelCubiertasProps {
   unidadInicial?: string;
@@ -54,6 +55,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
   // Estados para modal de medición/instalación
   const [showModalMedicion, setShowModalMedicion] = useState(false);
   const [posicionSeleccionada, setPosicionSeleccionada] = useState<CubiertaEnPosicion | null>(null);
+  const [auxilioSeleccionado, setAuxilioSeleccionado] = useState<{ slot: number; auxilio: AuxilioSlot } | null>(null);
   const [modoModal, setModoModal] = useState<'medir' | 'instalar'>('medir');
 
   // Estados del formulario de medición
@@ -62,6 +64,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
   const [observaciones, setObservaciones] = useState('');
   const [tecnico, setTecnico] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [fotoMedicion, setFotoMedicion] = useState<string | null>(null);
 
   // Estados para instalación
   const [cubiertaSeleccionadaInstalar, setCubiertaSeleccionadaInstalar] = useState<Cubierta | null>(null);
@@ -131,6 +134,39 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
     }
   };
 
+  // Cargar último km de la unidad desde el checklist
+  const cargarUltimoKm = async (numeroUnidad: string) => {
+    try {
+      console.log('[PanelCubiertas] Buscando último km para unidad:', numeroUnidad);
+
+      // PRIORIDAD 1: Buscar directamente el último checklist (fuente más confiable)
+      const checklists = await getChecklistsByUnidad(numeroUnidad, 1);
+      if (checklists.length > 0) {
+        // Verificar odometroFinal primero (si el checklist está completo), sino odometroInicial
+        const ultimoKm = checklists[0].odometroFinal?.valor || checklists[0].odometroInicial?.valor;
+        if (ultimoKm) {
+          setKmUnidad(ultimoKm.toString());
+          console.log('[PanelCubiertas] Km cargado desde último checklist:', ultimoKm,
+            '(fecha:', checklists[0].fecha?.toLocaleDateString?.() || 'N/A', ')');
+          return;
+        }
+      }
+
+      // FALLBACK: Intentar obtener de estadísticas (puede estar desactualizado)
+      console.log('[PanelCubiertas] No hay checklists, intentando estadísticas...');
+      const estadisticas = await getEstadisticasUnidad(numeroUnidad);
+      if (estadisticas?.ultimoOdometro?.valor) {
+        setKmUnidad(estadisticas.ultimoOdometro.valor.toString());
+        console.log('[PanelCubiertas] Km cargado desde estadísticas (fallback):', estadisticas.ultimoOdometro.valor);
+        return;
+      }
+
+      console.log('[PanelCubiertas] No se encontró km previo para la unidad:', numeroUnidad);
+    } catch (error) {
+      console.error('[PanelCubiertas] Error cargando último km:', error);
+    }
+  };
+
   // Filtrar unidades para el selector
   const unidadesFiltradas = UNIDADES_CONFIG.filter(u =>
     u.numero.toLowerCase().includes(filtroUnidad.toLowerCase()) ||
@@ -148,6 +184,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
   const handlePosicionClick = (posicionId: string, cubierta: CubiertaEnPosicion | null) => {
     if (!cubierta) return;
     setPosicionSeleccionada(cubierta);
+    setAuxilioSeleccionado(null); // Limpiar auxilio
 
     if (cubierta.cubierta) {
       // Si hay cubierta, modo medición
@@ -157,6 +194,10 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
       // Si no hay cubierta, modo instalación
       setModoModal('instalar');
       cargarStock(); // Cargar stock para seleccionar
+      // Cargar último km de la unidad
+      if (unidadSeleccionada) {
+        cargarUltimoKm(unidadSeleccionada);
+      }
     }
 
     setPresionBar('');
@@ -167,11 +208,34 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
   // Manejar click en auxilio
   const handleAuxilioClick = (slot: number, auxilio: AuxilioSlot) => {
     console.log('Auxilio click:', slot, auxilio);
+    setAuxilioSeleccionado({ slot, auxilio });
+    setPosicionSeleccionada(null); // Limpiar posición normal
+
+    if (auxilio.cubierta) {
+      // Si hay cubierta, modo medición
+      setModoModal('medir');
+      setProfundidadMm(auxilio.cubierta.ultimaProfundidadMm?.toString() || '');
+    } else {
+      // Si no hay cubierta, modo instalación
+      setModoModal('instalar');
+      cargarStock();
+      // Cargar último km de la unidad
+      if (unidadSeleccionada) {
+        cargarUltimoKm(unidadSeleccionada);
+      }
+    }
+
+    setPresionBar('');
+    setObservaciones('');
+    setShowModalMedicion(true);
   };
 
   // Guardar medición
   const handleGuardarMedicion = async () => {
-    if (!posicionSeleccionada || !profundidadMm || !tecnico || !estadoCubiertas) {
+    const cubiertaActual = auxilioSeleccionado?.auxilio.cubierta || posicionSeleccionada?.cubierta;
+    const posicionId = auxilioSeleccionado ? `AUXILIO_${auxilioSeleccionado.slot}` : posicionSeleccionada?.posicion.id;
+
+    if ((!posicionSeleccionada && !auxilioSeleccionado) || !profundidadMm || !tecnico || !estadoCubiertas) {
       showError('Complete todos los campos requeridos');
       return;
     }
@@ -184,22 +248,23 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
 
     setGuardando(true);
     try {
-      if (posicionSeleccionada.cubierta) {
+      if (cubiertaActual) {
         console.log('[PanelCubiertas] Guardando medición:', {
-          cubiertaId: posicionSeleccionada.cubierta.id,
+          cubiertaId: cubiertaActual.id,
           profundidadMm: profundidad,
+          posicion: posicionId,
         });
 
         const resultado = await registrarMedicion({
-          cubiertaId: posicionSeleccionada.cubierta.id,
-          cubiertaCodigo: posicionSeleccionada.cubierta.codigo,
+          cubiertaId: cubiertaActual.id,
+          cubiertaCodigo: cubiertaActual.codigo,
           unidadId: estadoCubiertas.unidadId,
           unidadNumero: estadoCubiertas.unidadNumero,
-          posicion: posicionSeleccionada.posicion.id,
+          posicion: posicionId!,
           fecha: new Date(),
           profundidadMm: profundidad,
           presionBar: presionBar ? parseFloat(presionBar) : undefined,
-          estadoDesgaste: calcularEstadoDesgaste(profundidad),
+          estadoDesgaste: calcularEstadoDesgaste(profundidad, obtenerDatosUnidad(unidadSeleccionada)?.sector),
           tecnico,
           observaciones: observaciones || '',
         });
@@ -227,7 +292,9 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
 
   // Instalar cubierta
   const handleInstalarCubierta = async () => {
-    if (!cubiertaSeleccionadaInstalar || !posicionSeleccionada || !estadoCubiertas || !tecnico) {
+    const posicionId = auxilioSeleccionado ? `AUXILIO_${auxilioSeleccionado.slot}` : posicionSeleccionada?.posicion.id;
+
+    if (!cubiertaSeleccionadaInstalar || (!posicionSeleccionada && !auxilioSeleccionado) || !estadoCubiertas || !tecnico) {
       showError('Seleccione una cubierta y complete los campos requeridos');
       return;
     }
@@ -239,14 +306,15 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
         cubiertaCodigo: cubiertaSeleccionadaInstalar.codigo,
         unidadId: estadoCubiertas.unidadId,
         unidadNumero: estadoCubiertas.unidadNumero,
-        posicion: posicionSeleccionada.posicion.id,
+        posicion: posicionId!,
         fecha: new Date(),
         kmUnidad: kmUnidad ? parseInt(kmUnidad) : 0,
         tecnico,
         observaciones: observaciones || undefined,
       });
 
-      showSuccess(`Cubierta ${cubiertaSeleccionadaInstalar.codigo} instalada correctamente`);
+      const ubicacion = auxilioSeleccionado ? `Auxilio ${auxilioSeleccionado.slot}` : posicionSeleccionada?.posicion.label;
+      showSuccess(`Cubierta ${cubiertaSeleccionadaInstalar.codigo} instalada en ${ubicacion}`);
       await cargarEstadoCubiertas();
       await cargarStock();
 
@@ -258,6 +326,23 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
     } finally {
       setGuardando(false);
     }
+  };
+
+  // Abre el modal de crear cubierta con defaults según el sector de la unidad
+  const abrirModalCrearCubierta = () => {
+    const datosUnidad = obtenerDatosUnidad(unidadSeleccionada);
+    const esVitalAire = datosUnidad?.sector === 'vital-aire';
+    setNuevaCubierta({
+      codigo: '',
+      marca: '',
+      modelo: '',
+      medida: esVitalAire ? '195/75 R16C' : '295/80 R22.5',
+      dot: '',
+      tipo: 'LINEAL',
+      tipoUso: 'MIXTA',
+      profundidadInicial: esVitalAire ? '9.5' : '12',
+    });
+    setShowModalCrearCubierta(true);
   };
 
   // Crear nueva cubierta
@@ -321,7 +406,9 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
     setObservaciones('');
     setKmUnidad('');
     setPosicionSeleccionada(null);
+    setAuxilioSeleccionado(null);
     setCubiertaSeleccionadaInstalar(null);
+    setFotoMedicion(null);
   };
 
   // Abrir modal de retiro
@@ -714,7 +801,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                 className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
               <button
-                onClick={() => setShowModalCrearCubierta(true)}
+                onClick={abrirModalCrearCubierta}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold flex items-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -814,7 +901,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
       )}
 
       {/* Modal de Medición/Instalación */}
-      {showModalMedicion && posicionSeleccionada && (
+      {showModalMedicion && (posicionSeleccionada || auxilioSeleccionado) && (
         <div
           className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4"
         >
@@ -826,13 +913,17 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                    <span className="font-bold">{posicionSeleccionada.posicion.numero}</span>
+                    <span className="font-bold">
+                      {auxilioSeleccionado ? `A${auxilioSeleccionado.slot}` : posicionSeleccionada?.posicion.numero}
+                    </span>
                   </div>
                   <div>
                     <h3 className="font-bold">
                       {modoModal === 'instalar' ? 'Instalar Cubierta' : 'Registrar Medición'}
                     </h3>
-                    <p className="text-sm opacity-80">{posicionSeleccionada.posicion.label}</p>
+                    <p className="text-sm opacity-80">
+                      {auxilioSeleccionado ? `Auxilio ${auxilioSeleccionado.slot}` : posicionSeleccionada?.posicion.label}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -870,7 +961,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                           <button
                             onClick={() => {
                               setShowModalMedicion(false);
-                              setShowModalCrearCubierta(true);
+                              abrirModalCrearCubierta();
                             }}
                             className="block mt-2 text-blue-600 hover:underline"
                           >
@@ -880,8 +971,8 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                       ) : (
                         cubiertasStock
                           .filter(c => {
-                            // Si es eje de dirección, solo permitir lineales
-                            if (posicionSeleccionada.posicion.soloLineal && c.tipo === 'RECAPADA') {
+                            // Si es eje de dirección (no auxilio), solo permitir lineales
+                            if (!auxilioSeleccionado && posicionSeleccionada?.posicion.soloLineal && c.tipo === 'RECAPADA') {
                               return false;
                             }
                             return true;
@@ -909,7 +1000,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                           ))
                       )}
                     </div>
-                    {posicionSeleccionada.posicion.soloLineal && (
+                    {!auxilioSeleccionado && posicionSeleccionada?.posicion.soloLineal && (
                       <p className="text-xs text-orange-600 mt-1">
                         * Eje de dirección: Solo cubiertas lineales
                       </p>
@@ -961,14 +1052,14 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
               )}
 
               {/* MODO MEDIR */}
-              {modoModal === 'medir' && posicionSeleccionada.cubierta && (
+              {modoModal === 'medir' && (posicionSeleccionada?.cubierta || auxilioSeleccionado?.auxilio.cubierta) && (
                 <>
                   <div className="bg-gray-50 rounded-lg p-3">
                     <p className="text-sm text-gray-500">Cubierta actual</p>
                     <p className="font-semibold text-gray-800">
-                      {posicionSeleccionada.cubierta.codigo} - {posicionSeleccionada.cubierta.marca}
+                      {(auxilioSeleccionado?.auxilio.cubierta || posicionSeleccionada?.cubierta)?.codigo} - {(auxilioSeleccionado?.auxilio.cubierta || posicionSeleccionada?.cubierta)?.marca}
                     </p>
-                    <p className="text-sm text-gray-600">{posicionSeleccionada.cubierta.medida}</p>
+                    <p className="text-sm text-gray-600">{(auxilioSeleccionado?.auxilio.cubierta || posicionSeleccionada?.cubierta)?.medida}</p>
                   </div>
 
                   {/* Profundidad */}
@@ -1039,6 +1130,71 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                       className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                     />
                   </div>
+
+                  {/* Foto */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Foto (opcional)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setFotoMedicion(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      />
+                      {fotoMedicion && (
+                        <div className="relative w-16 h-16">
+                          <img src={fotoMedicion} alt="Preview" className="w-full h-full object-cover rounded-lg" />
+                          <button
+                            type="button"
+                            onClick={() => setFotoMedicion(null)}
+                            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Botón Generar OT - aparece cuando hay observaciones Y foto */}
+                  {observaciones.trim() && fotoMedicion && onGenerarOT && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                      <p className="text-sm text-orange-700 mb-2">
+                        Se detectó una observación con foto. ¿Desea generar una Orden de Trabajo?
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (estadoCubiertas) {
+                            const cubiertaCodigo = auxilioSeleccionado?.auxilio.cubierta?.codigo || posicionSeleccionada?.cubierta?.codigo || 'N/A';
+                            const posLabel = auxilioSeleccionado ? `Auxilio ${auxilioSeleccionado.slot}` : posicionSeleccionada?.posicion.label || '';
+                            onGenerarOT({
+                              unidadNumero: estadoCubiertas.unidadNumero,
+                              descripcion: `Cubierta ${cubiertaCodigo} (${posLabel}): ${observaciones}`
+                            });
+                          }
+                        }}
+                        className="w-full px-4 py-2 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Generar OT
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1160,11 +1316,17 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                   onChange={(e) => setNuevaCubierta({...nuevaCubierta, medida: e.target.value})}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 >
-                  <option value="295/80 R22.5">295/80 R22.5</option>
-                  <option value="275/80 R22.5">275/80 R22.5</option>
-                  <option value="315/80 R22.5">315/80 R22.5</option>
-                  <option value="11R22.5">11R22.5</option>
-                  <option value="12R22.5">12R22.5</option>
+                  <optgroup label="Camioneta / Vital Aire">
+                    <option value="195/75 R16C">195/75 R16C</option>
+                    <option value="205/70 R15C">205/70 R15C</option>
+                  </optgroup>
+                  <optgroup label="Camión / VRAC / Distribución">
+                    <option value="295/80 R22.5">295/80 R22.5</option>
+                    <option value="275/80 R22.5">275/80 R22.5</option>
+                    <option value="315/80 R22.5">315/80 R22.5</option>
+                    <option value="11R22.5">11R22.5</option>
+                    <option value="12R22.5">12R22.5</option>
+                  </optgroup>
                 </select>
               </div>
 
@@ -1173,30 +1335,37 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Estado *
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setNuevaCubierta({...nuevaCubierta, tipo: 'LINEAL'})}
-                    className={`p-3 rounded-lg border-2 font-semibold transition-colors ${
-                      nuevaCubierta.tipo === 'LINEAL'
-                        ? 'border-green-500 bg-green-50 text-green-700'
-                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Nueva (Lineal)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNuevaCubierta({...nuevaCubierta, tipo: 'RECAPADA'})}
-                    className={`p-3 rounded-lg border-2 font-semibold transition-colors ${
-                      nuevaCubierta.tipo === 'RECAPADA'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    Recapada
-                  </button>
-                </div>
+                {(() => {
+                  const esVitalAire = obtenerDatosUnidad(unidadSeleccionada)?.sector === 'vital-aire';
+                  return (
+                    <div className={`grid gap-3 ${esVitalAire ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setNuevaCubierta({...nuevaCubierta, tipo: 'LINEAL'})}
+                        className={`p-3 rounded-lg border-2 font-semibold transition-colors ${
+                          nuevaCubierta.tipo === 'LINEAL'
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        Nueva
+                      </button>
+                      {!esVitalAire && (
+                        <button
+                          type="button"
+                          onClick={() => setNuevaCubierta({...nuevaCubierta, tipo: 'RECAPADA'})}
+                          className={`p-3 rounded-lg border-2 font-semibold transition-colors ${
+                            nuevaCubierta.tipo === 'RECAPADA'
+                              ? 'border-blue-500 bg-blue-50 text-blue-700'
+                              : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          Recapada
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Tipo de Uso */}

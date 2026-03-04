@@ -45,7 +45,9 @@ public class CrosslogGpsService extends Service {
     public static final String EVENT_BASE = "GPS_BASE";
 
     private static final double GEOFENCE_RADIUS = 100.0;      // metros — llegada a base
-    private static final double DEPARTURE_THRESHOLD = 500.0;   // metros — salida de base
+    private static final double DEPARTURE_THRESHOLD = 50.0;    // metros — salida de base
+    private static final float  MAX_ACCURACY_METERS = 50.0f;  // descartar puntos con error > 50m
+    private static final double MAX_SPEED_KMH = 130.0;        // cap de velocidad máxima razonable
 
     // Bases Crosslog (lat, lng)
     private static final double[][] BASES = {
@@ -205,14 +207,36 @@ public class CrosslogGpsService extends Service {
             @Override
             public void onLocationResult(LocationResult result) {
                 if (result.getLastLocation() != null) {
-                    double lat = result.getLastLocation().getLatitude();
-                    double lng = result.getLastLocation().getLongitude();
+                    android.location.Location loc = result.getLastLocation();
 
-                    // Calcular velocidad desde posición/tiempo (getSpeed() suele devolver 0)
-                    double speedKmh = 0.0;
+                    // Descartar puntos con baja precisión (GPS noise)
+                    if (loc.hasAccuracy() && loc.getAccuracy() > MAX_ACCURACY_METERS) {
+                        Log.w(TAG, "⚠️ Punto descartado — accuracy: " + (int) loc.getAccuracy() + "m > " + (int) MAX_ACCURACY_METERS + "m");
+                        return;
+                    }
+
+                    double lat = loc.getLatitude();
+                    double lng = loc.getLongitude();
                     long ahora = System.currentTimeMillis();
-                    float gpsSpeedMs = result.getLastLocation().getSpeed();
-                    if (result.getLastLocation().hasSpeed() && gpsSpeedMs > 0.5f) {
+
+                    // Verificación de consistencia posicional — SIEMPRE, independiente de getSpeed()
+                    // Detecta saltos imposibles aunque el GPS reporte velocidad razonable
+                    if (!Double.isNaN(latAnterior) && timestampAnterior > 0) {
+                        double distMetros = calcularDistancia(latAnterior, lngAnterior, lat, lng);
+                        double tiempoSeg = (ahora - timestampAnterior) / 1000.0;
+                        if (tiempoSeg > 1.0 && distMetros > 5.0) {
+                            double velocidadPosicional = distMetros / tiempoSeg * 3.6;
+                            if (velocidadPosicional > MAX_SPEED_KMH) {
+                                Log.w(TAG, "⚠️ Salto posicional irreal descartado: " + (int) velocidadPosicional + " km/h | " + (int) distMetros + "m en " + (int) tiempoSeg + "s");
+                                return;
+                            }
+                        }
+                    }
+
+                    // Velocidad para mostrar: preferir GPS speed, fallback a posicional
+                    double speedKmh = 0.0;
+                    float gpsSpeedMs = loc.getSpeed();
+                    if (loc.hasSpeed() && gpsSpeedMs > 0.5f) {
                         speedKmh = Math.round(gpsSpeedMs * 3.6 * 10.0) / 10.0;
                     } else if (!Double.isNaN(latAnterior) && timestampAnterior > 0) {
                         double distMetros = calcularDistancia(latAnterior, lngAnterior, lat, lng);
@@ -223,7 +247,7 @@ public class CrosslogGpsService extends Service {
                     }
                     timestampAnterior = ahora;
 
-                    Log.d(TAG, "📍 Posición recibida: " + lat + ", " + lng + " | " + speedKmh + " km/h");
+                    Log.d(TAG, "📍 Posición recibida: " + lat + ", " + lng + " | " + speedKmh + " km/h | acc: " + (loc.hasAccuracy() ? (int) loc.getAccuracy() + "m" : "N/A"));
                     processLocation(lat, lng, speedKmh);
                 }
             }
@@ -380,6 +404,7 @@ public class CrosslogGpsService extends Service {
         // Actualizar ubicaciones para display en PanelFlota
         Map<String, Object> ubicUpdate = new HashMap<>();
         ubicUpdate.put("kmRecorridos", kmTotal);
+        ubicUpdate.put("ultimoOdometro", odometroFinalValor);
         db.collection("ubicaciones").document("INT-" + unidad)
             .update(ubicUpdate)
             .addOnFailureListener(e -> Log.e(TAG, "❌ Error guardando km en ubicaciones: " + e.getMessage()));

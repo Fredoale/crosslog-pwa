@@ -93,7 +93,7 @@ function calcularProximoCiclo(kmActual: number): '80K' | '160K' {
  */
 function calcularProximoKm(kmActual: number, tipo: '40K' | '80K' | '160K'): number {
   const intervalo = tipo === '40K' ? CONFIG.INTERVALO_40K : CONFIG.INTERVALO_80K;
-  const multiplo = Math.ceil(kmActual / intervalo);
+  const multiplo = Math.floor(kmActual / intervalo) + 1; // siempre el próximo múltiplo (evita 0 cuando km=0)
   return multiplo * intervalo;
 }
 

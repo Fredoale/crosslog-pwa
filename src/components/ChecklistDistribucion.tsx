@@ -179,11 +179,7 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
       try {
         const ubicDoc = await getDoc(doc(db, 'ubicaciones', `INT-${unidad}`));
         if (!ubicDoc.exists()) return;
-        const checklistId = ubicDoc.data()?.checklistId;
-        if (!checklistId) return;
-        const checklistDoc = await getDoc(doc(db, 'checklists', checklistId));
-        if (!checklistDoc.exists()) return;
-        const valor = checklistDoc.data()?.odometroFinal?.valor;
+        const valor = ubicDoc.data()?.ultimoOdometro;
         if (valor) {
           setUltimoOdometro(Math.round(valor));
           setOdometro(String(Math.round(valor)));

@@ -24,12 +24,13 @@ public class CrosslogGpsPlugin extends Plugin {
 
     @PluginMethod
     public void startTracking(PluginCall call) {
-        String unidad     = call.getString("unidad", "");
-        String patente    = call.getString("patente", "");
-        String chofer     = call.getString("chofer", "");
+        String unidad      = call.getString("unidad", "");
+        String patente     = call.getString("patente", "");
+        String chofer      = call.getString("chofer", "");
         String checklistId = call.getString("checklistId", "");
-        String sector     = call.getString("sector", "vrac");
-        String hdr        = call.getString("hdr", "");
+        String sector      = call.getString("sector", "vrac");
+        String hdr         = call.getString("hdr", "");
+        double odometroInicial = call.getDouble("odometroInicial", 0.0);
 
         // Registrar callback antes de iniciar el servicio
         CrosslogGpsService.eventCallback = new CrosslogGpsService.EventCallback() {
@@ -51,12 +52,13 @@ public class CrosslogGpsPlugin extends Plugin {
 
         // Iniciar foreground service
         Intent intent = new Intent(getContext(), CrosslogGpsService.class);
-        intent.putExtra("unidad",      unidad);
-        intent.putExtra("patente",     patente);
-        intent.putExtra("chofer",      chofer);
-        intent.putExtra("checklistId", checklistId);
-        intent.putExtra("sector",      sector);
-        intent.putExtra("hdr",         hdr);
+        intent.putExtra("unidad",          unidad);
+        intent.putExtra("patente",         patente);
+        intent.putExtra("chofer",          chofer);
+        intent.putExtra("checklistId",     checklistId);
+        intent.putExtra("sector",          sector);
+        intent.putExtra("hdr",             hdr);
+        intent.putExtra("odometroInicial", odometroInicial);
         getContext().startForegroundService(intent);
 
         JSObject result = new JSObject();

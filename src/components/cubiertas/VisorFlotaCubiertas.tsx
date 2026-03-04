@@ -10,6 +10,7 @@ import type {
   AlertaCubierta,
   ResumenFlotaCubiertas,
   CubiertaEnPosicion,
+  AuxilioSlot,
 } from '../../types/cubiertas';
 import { CONFIG_CUBIERTAS } from '../../types/cubiertas';
 import {
@@ -24,7 +25,7 @@ interface VisorFlotaCubiertasProps {
   onGenerarOT?: (datos: { unidadNumero: string; descripcion: string }) => void;
 }
 
-type FiltroSector = 'todos' | 'distribucion' | 'vrac';
+type FiltroSector = 'todos' | 'distribucion' | 'vrac' | 'vital-aire';
 type FiltroEstado = 'todos' | 'critico' | 'regular' | 'ok';
 
 export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
@@ -45,6 +46,7 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
   // Modal de detalle
   const [modalUnidad, setModalUnidad] = useState<EstadoCubiertasUnidad | null>(null);
   const [cubiertaSeleccionada, setCubiertaSeleccionada] = useState<CubiertaEnPosicion | null>(null);
+  const [auxilioSeleccionado, setAuxilioSeleccionado] = useState<{ slot: number; auxilio: AuxilioSlot } | null>(null);
   const [loadingModal, setLoadingModal] = useState(false);
 
   // Cargar datos iniciales
@@ -141,7 +143,14 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
   const handleSeleccionarCubierta = (posicionId: string, cubierta: CubiertaEnPosicion | null) => {
     if (cubierta) {
       setCubiertaSeleccionada(cubierta);
+      setAuxilioSeleccionado(null); // Limpiar auxilio al seleccionar posición
     }
+  };
+
+  // Seleccionar auxilio en el modal
+  const handleSeleccionarAuxilio = (slot: number, auxilio: AuxilioSlot) => {
+    setAuxilioSeleccionado({ slot, auxilio });
+    setCubiertaSeleccionada(null); // Limpiar cubierta al seleccionar auxilio
   };
 
   // Obtener color de desgaste
@@ -290,41 +299,44 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
       )}
 
       {/* Filtros y vistas */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-        <div className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex flex-wrap gap-3">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4">
+        <div className="space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-4 sm:items-center sm:justify-between">
+          {/* Filtros */}
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
             <input
               type="text"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar unidad..."
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-40"
+              placeholder="Buscar..."
+              className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
             <select
               value={filtroSector}
               onChange={(e) => setFiltroSector(e.target.value as FiltroSector)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
             >
               <option value="todos">Todos los sectores</option>
-              <option value="distribucion">Distribución</option>
               <option value="vrac">VRAC</option>
+              <option value="distribucion">Distribución</option>
+              <option value="vital-aire">Vital Aire</option>
             </select>
             <select
               value={filtroEstado}
               onChange={(e) => setFiltroEstado(e.target.value as FiltroEstado)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
             >
               <option value="todos">Todos los estados</option>
-              <option value="critico">Con alertas críticas</option>
-              <option value="regular">Con alertas regulares</option>
+              <option value="critico">Críticas</option>
+              <option value="regular">Regulares</option>
               <option value="ok">Sin alertas</option>
             </select>
           </div>
 
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          {/* Botones de vista */}
+          <div className="flex bg-gray-100 rounded-lg p-1 w-full sm:w-auto">
             <button
               onClick={() => setVistaActiva('grid')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 vistaActiva === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'
               }`}
             >
@@ -332,7 +344,7 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
             </button>
             <button
               onClick={() => setVistaActiva('alertas')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 vistaActiva === 'alertas' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'
               }`}
             >
@@ -439,32 +451,105 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
               <p className="text-gray-400 text-sm mt-1">Todas las cubiertas están en buen estado</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200">
-              <div className="px-4 py-3 bg-gray-50 grid grid-cols-12 gap-4 text-sm font-semibold text-gray-600">
-                <div className="col-span-2">Unidad</div>
-                <div className="col-span-2">Posición</div>
-                <div className="col-span-2">Cubierta</div>
-                <div className="col-span-3">Alerta</div>
-                <div className="col-span-2">Prioridad</div>
-                <div className="col-span-1"></div>
+            <>
+              {/* Vista de tabla para desktop */}
+              <div className="hidden md:block divide-y divide-gray-200">
+                <div className="px-4 py-3 bg-gray-50 grid grid-cols-12 gap-4 text-sm font-semibold text-gray-600">
+                  <div className="col-span-2">Unidad</div>
+                  <div className="col-span-2">Posición</div>
+                  <div className="col-span-2">Cubierta</div>
+                  <div className="col-span-3">Alerta</div>
+                  <div className="col-span-2">Prioridad</div>
+                  <div className="col-span-1"></div>
+                </div>
+
+                {alertas.map(alerta => (
+                  <div
+                    key={alerta.id}
+                    className={`px-4 py-3 grid grid-cols-12 gap-4 items-center text-sm hover:bg-gray-50 cursor-pointer ${
+                      alerta.prioridad === 'ALTA' ? 'bg-red-50' :
+                      alerta.prioridad === 'MEDIA' ? 'bg-amber-50' : ''
+                    }`}
+                    onClick={() => abrirModalDetalle(alerta.unidadNumero)}
+                  >
+                    <div className="col-span-2">
+                      <span className="font-semibold">INT-{alerta.unidadNumero}</span>
+                    </div>
+                    <div className="col-span-2 text-gray-600">{alerta.posicion}</div>
+                    <div className="col-span-2 font-mono text-gray-700">{alerta.cubiertaCodigo}</div>
+                    <div className="col-span-3">
+                      <p className="text-gray-800">{alerta.mensaje}</p>
+                      {alerta.profundidadMm !== undefined && (
+                        <span className={`text-xs font-semibold ${
+                          alerta.profundidadMm < CONFIG_CUBIERTAS.UMBRAL_CRITICO ? 'text-red-600' : 'text-amber-600'
+                        }`}>
+                          {alerta.profundidadMm} mm
+                        </span>
+                      )}
+                    </div>
+                    <div className="col-span-2">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                        alerta.prioridad === 'ALTA' ? 'bg-red-100 text-red-700' :
+                        alerta.prioridad === 'MEDIA' ? 'bg-amber-100 text-amber-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {alerta.prioridad}
+                      </span>
+                    </div>
+                    <div className="col-span-1 flex gap-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); abrirModalDetalle(alerta.unidadNumero); }}
+                        className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                        title="Ver detalle"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              {alertas.map(alerta => (
-                <div
-                  key={alerta.id}
-                  className={`px-4 py-3 grid grid-cols-12 gap-4 items-center text-sm hover:bg-gray-50 cursor-pointer ${
-                    alerta.prioridad === 'ALTA' ? 'bg-red-50' :
-                    alerta.prioridad === 'MEDIA' ? 'bg-amber-50' : ''
-                  }`}
-                  onClick={() => abrirModalDetalle(alerta.unidadNumero)}
-                >
-                  <div className="col-span-2">
-                    <span className="font-semibold">INT-{alerta.unidadNumero}</span>
-                  </div>
-                  <div className="col-span-2 text-gray-600">{alerta.posicion}</div>
-                  <div className="col-span-2 font-mono text-gray-700">{alerta.cubiertaCodigo}</div>
-                  <div className="col-span-3">
-                    <p className="text-gray-800">{alerta.mensaje}</p>
+              {/* Vista de tarjetas para móvil */}
+              <div className="md:hidden divide-y divide-gray-200">
+                {alertas.map(alerta => (
+                  <div
+                    key={alerta.id}
+                    className={`p-3 cursor-pointer ${
+                      alerta.prioridad === 'ALTA' ? 'bg-red-50' :
+                      alerta.prioridad === 'MEDIA' ? 'bg-amber-50' : ''
+                    }`}
+                    onClick={() => abrirModalDetalle(alerta.unidadNumero)}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-800">INT-{alerta.unidadNumero}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          alerta.prioridad === 'ALTA' ? 'bg-red-100 text-red-700' :
+                          alerta.prioridad === 'MEDIA' ? 'bg-amber-100 text-amber-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {alerta.prioridad}
+                        </span>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); abrirModalDetalle(alerta.unidadNumero); }}
+                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
+                      <span className="font-medium">{alerta.posicion}</span>
+                      <span className="text-gray-400">•</span>
+                      <span className="font-mono">{alerta.cubiertaCodigo}</span>
+                    </div>
+                    <p className="text-sm text-gray-800">{alerta.mensaje}</p>
                     {alerta.profundidadMm !== undefined && (
                       <span className={`text-xs font-semibold ${
                         alerta.profundidadMm < CONFIG_CUBIERTAS.UMBRAL_CRITICO ? 'text-red-600' : 'text-amber-600'
@@ -473,30 +558,9 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                       </span>
                     )}
                   </div>
-                  <div className="col-span-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      alerta.prioridad === 'ALTA' ? 'bg-red-100 text-red-700' :
-                      alerta.prioridad === 'MEDIA' ? 'bg-amber-100 text-amber-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {alerta.prioridad}
-                    </span>
-                  </div>
-                  <div className="col-span-1 flex gap-1">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); abrirModalDetalle(alerta.unidadNumero); }}
-                      className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
-                      title="Ver detalle"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -540,7 +604,7 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                     </div>
                   </div>
                   <button
-                    onClick={() => { setModalUnidad(null); setCubiertaSeleccionada(null); }}
+                    onClick={() => { setModalUnidad(null); setCubiertaSeleccionada(null); setAuxilioSeleccionado(null); }}
                     className="p-2 hover:bg-white/20 rounded-lg transition-colors"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -566,20 +630,23 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                         cubiertas={modalUnidad.cubiertas}
                         auxilios={modalUnidad.auxilios}
                         onPosicionClick={handleSeleccionarCubierta}
+                        onAuxilioClick={handleSeleccionarAuxilio}
                         mostrarNumeros={true}
                       />
                     </div>
 
                     {/* Panel de detalle de cubierta */}
                     <div className="space-y-4">
-                      {cubiertaSeleccionada ? (
+                      {(cubiertaSeleccionada || auxilioSeleccionado) ? (
                         <>
-                          {/* Diagrama de cubierta individual */}
+                          {/* Diagrama de cubierta/auxilio individual */}
                           <div className={`rounded-xl p-3 sm:p-6 ${
-                            cubiertaSeleccionada.estadoDesgaste === 'CRITICO' ? 'bg-red-50 border-2 border-red-200' :
-                            cubiertaSeleccionada.estadoDesgaste === 'REGULAR' ? 'bg-amber-50 border-2 border-amber-200' :
-                            cubiertaSeleccionada.estadoDesgaste === 'BUENO' ? 'bg-green-50 border-2 border-green-200' :
-                            'bg-gray-50 border-2 border-gray-200'
+                            auxilioSeleccionado
+                              ? (auxilioSeleccionado.auxilio.cubierta ? 'bg-blue-50 border-2 border-blue-200' : 'bg-gray-50 border-2 border-gray-200')
+                              : cubiertaSeleccionada?.estadoDesgaste === 'CRITICO' ? 'bg-red-50 border-2 border-red-200' :
+                                cubiertaSeleccionada?.estadoDesgaste === 'REGULAR' ? 'bg-amber-50 border-2 border-amber-200' :
+                                cubiertaSeleccionada?.estadoDesgaste === 'BUENO' ? 'bg-green-50 border-2 border-green-200' :
+                                'bg-gray-50 border-2 border-gray-200'
                           }`}>
                             <div className="flex items-start gap-3 sm:gap-6">
                               {/* SVG de cubierta individual */}
@@ -591,16 +658,20 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                                     cy="60"
                                     r="55"
                                     fill={
-                                      cubiertaSeleccionada.estadoDesgaste === 'CRITICO' ? '#FEE2E2' :
-                                      cubiertaSeleccionada.estadoDesgaste === 'REGULAR' ? '#FEF3C7' :
-                                      cubiertaSeleccionada.estadoDesgaste === 'BUENO' ? '#D1FAE5' :
-                                      '#F3F4F6'
+                                      auxilioSeleccionado
+                                        ? (auxilioSeleccionado.auxilio.cubierta ? '#DBEAFE' : '#F3F4F6')
+                                        : cubiertaSeleccionada?.estadoDesgaste === 'CRITICO' ? '#FEE2E2' :
+                                          cubiertaSeleccionada?.estadoDesgaste === 'REGULAR' ? '#FEF3C7' :
+                                          cubiertaSeleccionada?.estadoDesgaste === 'BUENO' ? '#D1FAE5' :
+                                          '#F3F4F6'
                                     }
                                     stroke={
-                                      cubiertaSeleccionada.estadoDesgaste === 'CRITICO' ? '#EF4444' :
-                                      cubiertaSeleccionada.estadoDesgaste === 'REGULAR' ? '#F59E0B' :
-                                      cubiertaSeleccionada.estadoDesgaste === 'BUENO' ? '#10B981' :
-                                      '#9CA3AF'
+                                      auxilioSeleccionado
+                                        ? (auxilioSeleccionado.auxilio.cubierta ? '#3B82F6' : '#9CA3AF')
+                                        : cubiertaSeleccionada?.estadoDesgaste === 'CRITICO' ? '#EF4444' :
+                                          cubiertaSeleccionada?.estadoDesgaste === 'REGULAR' ? '#F59E0B' :
+                                          cubiertaSeleccionada?.estadoDesgaste === 'BUENO' ? '#10B981' :
+                                          '#9CA3AF'
                                     }
                                     strokeWidth="4"
                                   />
@@ -611,10 +682,12 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                                     r="45"
                                     fill="none"
                                     stroke={
-                                      cubiertaSeleccionada.estadoDesgaste === 'CRITICO' ? '#DC2626' :
-                                      cubiertaSeleccionada.estadoDesgaste === 'REGULAR' ? '#D97706' :
-                                      cubiertaSeleccionada.estadoDesgaste === 'BUENO' ? '#059669' :
-                                      '#6B7280'
+                                      auxilioSeleccionado
+                                        ? (auxilioSeleccionado.auxilio.cubierta ? '#2563EB' : '#6B7280')
+                                        : cubiertaSeleccionada?.estadoDesgaste === 'CRITICO' ? '#DC2626' :
+                                          cubiertaSeleccionada?.estadoDesgaste === 'REGULAR' ? '#D97706' :
+                                          cubiertaSeleccionada?.estadoDesgaste === 'BUENO' ? '#059669' :
+                                          '#6B7280'
                                     }
                                     strokeWidth="8"
                                     strokeDasharray="10 3"
@@ -623,7 +696,7 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                                   <circle cx="60" cy="60" r="25" fill="#E5E7EB" stroke="#9CA3AF" strokeWidth="2" />
                                   <circle cx="60" cy="60" r="15" fill="#D1D5DB" stroke="#9CA3AF" strokeWidth="1" />
                                   {/* Centro con número */}
-                                  <circle cx="60" cy="60" r="18" fill="#374151" />
+                                  <circle cx="60" cy="60" r="18" fill={auxilioSeleccionado ? '#3B82F6' : '#374151'} />
                                   <text
                                     x="60"
                                     y="65"
@@ -632,34 +705,46 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                                     fontSize="16"
                                     fontWeight="bold"
                                   >
-                                    {cubiertaSeleccionada.posicion.numero}
+                                    {auxilioSeleccionado ? `A${auxilioSeleccionado.slot}` : cubiertaSeleccionada?.posicion.numero}
                                   </text>
                                 </svg>
                               </div>
 
-                              {/* Info de la cubierta */}
+                              {/* Info de la cubierta/auxilio */}
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-2">
                                   <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-                                    cubiertaSeleccionada.estadoDesgaste === 'CRITICO' ? 'bg-red-500 text-white' :
-                                    cubiertaSeleccionada.estadoDesgaste === 'REGULAR' ? 'bg-amber-500 text-white' :
-                                    cubiertaSeleccionada.estadoDesgaste === 'BUENO' ? 'bg-green-500 text-white' :
-                                    'bg-gray-500 text-white'
+                                    auxilioSeleccionado
+                                      ? (auxilioSeleccionado.auxilio.cubierta ? 'bg-blue-500 text-white' : 'bg-gray-500 text-white')
+                                      : cubiertaSeleccionada?.estadoDesgaste === 'CRITICO' ? 'bg-red-500 text-white' :
+                                        cubiertaSeleccionada?.estadoDesgaste === 'REGULAR' ? 'bg-amber-500 text-white' :
+                                        cubiertaSeleccionada?.estadoDesgaste === 'BUENO' ? 'bg-green-500 text-white' :
+                                        'bg-gray-500 text-white'
                                   }`}>
-                                    {cubiertaSeleccionada.estadoDesgaste || 'SIN CUBIERTA'}
+                                    {auxilioSeleccionado
+                                      ? (auxilioSeleccionado.auxilio.cubierta ? 'AUXILIO' : 'VACÍO')
+                                      : (cubiertaSeleccionada?.estadoDesgaste || 'SIN CUBIERTA')}
                                   </span>
                                   <span className="text-gray-500 text-sm">
-                                    Posición {cubiertaSeleccionada.posicion.numero}
+                                    {auxilioSeleccionado ? `Auxilio ${auxilioSeleccionado.slot}` : `Posición ${cubiertaSeleccionada?.posicion.numero}`}
                                   </span>
                                 </div>
 
                                 <h4 className="text-lg font-bold text-gray-800 mb-1">
-                                  {cubiertaSeleccionada.posicion.label}
+                                  {auxilioSeleccionado ? `Auxilio ${auxilioSeleccionado.slot}` : cubiertaSeleccionada?.posicion.label}
                                 </h4>
 
-                                {cubiertaSeleccionada.cubierta ? (
+                                {auxilioSeleccionado ? (
+                                  auxilioSeleccionado.auxilio.cubierta ? (
+                                    <p className="text-gray-600">
+                                      {auxilioSeleccionado.auxilio.cubierta.codigo} - {auxilioSeleccionado.auxilio.cubierta.marca}
+                                    </p>
+                                  ) : (
+                                    <p className="text-gray-400 italic">Sin cubierta de auxilio</p>
+                                  )
+                                ) : cubiertaSeleccionada?.cubierta ? (
                                   <p className="text-gray-600">
-                                    {cubiertaSeleccionada.cubierta.codigo} - {cubiertaSeleccionada.cubierta.marca}
+                                    {cubiertaSeleccionada!.cubierta!.codigo} - {cubiertaSeleccionada!.cubierta!.marca}
                                   </p>
                                 ) : (
                                   <p className="text-gray-400 italic">Sin cubierta instalada</p>
@@ -668,25 +753,25 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                             </div>
                           </div>
 
-                          {/* Detalles de la cubierta */}
-                          {cubiertaSeleccionada.cubierta && (
+                          {/* Detalles de la cubierta o auxilio */}
+                          {(cubiertaSeleccionada?.cubierta || auxilioSeleccionado?.auxilio.cubierta) && (
                             <div className="bg-white rounded-xl border border-gray-200 p-2 sm:p-4 space-y-3 sm:space-y-4">
                               {/* Barra de desgaste */}
                               <div>
                                 <div className="flex justify-between text-sm mb-2">
                                   <span className="text-gray-600">Desgaste de banda</span>
-                                  <span className={`font-bold ${getColorDesgaste(cubiertaSeleccionada.cubierta.ultimaProfundidadMm).text}`}>
-                                    {cubiertaSeleccionada.cubierta.ultimaProfundidadMm ?? '?'} mm
+                                  <span className={`font-bold ${getColorDesgaste((auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.ultimaProfundidadMm).text}`}>
+                                    {(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.ultimaProfundidadMm ?? '?'} mm
                                   </span>
                                 </div>
                                 <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
                                   <div
                                     className={`h-full transition-all ${
-                                      (cubiertaSeleccionada.cubierta.ultimaProfundidadMm ?? 0) >= CONFIG_CUBIERTAS.UMBRAL_BUENO ? 'bg-green-500' :
-                                      (cubiertaSeleccionada.cubierta.ultimaProfundidadMm ?? 0) >= CONFIG_CUBIERTAS.UMBRAL_CRITICO ? 'bg-amber-500' :
+                                      ((auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.ultimaProfundidadMm ?? 0) >= CONFIG_CUBIERTAS.UMBRAL_BUENO ? 'bg-green-500' :
+                                      ((auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.ultimaProfundidadMm ?? 0) >= CONFIG_CUBIERTAS.UMBRAL_CRITICO ? 'bg-amber-500' :
                                       'bg-red-500'
                                     }`}
-                                    style={{ width: `${calcularPorcentajeDesgaste(cubiertaSeleccionada.cubierta.ultimaProfundidadMm)}%` }}
+                                    style={{ width: `${calcularPorcentajeDesgaste((auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.ultimaProfundidadMm)}%` }}
                                   />
                                 </div>
                                 <div className="flex justify-between text-xs text-gray-400 mt-1">
@@ -699,48 +784,48 @@ export function VisorFlotaCubiertas({ onGenerarOT }: VisorFlotaCubiertasProps) {
                               <div className="grid grid-cols-2 gap-2 sm:gap-4">
                                 <div className="bg-gray-50 rounded-lg p-2 sm:p-3">
                                   <p className="text-xs text-gray-500 mb-1">Código</p>
-                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{cubiertaSeleccionada.cubierta.codigo}</p>
+                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.codigo}</p>
                                 </div>
                                 <div className="bg-gray-50 rounded-lg p-2 sm:p-3">
                                   <p className="text-xs text-gray-500 mb-1">Tipo</p>
                                   <p className={`font-bold text-sm sm:text-base ${
-                                    cubiertaSeleccionada.cubierta.tipo === 'LINEAL' ? 'text-green-600' : 'text-blue-600'
+                                    (auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.tipo === 'LINEAL' ? 'text-green-600' : 'text-blue-600'
                                   }`}>
-                                    {cubiertaSeleccionada.cubierta.tipo === 'LINEAL' ? 'NUEVA' : 'RECAPADA'}
+                                    {(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.tipo === 'LINEAL' ? 'NUEVA' : 'RECAPADA'}
                                   </p>
                                 </div>
                                 <div className="bg-gray-50 rounded-lg p-2 sm:p-3">
                                   <p className="text-xs text-gray-500 mb-1">Marca</p>
-                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{cubiertaSeleccionada.cubierta.marca}</p>
+                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.marca}</p>
                                 </div>
                                 <div className="bg-gray-50 rounded-lg p-2 sm:p-3">
                                   <p className="text-xs text-gray-500 mb-1">Medida</p>
-                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{cubiertaSeleccionada.cubierta.medida}</p>
+                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.medida}</p>
                                 </div>
                                 <div className="bg-gray-50 rounded-lg p-2 sm:p-3">
                                   <p className="text-xs text-gray-500 mb-1">Km Totales</p>
-                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{cubiertaSeleccionada.cubierta.kmTotales.toLocaleString()} km</p>
+                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.kmTotales.toLocaleString()} km</p>
                                 </div>
                                 <div className="bg-gray-50 rounded-lg p-2 sm:p-3">
                                   <p className="text-xs text-gray-500 mb-1">Recapados</p>
-                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{cubiertaSeleccionada.cubierta.recapados} veces</p>
+                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.recapados} veces</p>
                                 </div>
                               </div>
 
                               {/* DOT si existe */}
-                              {cubiertaSeleccionada.cubierta.dot && (
+                              {(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.dot && (
                                 <div className="bg-gray-50 rounded-lg p-2 sm:p-3">
                                   <p className="text-xs text-gray-500 mb-1">Código DOT</p>
-                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{cubiertaSeleccionada.cubierta.dot}</p>
+                                  <p className="font-bold text-gray-800 text-sm sm:text-base">{(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.dot}</p>
                                 </div>
                               )}
 
                               {/* Botón generar OT si es crítico */}
-                              {onGenerarOT && cubiertaSeleccionada.estadoDesgaste === 'CRITICO' && (
+                              {onGenerarOT && cubiertaSeleccionada?.estadoDesgaste === 'CRITICO' && (
                                 <button
                                   onClick={() => onGenerarOT({
                                     unidadNumero: modalUnidad.unidadNumero,
-                                    descripcion: `Cambio cubierta ${cubiertaSeleccionada.cubierta!.codigo} - Posición ${cubiertaSeleccionada.posicion.numero} - Estado crítico`
+                                    descripcion: `Cambio cubierta ${(auxilioSeleccionado?.auxilio.cubierta || cubiertaSeleccionada?.cubierta)!.codigo} - Posición ${cubiertaSeleccionada.posicion.numero} - Estado crítico`
                                   })}
                                   className="w-full px-4 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
                                 >

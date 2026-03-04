@@ -8,7 +8,8 @@
 // ============================================
 
 export type EstadoCubierta = 'NUEVA' | 'EN_USO' | 'RECAPADA' | 'BAJA' | 'AUXILIO' | 'EN_RECAPADO' | 'EN_STOCK';
-export type EstadoDesgaste = 'BUENO' | 'REGULAR' | 'CRITICO'; // >6mm, 4-6mm, <4mm
+export type EstadoDesgaste = 'BUENO' | 'REGULAR' | 'CRITICO'; // >6mm, 4-6mm, <4mm (VRAC/Dist) | >6mm, 3-5mm, <3mm (Vital Aire)
+export type SectorCubierta = 'vrac' | 'distribucion' | 'vital-aire';
 export type TipoCubierta = 'LINEAL' | 'RECAPADA';
 export type LadoCubierta = 'IZQ' | 'DER';
 export type TipoPosicion = 'SIMPLE' | 'DUAL_EXT' | 'DUAL_INT';
@@ -22,14 +23,17 @@ export type TipoUsoCubierta =
 
 // Tipos de vehículos según configuración de cubiertas
 export type TipoVehiculo =
-  | 'CAMIONETA'        // 2 ejes, 6 cubiertas, 1 auxilio
+  | 'CAMIONETA'        // 2 ejes, 6 cubiertas, 1 auxilio (del. simple, tras. doble)
+  | 'CAMIONETA_4R'     // 2 ejes simples, 4 cubiertas, 1 auxilio (Vital Aire INT-52/53)
   | 'CHASIS'           // 2 ejes, 6 cubiertas, 1 auxilio
   | 'CHASIS_TRACTOR'   // 2 ejes, 6 cubiertas, 1 auxilio (con enganche)
   | 'BALANCIN'         // 3 ejes, 10 cubiertas, 1 auxilio
-  | 'TRACTOR_2EJES'    // 2 ejes, 6 cubiertas, 1-2 auxilios
+  | 'TRACTOR_2EJES'    // 2 ejes, 6 cubiertas, 1 auxilio
   | 'TRACTOR_3EJES'    // 3 ejes, 10 cubiertas, 1-2 auxilios
   | 'SEMIREMOLQUE_12'  // 3 ejes, 12 cubiertas, 2 auxilios
-  | 'CISTERNA';        // 3 ejes, 10 cubiertas, 1 auxilio
+  | 'CISTERNA'         // 3 ejes, 10 cubiertas, 1 auxilio
+  | 'CISTERNA_2EJES'   // 2 ejes, 6 cubiertas, 1 auxilio
+  | 'CISTERNA_2AUX';   // 3 ejes, 10 cubiertas, 2 auxilios
 
 // ============================================
 // CONFIGURACIÓN DE VEHÍCULOS
@@ -73,6 +77,9 @@ export interface Cubierta {
   tipoUso: TipoUsoCubierta; // DIRECCIONAL, TRACCION, LIBRE, MIXTA
   estado: EstadoCubierta;
 
+  // Sector al que pertenece la unidad
+  sector?: SectorCubierta;  // 'vrac' | 'distribucion' | 'vital-aire'
+
   // Ubicación actual (null si está en depósito)
   unidadId?: string;
   unidadNumero?: string;
@@ -85,6 +92,7 @@ export interface Cubierta {
   // Última medición conocida
   ultimaProfundidadMm?: number;
   ultimaMedicionFecha?: Date;
+  estadoDesgaste?: EstadoDesgaste; // Guardado al registrar medición (fallback si no hay ultimaProfundidadMm)
 
   // Timestamps
   fechaAlta: Date;
@@ -291,28 +299,39 @@ export interface UnidadConfiguracion {
 // ============================================
 
 export const CONFIG_CUBIERTAS = {
-  // Umbrales de desgaste (en mm)
-  UMBRAL_BUENO: 6,      // > 6mm = BUENO (verde)
-  UMBRAL_REGULAR: 4,    // 4-6mm = REGULAR (amarillo)
-  UMBRAL_CRITICO: 4,    // < 4mm = CRITICO (rojo)
+  // Umbrales de desgaste para VRAC y DISTRIBUCIÓN (en mm)
+  UMBRAL_BUENO: 6,      // >= 6mm = BUENO (verde)
+  UMBRAL_CRITICO: 4,    // < 4mm = CRITICO (rojo) | 4-6mm = REGULAR (amarillo)
 
   // Colores para UI
   COLORES: {
-    BUENO: '#22c55e',     // green-500
-    REGULAR: '#f59e0b',   // amber-500
-    CRITICO: '#ef4444',   // red-500
+    BUENO: '#22c55e',        // green-500
+    REGULAR: '#f59e0b',      // amber-500
+    CRITICO: '#ef4444',      // red-500
     SIN_CUBIERTA: '#9ca3af', // gray-400
-    AUXILIO: '#3b82f6',   // blue-500
+    AUXILIO: '#3b82f6',      // blue-500
   },
 
   // Días sin medición para alerta
   DIAS_SIN_MEDICION_ALERTA: 30,
 };
 
-// Función helper para calcular estado de desgaste
-export function calcularEstadoDesgaste(profundidadMm: number): EstadoDesgaste {
-  if (profundidadMm >= CONFIG_CUBIERTAS.UMBRAL_BUENO) return 'BUENO';
-  if (profundidadMm >= CONFIG_CUBIERTAS.UMBRAL_CRITICO) return 'REGULAR';
+// Umbrales específicos para camionetas VITAL AIRE
+// Óptimo: 9.5mm | 0–3mm CRÍTICO | 3–6mm REGULAR | >= 6mm BUENO
+export const CONFIG_CUBIERTAS_VITAL_AIRE = {
+  UMBRAL_BUENO: 6,      // >= 6mm = BUENO (verde)
+  UMBRAL_CRITICO: 3,    // < 3mm = CRITICO (rojo) | 3-6mm = REGULAR (amarillo)
+  PROFUNDIDAD_OPTIMA: 9.5,
+};
+
+// Función helper para calcular estado de desgaste según sector
+export function calcularEstadoDesgaste(
+  profundidadMm: number,
+  sector?: SectorCubierta
+): EstadoDesgaste {
+  const config = sector === 'vital-aire' ? CONFIG_CUBIERTAS_VITAL_AIRE : CONFIG_CUBIERTAS;
+  if (profundidadMm >= config.UMBRAL_BUENO) return 'BUENO';
+  if (profundidadMm >= config.UMBRAL_CRITICO) return 'REGULAR';
   return 'CRITICO';
 }
 

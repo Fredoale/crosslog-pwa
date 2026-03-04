@@ -12,6 +12,7 @@ interface CrosslogGpsPlugin {
     checklistId?: string;
     sector?: string;
     hdr?: string;
+    odometroInicial?: number;
   }): Promise<{ success: boolean; message?: string }>;
   stopTracking(): Promise<{ success: boolean }>;
   isTracking(): Promise<{ isTracking: boolean }>;
@@ -42,7 +43,7 @@ const BASES_CROSSLOG = [
 ];
 
 const GEOFENCE_RADIUS = 100; // metros — distancia para detectar llegada a base
-const DEPARTURE_THRESHOLD = 500; // metros — distancia mínima para considerar que salió de base
+const DEPARTURE_THRESHOLD = 50; // metros — distancia mínima para considerar que salió de base
 const IS_NATIVE = Capacitor.isNativePlatform();
 
 // ============================================================
@@ -84,6 +85,7 @@ export interface TrackingConfig {
   checklistId?: string;
   sector?: 'vrac' | 'distribucion' | 'vital_aire';
   hdr?: string;
+  odometroInicial?: number;
 }
 
 interface GPSTrackingState {
@@ -343,12 +345,13 @@ export function useGPSTracking() {
       // 3. Iniciar el foreground service nativo (escribe Firebase directamente)
       const config = configRef.current!;
       await CrosslogGps.startTracking({
-        unidad:      config.unidad,
-        patente:     config.patente,
-        chofer:      config.chofer,
-        checklistId: config.checklistId || '',
-        sector:      config.sector || 'vrac',
-        hdr:         config.hdr || '',
+        unidad:           config.unidad,
+        patente:          config.patente,
+        chofer:           config.chofer,
+        checklistId:      config.checklistId || '',
+        sector:           config.sector || 'vrac',
+        hdr:              config.hdr || '',
+        odometroInicial:  config.odometroInicial ?? 0,
       });
 
       // 4. Escuchar GPS_SALIDA para actualizar UI (servicio ya notificó en barra)
@@ -415,6 +418,10 @@ export function useGPSTracking() {
               enableHighAccuracy: true, timeout: 10000, maximumAge: 0,
             });
           });
+          if (pos.coords.accuracy > 50) {
+            console.warn(`[GPS Web] Punto descartado — accuracy: ${pos.coords.accuracy.toFixed(0)}m`);
+            return;
+          }
           await sendLocationToFirebase(pos.coords.latitude, pos.coords.longitude);
         } catch (err) {
           console.error('[GPS Web] Error obteniendo posición:', err);
@@ -424,6 +431,10 @@ export function useGPSTracking() {
       // watchPosition para actualizaciones en movimiento
       webWatchIdRef.current = navigator.geolocation.watchPosition(
         async (pos) => {
+          if (pos.coords.accuracy > 50) {
+            console.warn(`[GPS Web] watchPosition descartado — accuracy: ${pos.coords.accuracy.toFixed(0)}m`);
+            return;
+          }
           await sendLocationToFirebase(pos.coords.latitude, pos.coords.longitude);
         },
         (err) => console.error('[GPS Web] Error watchPosition:', err),

@@ -38,6 +38,7 @@ import type {
 import {
   calcularEstadoDesgaste,
   CONFIG_CUBIERTAS,
+  CONFIG_CUBIERTAS_VITAL_AIRE,
 } from '../types/cubiertas';
 
 // ============================================
@@ -55,6 +56,18 @@ const COLECCIONES = {
 // ============================================
 // CONFIGURACIONES DE VEHÍCULOS
 // ============================================
+
+// Genera posiciones para camioneta 2 ejes SIMPLES (4 cubiertas - Vital Aire INT-52/53)
+function generarPosiciones2EjesSimples(): PosicionCubierta[] {
+  return [
+    // Eje 1 - Dirección (simple, solo lineal)
+    { id: 'E1_IZQ', numero: 1, eje: 1, lado: 'IZQ', tipo: 'SIMPLE', soloLineal: true, label: 'Eje 1 - Izquierdo' },
+    { id: 'E1_DER', numero: 2, eje: 1, lado: 'DER', tipo: 'SIMPLE', soloLineal: true, label: 'Eje 1 - Derecho' },
+    // Eje 2 - Tracción (simple)
+    { id: 'E2_IZQ', numero: 3, eje: 2, lado: 'IZQ', tipo: 'SIMPLE', soloLineal: false, label: 'Eje 2 - Izquierdo' },
+    { id: 'E2_DER', numero: 4, eje: 2, lado: 'DER', tipo: 'SIMPLE', soloLineal: false, label: 'Eje 2 - Derecho' },
+  ];
+}
 
 // Genera posiciones para vehículo de 2 ejes (6 cubiertas)
 function generarPosiciones2Ejes(): PosicionCubierta[] {
@@ -89,6 +102,43 @@ function generarPosiciones3Ejes10Cubiertas(): PosicionCubierta[] {
   ];
 }
 
+// Genera posiciones para cisterna 2 ejes (8 cubiertas - 4 por eje)
+function generarPosicionesCisterna2Ejes(): PosicionCubierta[] {
+  return [
+    // Eje 1 (dual)
+    { id: 'E1_IZQ_EXT', numero: 1, eje: 1, lado: 'IZQ', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 1 - Izq Exterior' },
+    { id: 'E1_IZQ_INT', numero: 2, eje: 1, lado: 'IZQ', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 1 - Izq Interior' },
+    { id: 'E1_DER_INT', numero: 3, eje: 1, lado: 'DER', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 1 - Der Interior' },
+    { id: 'E1_DER_EXT', numero: 4, eje: 1, lado: 'DER', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 1 - Der Exterior' },
+    // Eje 2 (dual)
+    { id: 'E2_IZQ_EXT', numero: 5, eje: 2, lado: 'IZQ', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 2 - Izq Exterior' },
+    { id: 'E2_IZQ_INT', numero: 6, eje: 2, lado: 'IZQ', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 2 - Izq Interior' },
+    { id: 'E2_DER_INT', numero: 7, eje: 2, lado: 'DER', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 2 - Der Interior' },
+    { id: 'E2_DER_EXT', numero: 8, eje: 2, lado: 'DER', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 2 - Der Exterior' },
+  ];
+}
+
+// Genera posiciones para cisterna/semiremolque de 3 ejes (12 cubiertas - 4 por eje)
+function generarPosicionesCisterna3Ejes(): PosicionCubierta[] {
+  return [
+    // Eje 1 (dual)
+    { id: 'E1_IZQ_EXT', numero: 1, eje: 1, lado: 'IZQ', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 1 - Izq Exterior' },
+    { id: 'E1_IZQ_INT', numero: 2, eje: 1, lado: 'IZQ', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 1 - Izq Interior' },
+    { id: 'E1_DER_INT', numero: 3, eje: 1, lado: 'DER', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 1 - Der Interior' },
+    { id: 'E1_DER_EXT', numero: 4, eje: 1, lado: 'DER', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 1 - Der Exterior' },
+    // Eje 2 (dual)
+    { id: 'E2_IZQ_EXT', numero: 5, eje: 2, lado: 'IZQ', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 2 - Izq Exterior' },
+    { id: 'E2_IZQ_INT', numero: 6, eje: 2, lado: 'IZQ', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 2 - Izq Interior' },
+    { id: 'E2_DER_INT', numero: 7, eje: 2, lado: 'DER', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 2 - Der Interior' },
+    { id: 'E2_DER_EXT', numero: 8, eje: 2, lado: 'DER', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 2 - Der Exterior' },
+    // Eje 3 (dual)
+    { id: 'E3_IZQ_EXT', numero: 9, eje: 3, lado: 'IZQ', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 3 - Izq Exterior' },
+    { id: 'E3_IZQ_INT', numero: 10, eje: 3, lado: 'IZQ', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 3 - Izq Interior' },
+    { id: 'E3_DER_INT', numero: 11, eje: 3, lado: 'DER', tipo: 'DUAL_INT', soloLineal: false, label: 'Eje 3 - Der Interior' },
+    { id: 'E3_DER_EXT', numero: 12, eje: 3, lado: 'DER', tipo: 'DUAL_EXT', soloLineal: false, label: 'Eje 3 - Der Exterior' },
+  ];
+}
+
 // Genera posiciones para semiremolque de 3 ejes (12 cubiertas)
 function generarPosicionesSemiremolque(): PosicionCubierta[] {
   return [
@@ -112,6 +162,15 @@ function generarPosicionesSemiremolque(): PosicionCubierta[] {
 
 // Configuraciones de vehículos
 export const CONFIGURACIONES_VEHICULOS: Record<TipoVehiculo, ConfiguracionVehiculo> = {
+  CAMIONETA_4R: {
+    tipo: 'CAMIONETA_4R',
+    nombre: 'Camioneta 4 Ruedas',
+    ejes: 2,
+    cubiertas: 4,
+    auxilios: 1,
+    capacidadAuxilios: 1,
+    posiciones: generarPosiciones2EjesSimples(),
+  },
   CAMIONETA: {
     tipo: 'CAMIONETA',
     nombre: 'Camioneta',
@@ -144,8 +203,8 @@ export const CONFIGURACIONES_VEHICULOS: Record<TipoVehiculo, ConfiguracionVehicu
     nombre: 'Tractor 2 Ejes',
     ejes: 2,
     cubiertas: 6,
-    auxilios: 0,
-    capacidadAuxilios: 0,
+    auxilios: 1,
+    capacidadAuxilios: 1,
     posiciones: generarPosiciones2Ejes(),
   },
   BALANCIN: {
@@ -168,12 +227,30 @@ export const CONFIGURACIONES_VEHICULOS: Record<TipoVehiculo, ConfiguracionVehicu
   },
   CISTERNA: {
     tipo: 'CISTERNA',
-    nombre: 'Cisterna',
+    nombre: 'Cisterna 3 Ejes',
     ejes: 3,
-    cubiertas: 10,
+    cubiertas: 12,
     auxilios: 1,
     capacidadAuxilios: 1,
-    posiciones: generarPosiciones3Ejes10Cubiertas(),
+    posiciones: generarPosicionesCisterna3Ejes(),
+  },
+  CISTERNA_2EJES: {
+    tipo: 'CISTERNA_2EJES',
+    nombre: 'Cisterna 2 Ejes',
+    ejes: 2,
+    cubiertas: 8,
+    auxilios: 1,
+    capacidadAuxilios: 1,
+    posiciones: generarPosicionesCisterna2Ejes(),
+  },
+  CISTERNA_2AUX: {
+    tipo: 'CISTERNA_2AUX',
+    nombre: 'Cisterna 3 Ejes (2 Aux)',
+    ejes: 3,
+    cubiertas: 12,
+    auxilios: 2,
+    capacidadAuxilios: 2,
+    posiciones: generarPosicionesCisterna3Ejes(),
   },
   SEMIREMOLQUE_12: {
     tipo: 'SEMIREMOLQUE_12',
@@ -191,10 +268,22 @@ export const CONFIGURACIONES_VEHICULOS: Record<TipoVehiculo, ConfiguracionVehicu
 // ============================================
 
 export const UNIDADES_CONFIG: UnidadConfiguracion[] = [
+  // VITAL AIRE - Camionetas 2 ejes simples (4 ruedas)
+  { numero: '52', patente: 'AA279FE', tipoVehiculo: 'CAMIONETA_4R', sector: 'vital-aire' },
+  { numero: '53', patente: 'AC823TK', tipoVehiculo: 'CAMIONETA_4R', sector: 'vital-aire' },
+
+  // VITAL AIRE - Camionetas del. simple / tras. doble (6 ruedas)
+  { numero: '55',  patente: 'MYN849',   tipoVehiculo: 'CAMIONETA', sector: 'vital-aire' },
+  { numero: '56',  patente: 'AC823XZ',  tipoVehiculo: 'CAMIONETA', sector: 'vital-aire' },
+  { numero: '59',  patente: 'KSZ061',   tipoVehiculo: 'CAMIONETA', sector: 'vital-aire' },
+  { numero: '801', patente: 'AE052TW',  tipoVehiculo: 'CAMIONETA', sector: 'vital-aire' },
+  { numero: '808', patente: 'AF313QP',  tipoVehiculo: 'CAMIONETA', sector: 'vital-aire' },
+  { numero: '811', patente: 'AG705RB',  tipoVehiculo: 'CAMIONETA', sector: 'vital-aire' },
+  { numero: '816', patente: 'AH506IC',  tipoVehiculo: 'CAMIONETA', sector: 'vital-aire' },
+  { numero: '817', patente: 'AH506ID',  tipoVehiculo: 'CAMIONETA', sector: 'vital-aire' },
+
   // DISTRIBUCIÓN - Camionetas
-  { numero: '817', patente: 'AH506ID', tipoVehiculo: 'CAMIONETA', sector: 'distribucion' },
   { numero: '54', patente: 'HPD893', tipoVehiculo: 'CAMIONETA', sector: 'distribucion' },
-  { numero: '816', patente: 'AH506IC', tipoVehiculo: 'CAMIONETA', sector: 'distribucion' },
 
   // DISTRIBUCIÓN - Chasis
   { numero: '64', patente: 'MGY394', tipoVehiculo: 'CHASIS', sector: 'distribucion' },
@@ -206,10 +295,11 @@ export const UNIDADES_CONFIG: UnidadConfiguracion[] = [
   { numero: '813', patente: 'AE906WF', tipoVehiculo: 'BALANCIN', sector: 'distribucion' },
 
   // DISTRIBUCIÓN - Tractores
-  { numero: '45', patente: 'LYG959', tipoVehiculo: 'TRACTOR_3EJES', sector: 'distribucion' },
+  { numero: '45', patente: 'LYG959', tipoVehiculo: 'TRACTOR_2EJES', sector: 'distribucion' },
   { numero: '41', patente: 'AB152AZ', tipoVehiculo: 'TRACTOR_3EJES', sector: 'distribucion' },
 
   // DISTRIBUCIÓN - Semiremolques
+  { numero: '61', patente: 'KYQ147', tipoVehiculo: 'SEMIREMOLQUE_12', sector: 'distribucion', enganchaCon: '46' },
   { numero: '803', patente: 'SEMI-803', tipoVehiculo: 'SEMIREMOLQUE_12', sector: 'distribucion' },
   { numero: '818', patente: 'SEMI-818', tipoVehiculo: 'SEMIREMOLQUE_12', sector: 'distribucion' },
 
@@ -225,18 +315,22 @@ export const UNIDADES_CONFIG: UnidadConfiguracion[] = [
   { numero: '814', patente: 'AG994AW', tipoVehiculo: 'TRACTOR_3EJES', sector: 'vrac' },
   { numero: '815', patente: 'AH676AV', tipoVehiculo: 'TRACTOR_3EJES', sector: 'vrac' },
 
-  // VRAC - Cisternas (todas 3 ejes, 10 cubiertas)
-  { numero: '532', patente: 'STF788', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
-  { numero: '535', patente: 'STF787', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
-  { numero: '537', patente: 'SMZ040', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
+  // VRAC - Cisternas 2 Ejes (8 cubiertas - 4 por eje, 1 auxilio)
+  { numero: '532', patente: 'STF788', tipoVehiculo: 'CISTERNA_2EJES', sector: 'vrac' },
+  { numero: '535', patente: 'STF787', tipoVehiculo: 'CISTERNA_2EJES', sector: 'vrac' },
+  { numero: '537', patente: 'SMZ040', tipoVehiculo: 'CISTERNA_2EJES', sector: 'vrac' },
+  { numero: '603', patente: 'FQQ503', tipoVehiculo: 'CISTERNA_2EJES', sector: 'vrac' },
+
+  // VRAC - Cisternas 3 Ejes (12 cubiertas - 4 por eje, 1 auxilio)
   { numero: '548', patente: 'SJU171', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
   { numero: '552', patente: 'BML932', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
-  { numero: '603', patente: 'FQQ503', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
   { numero: '703', patente: 'CLD321', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
-  { numero: '711', patente: 'PKY856', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
-  { numero: '712', patente: 'PKY880', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
-  { numero: '715', patente: 'AD179PC', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
-  { numero: '721', patente: 'AG831SJ', tipoVehiculo: 'CISTERNA', sector: 'vrac' },
+
+  // VRAC - Cisternas 3 Ejes con 2 Auxilios (12 cubiertas - 4 por eje, 2 auxilios)
+  { numero: '711', patente: 'PKY856', tipoVehiculo: 'CISTERNA_2AUX', sector: 'vrac' },
+  { numero: '712', patente: 'PKY880', tipoVehiculo: 'CISTERNA_2AUX', sector: 'vrac' },
+  { numero: '715', patente: 'AD179PC', tipoVehiculo: 'CISTERNA_2AUX', sector: 'vrac' },
+  { numero: '721', patente: 'AG831SJ', tipoVehiculo: 'CISTERNA_2AUX', sector: 'vrac' },
 ];
 
 // ============================================
@@ -499,7 +593,8 @@ export async function registrarMedicion(medicion: Omit<MedicionCubierta, 'id' | 
 
     const docRef = doc(db, COLECCIONES.MEDICIONES, medicionId);
 
-    const estadoDesgaste = calcularEstadoDesgaste(medicion.profundidadMm);
+    const sectorUnidad = obtenerDatosUnidad(medicion.unidadNumero)?.sector;
+    const estadoDesgaste = calcularEstadoDesgaste(medicion.profundidadMm, sectorUnidad);
 
     // Construir objeto sin undefined (Firestore no los acepta)
     const datosAGuardar: Record<string, unknown> = {
@@ -524,9 +619,10 @@ export async function registrarMedicion(medicion: Omit<MedicionCubierta, 'id' | 
 
     await setDoc(docRef, datosAGuardar);
 
-    // Actualizar última medición en la cubierta
+    // Actualizar última medición en la cubierta (incluye estadoDesgaste para consistencia)
     await updateDoc(doc(db, COLECCIONES.CUBIERTAS, medicion.cubiertaId), {
       ultimaProfundidadMm: medicion.profundidadMm,
+      estadoDesgaste,
       ultimaMedicionFecha: Timestamp.fromDate(medicion.fecha),
       ultimaActualizacion: serverTimestamp(),
     });
@@ -660,7 +756,10 @@ export async function obtenerEstadoCubiertasUnidad(unidadNumero: string): Promis
       let estadoDesgaste: CubiertaEnPosicion['estadoDesgaste'] = 'SIN_CUBIERTA';
 
       if (cubierta && cubierta.ultimaProfundidadMm !== undefined) {
-        estadoDesgaste = calcularEstadoDesgaste(cubierta.ultimaProfundidadMm);
+        estadoDesgaste = calcularEstadoDesgaste(cubierta.ultimaProfundidadMm, cubierta.sector);
+      } else if (cubierta && cubierta.estadoDesgaste) {
+        // Fallback: usar estadoDesgaste guardado si no hay profundidad
+        estadoDesgaste = cubierta.estadoDesgaste;
       }
 
       return {
@@ -720,8 +819,22 @@ export async function obtenerAlertasFlota(): Promise<AlertaCubierta[]> {
     snapshot.docs.forEach(doc => {
       const cubierta = doc.data() as Cubierta;
 
+      // Seleccionar umbrales según sector de la cubierta
+      const cfg = cubierta.sector === 'vital-aire' ? CONFIG_CUBIERTAS_VITAL_AIRE : CONFIG_CUBIERTAS;
+
+      // Determinar estado: usar ultimaProfundidadMm si existe, sino estadoDesgaste guardado
+      let estadoCalculado: 'CRITICO' | 'REGULAR' | 'BUENO' | null = null;
+      if (cubierta.ultimaProfundidadMm !== undefined) {
+        if (cubierta.ultimaProfundidadMm < cfg.UMBRAL_CRITICO) estadoCalculado = 'CRITICO';
+        else if (cubierta.ultimaProfundidadMm < cfg.UMBRAL_BUENO) estadoCalculado = 'REGULAR';
+        else estadoCalculado = 'BUENO';
+      } else if (cubierta.estadoDesgaste) {
+        // Fallback: usar estadoDesgaste almacenado directamente en la cubierta
+        estadoCalculado = cubierta.estadoDesgaste as 'CRITICO' | 'REGULAR' | 'BUENO';
+      }
+
       // Alerta por desgaste crítico
-      if (cubierta.ultimaProfundidadMm !== undefined && cubierta.ultimaProfundidadMm < CONFIG_CUBIERTAS.UMBRAL_CRITICO) {
+      if (estadoCalculado === 'CRITICO') {
         alertas.push({
           id: `alerta_critico_${cubierta.id}`,
           cubiertaId: cubierta.id,
@@ -730,15 +843,16 @@ export async function obtenerAlertasFlota(): Promise<AlertaCubierta[]> {
           unidadNumero: cubierta.unidadNumero || '',
           posicion: cubierta.posicion || '',
           tipo: 'DESGASTE_CRITICO',
-          mensaje: `Cubierta ${cubierta.codigo} en estado crítico (${cubierta.ultimaProfundidadMm}mm)`,
+          mensaje: cubierta.ultimaProfundidadMm !== undefined
+            ? `Cubierta ${cubierta.codigo} en estado crítico (${cubierta.ultimaProfundidadMm}mm)`
+            : `Cubierta ${cubierta.codigo} en estado crítico`,
           profundidadMm: cubierta.ultimaProfundidadMm,
           prioridad: 'ALTA',
           timestamp: ahora,
         });
       }
       // Alerta por desgaste regular
-      else if (cubierta.ultimaProfundidadMm !== undefined &&
-        cubierta.ultimaProfundidadMm < CONFIG_CUBIERTAS.UMBRAL_BUENO) {
+      else if (estadoCalculado === 'REGULAR') {
         alertas.push({
           id: `alerta_regular_${cubierta.id}`,
           cubiertaId: cubierta.id,
@@ -747,7 +861,9 @@ export async function obtenerAlertasFlota(): Promise<AlertaCubierta[]> {
           unidadNumero: cubierta.unidadNumero || '',
           posicion: cubierta.posicion || '',
           tipo: 'DESGASTE_REGULAR',
-          mensaje: `Cubierta ${cubierta.codigo} con desgaste regular (${cubierta.ultimaProfundidadMm}mm)`,
+          mensaje: cubierta.ultimaProfundidadMm !== undefined
+            ? `Cubierta ${cubierta.codigo} con desgaste regular (${cubierta.ultimaProfundidadMm}mm)`
+            : `Cubierta ${cubierta.codigo} con desgaste regular`,
           profundidadMm: cubierta.ultimaProfundidadMm,
           prioridad: 'MEDIA',
           timestamp: ahora,
@@ -821,12 +937,24 @@ export async function obtenerResumenFlota(): Promise<ResumenFlotaCubiertas> {
           break;
       }
 
-      // Calcular estado por profundidad
+      // Calcular estado por profundidad (umbral según sector), con fallback a estadoDesgaste
+      const cfg = cubierta.sector === 'vital-aire' ? CONFIG_CUBIERTAS_VITAL_AIRE : CONFIG_CUBIERTAS;
       if (cubierta.ultimaProfundidadMm !== undefined) {
-        if (cubierta.ultimaProfundidadMm < CONFIG_CUBIERTAS.UMBRAL_CRITICO) {
+        if (cubierta.ultimaProfundidadMm < cfg.UMBRAL_CRITICO) {
           alertasCriticas++;
           if (cubierta.unidadNumero) unidadesConAlertas.add(cubierta.unidadNumero);
-        } else if (cubierta.ultimaProfundidadMm < CONFIG_CUBIERTAS.UMBRAL_BUENO) {
+        } else if (cubierta.ultimaProfundidadMm < cfg.UMBRAL_BUENO) {
+          alertasRegulares++;
+          if (cubierta.unidadNumero) unidadesConAlertas.add(cubierta.unidadNumero);
+        } else {
+          cubiertasBuenas++;
+        }
+      } else if (cubierta.estadoDesgaste) {
+        // Fallback: usar estadoDesgaste almacenado si no hay profundidad
+        if (cubierta.estadoDesgaste === 'CRITICO') {
+          alertasCriticas++;
+          if (cubierta.unidadNumero) unidadesConAlertas.add(cubierta.unidadNumero);
+        } else if (cubierta.estadoDesgaste === 'REGULAR') {
           alertasRegulares++;
           if (cubierta.unidadNumero) unidadesConAlertas.add(cubierta.unidadNumero);
         } else {

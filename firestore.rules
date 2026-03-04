@@ -1,0 +1,118 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==============================
+    // MARKETPLACE (Existente)
+    // ==============================
+    match /viajes_marketplace/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /ofertas_marketplace/{document=**} {
+      allow read, write: if true;
+    }
+
+    // ==============================
+    // CHECKLIST Y MANTENIMIENTO
+    // ==============================
+    match /checklists/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /ordenes_trabajo/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /novedades/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /estadisticas_unidades/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    // Checklists de distribución (PWA)
+    match /checklists_distribucion/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    // ==============================
+    // DISTRIBUCIÓN (NUEVO - App Móvil)
+    // ==============================
+    match /distribucion/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    // ==============================
+    // COMBUSTIBLE
+    // ==============================
+    match /cargas_combustible/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /consumos_calculados/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /alertas_combustible/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    // ==============================
+    // GPS TRACKING
+    // ==============================
+    match /ubicaciones/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /gps_activos/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /viajes/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    // ==============================
+    // CONFIGURACIÓN DEL SISTEMA
+    // ==============================
+    match /configuracion/{document=**} {
+      allow read, write: if true;
+    }
+
+    // ==============================
+    // CONTADORES (Para numeración OT)
+    // ==============================
+    match /counters/{document=**} {
+      allow read, write: if true;
+    }
+
+    // ==============================
+    // CONTROL DE CUBIERTAS (NEUMÁTICOS)
+    // ==============================
+    match /cubiertas/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /mediciones_cubiertas/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /movimientos_cubiertas/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /recapados_cubiertas/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    // ==============================
+    // BLOQUEAR TODO LO DEMÁS (debe ir al final)
+    // ==============================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

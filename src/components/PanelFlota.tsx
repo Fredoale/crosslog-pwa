@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from '@react-google-maps/api';
-import { collection, onSnapshot, query, doc, getDoc, setDoc, getDocs, orderBy, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, getDoc, setDoc, getDocs, orderBy, where, limit, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import toast from 'react-hot-toast';
 import { buscarTarifa } from '../utils/tarifas';
@@ -101,6 +101,11 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function toDatetimeLocal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // Iconos SVG por sector — todos círculos, colores distintos
 function vehiculoSVG(sector: string | null | undefined, activo: boolean): string {
   const op = activo ? '1' : '0.55';
@@ -137,6 +142,13 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
   const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [historialUnidadId, setHistorialUnidadId] = useState<string | null>(null);
   const [historialCargado, setHistorialCargado] = useState(false);
+  const [historialFecha, setHistorialFecha] = useState<string | null>(null);
+  const [cargaCombustibleDia, setCargaCombustibleDia] = useState<{ litros: number; hora: string } | null | undefined>(undefined); // undefined=sin consultar, null=sin carga
+  const [historialDesde, setHistorialDesde] = useState<string>(() => {
+    const d = new Date(); d.setDate(d.getDate() - 1); d.setHours(0, 0, 0, 0);
+    return toDatetimeLocal(d);
+  });
+  const [historialHasta, setHistorialHasta] = useState<string>(() => toDatetimeLocal(new Date()));
   const historialCancelRef = useRef(false);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const historialMarkersRef = useRef<google.maps.Marker[]>([]);
@@ -179,19 +191,103 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
     }
   }, [showSidebar, highlightedUnidad]);
 
-  // Cargar historial de ruta del día para una unidad
+  // Cargar historial del último recorrido para una unidad
   const cargarHistorial = async (docId: string) => {
     historialCancelRef.current = false;
     setLoadingHistorial(true);
     setHistorialRuta([]);
+    setHistorialFecha(null);
     setHistorialUnidadId(docId);
     setHistorialCargado(false);
     try {
-      const hoy = new Date().toLocaleDateString('en-CA'); // yyyy-MM-dd en hora local
+      // Paso 1: encontrar la fecha del punto más reciente
+      const latestSnap = await getDocs(
+        query(
+          collection(db, 'ubicaciones', docId, 'historial'),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        )
+      );
+      if (historialCancelRef.current) return;
+      if (latestSnap.empty) {
+        setHistorialCargado(true);
+        return;
+      }
+      const ultimaFecha = latestSnap.docs[0].data().fecha as string;
+      setHistorialFecha(ultimaFecha);
+
+      // Paso 2: cargar todos los puntos de esa fecha
       const snap = await getDocs(
         query(
           collection(db, 'ubicaciones', docId, 'historial'),
-          where('fecha', '==', hoy),
+          where('fecha', '==', ultimaFecha),
+          orderBy('timestamp', 'asc')
+        )
+      );
+      if (historialCancelRef.current) return;
+      const puntos: HistorialPunto[] = snap.docs.map(d => ({
+        lat: d.data().lat as number,
+        lng: d.data().lng as number,
+        speed: (d.data().speed as number) ?? 0,
+        timestamp: d.data().timestamp?.toDate() ?? new Date(),
+      }));
+      setHistorialRuta(puntos);
+      setHistorialCargado(true);
+
+      // Buscar carga de combustible del mismo día
+      try {
+        const inicioDia = new Date(ultimaFecha + 'T00:00:00');
+        const finDia    = new Date(ultimaFecha + 'T23:59:59');
+        const cargasSnap = await getDocs(
+          query(
+            collection(db, 'cargas_combustible'),
+            where('unidad.numero', '==', docId.replace('INT-', '')),
+            where('fecha', '>=', inicioDia),
+            where('fecha', '<=', finDia)
+          )
+        );
+        if (!cargasSnap.empty) {
+          let totalLitros = 0;
+          let primeraHora = '';
+          cargasSnap.docs.forEach(d => {
+            totalLitros += d.data().litrosCargados ?? 0;
+            if (!primeraHora) {
+              const f: Date = d.data().fecha?.toDate?.() ?? new Date();
+              primeraHora = f.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            }
+          });
+          setCargaCombustibleDia({ litros: totalLitros, hora: primeraHora });
+        } else {
+          setCargaCombustibleDia(null);
+        }
+      } catch (e) {
+        console.warn('[Historial] Error cargando combustible:', e);
+        setCargaCombustibleDia(null);
+      }
+    } catch (e) {
+      if (historialCancelRef.current) return;
+      console.error('[Historial] Error:', e);
+      toast('Error al cargar el historial. Verificá la consola.', { duration: 4000 });
+      setHistorialCargado(true);
+    } finally {
+      if (!historialCancelRef.current) setLoadingHistorial(false);
+    }
+  };
+
+  // Cargar historial por rango fecha/hora (VRAC)
+  const cargarHistorialRango = async (docId: string, desde: string, hasta: string) => {
+    historialCancelRef.current = false;
+    setLoadingHistorial(true);
+    setHistorialRuta([]);
+    setHistorialFecha(null);
+    setHistorialUnidadId(docId);
+    setHistorialCargado(false);
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, 'ubicaciones', docId, 'historial'),
+          where('timestamp', '>=', Timestamp.fromDate(new Date(desde))),
+          where('timestamp', '<=', Timestamp.fromDate(new Date(hasta))),
           orderBy('timestamp', 'asc')
         )
       );
@@ -206,8 +302,8 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
       setHistorialCargado(true);
     } catch (e) {
       if (historialCancelRef.current) return;
-      console.error('[Historial] Error:', e);
-      toast('Error al cargar el historial. Verificá la consola.', { duration: 4000 });
+      console.error('[Historial Rango] Error:', e);
+      toast('Error al cargar el historial.', { duration: 4000 });
       setHistorialCargado(true);
     } finally {
       if (!historialCancelRef.current) setLoadingHistorial(false);
@@ -221,6 +317,8 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
     setHistorialRuta([]);
     setHistorialUnidadId(null);
     setHistorialCargado(false);
+    setHistorialFecha(null);
+    setCargaCombustibleDia(undefined);
     setTooltipPunto(null);
   };
 
@@ -957,111 +1055,219 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                 </div>
               )}
 
-              {/* === 3: Ruta de hoy === */}
+              {/* === 3: Último recorrido === */}
               <div className="border-t border-gray-700 pt-3 space-y-2">
-                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Ruta de hoy</p>
-                {historialUnidadId === selectedUnidad.id && historialCargado && historialRuta.length === 0 ? (
+                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Último recorrido</p>
+
+                {selectedUnidad.sector === 'vrac' ? (
+                  /* ---- VRAC: filtro por rango de fecha/hora ---- */
                   <div className="space-y-2">
-                    <div className="bg-gray-700/40 rounded-lg p-3 text-center">
-                      <p className="text-gray-400 text-xs">Sin recorrido registrado hoy</p>
-                      <p className="text-gray-500 text-[10px] mt-1">El historial se genera con el nuevo APK</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <p className="text-[9px] text-gray-400 mb-0.5">Desde</p>
+                        <input
+                          type="datetime-local"
+                          value={historialDesde}
+                          onChange={e => setHistorialDesde(e.target.value)}
+                          className="w-full bg-gray-700 text-white text-[11px] rounded-lg px-2 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-gray-400 mb-0.5">Hasta</p>
+                        <input
+                          type="datetime-local"
+                          value={historialHasta}
+                          onChange={e => setHistorialHasta(e.target.value)}
+                          className="w-full bg-gray-700 text-white text-[11px] rounded-lg px-2 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
                     </div>
                     <button
-                      onClick={limpiarHistorial}
-                      className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition-colors"
+                      onClick={() => cargarHistorialRango(selectedUnidad.id, historialDesde, historialHasta)}
+                      disabled={loadingHistorial || !historialDesde || !historialHasta}
+                      className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
                     >
-                      Cerrar
+                      {loadingHistorial ? '⏳ Cargando...' : '🗺️ Ver ruta'}
                     </button>
-                  </div>
-                ) : historialUnidadId === selectedUnidad.id && historialRuta.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-gray-700/60 rounded-lg p-2 text-center">
-                        <p className="text-[10px] text-gray-400">Puntos GPS</p>
-                        <p className="text-white font-bold text-sm">{historialRuta.length}</p>
-                      </div>
-                      <div className="bg-gray-700/60 rounded-lg p-2 text-center">
-                        <p className="text-[10px] text-gray-400">Vel. máx.</p>
-                        <p className="text-white font-bold text-sm">
-                          {Math.max(...historialRuta.map(p => p.speed)).toFixed(0)} km/h
-                        </p>
-                      </div>
-                    </div>
-                    {/* Card km recorridos + tarifa */}
-                    {(() => {
-                      const kmGPS = historialRuta.length >= 2
-                        ? Math.round(historialRuta.reduce((total, p, i) => {
-                            if (i === 0) return 0;
-                            return total + haversineKm(historialRuta[i-1].lat, historialRuta[i-1].lng, p.lat, p.lng);
-                          }, 0) * 10) / 10
-                        : 0;
-                      const kmParaTarifa = selectedUnidad.kmRecorridos ?? kmGPS;
-                      const tarifa = selectedUnidad.sector === 'distribucion' ? buscarTarifa(kmParaTarifa) : null;
-                      const exportarCSV = () => {
-                        const u = selectedUnidad;
-                        const fecha = new Date().toLocaleDateString('en-CA');
-                        const SEP = ';';
-                        const encabezado = `sep=${SEP}\nINT-${u.unidad} | ${u.patente} | ${u.chofer} | ${fecha} | ${kmGPS} km\n`;
-                        const columnas = ['Fecha','Hora','Latitud','Longitud','Velocidad (km/h)','Km acumulado'].join(SEP) + '\n';
-                        let kmAcum = 0;
-                        const filas = historialRuta.map((p, i) => {
-                          if (i > 0) kmAcum += haversineKm(historialRuta[i-1].lat, historialRuta[i-1].lng, p.lat, p.lng);
-                          return [
-                            p.timestamp.toLocaleDateString('es-AR'),
-                            p.timestamp.toLocaleTimeString('es-AR'),
-                            p.lat.toFixed(6).replace('.', ','),
-                            p.lng.toFixed(6).replace('.', ','),
-                            p.speed.toFixed(1).replace('.', ','),
-                            (Math.round(kmAcum * 10) / 10).toFixed(1).replace('.', ',')
-                          ].join(SEP);
-                        }).join('\n');
-                        const blob = new Blob(['\uFEFF' + encabezado + columnas + filas], { type: 'text/csv;charset=utf-8;' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `historial_INT${u.unidad}_${fecha}.csv`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      };
-                      return (
-                        <div className="bg-blue-900/40 border border-blue-700/50 rounded-lg p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-blue-300 font-bold text-sm">
-                                🛣️ {selectedUnidad.kmRecorridos ?? kmGPS} km recorridos
-                              </p>
-                              {selectedUnidad.sector === 'distribucion' && (
-                                <p className="text-[10px] text-amber-400 mt-1 truncate" title={tarifa ? `${tarifa.ruta} · ${tarifa.cliente} · ref. ${tarifa.km} km` : 'REPARTO'}>
-                                  🗺️ {tarifa ? `${tarifa.ruta} · ${tarifa.cliente} · ${tarifa.km} km` : 'REPARTO'}
-                                </p>
-                              )}
-                            </div>
-                            <button
-                              onClick={exportarCSV}
-                              className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1.5 rounded-lg transition-colors"
-                              title="Descargar CSV del recorrido"
-                            >
-                              ↓ CSV
-                            </button>
-                          </div>
+
+                    {historialUnidadId === selectedUnidad.id && historialCargado && (
+                      historialRuta.length === 0 ? (
+                        <div className="bg-gray-700/40 rounded-lg p-3 text-center">
+                          <p className="text-gray-400 text-xs">Sin puntos GPS en ese rango</p>
                         </div>
-                      );
-                    })()}
-                    <button
-                      onClick={limpiarHistorial}
-                      className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition-colors"
-                    >
-                      Ocultar ruta
-                    </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-[10px] text-blue-400 text-center">
+                            {historialRuta.length} puntos · {new Date(historialDesde).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} → {new Date(historialHasta).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-gray-700/60 rounded-lg p-2 text-center">
+                              <p className="text-[10px] text-gray-400">Puntos GPS</p>
+                              <p className="text-white font-bold text-sm">{historialRuta.length}</p>
+                            </div>
+                            <div className="bg-gray-700/60 rounded-lg p-2 text-center">
+                              <p className="text-[10px] text-gray-400">Vel. máx.</p>
+                              <p className="text-white font-bold text-sm">
+                                {Math.max(...historialRuta.map(p => p.speed)).toFixed(0)} km/h
+                              </p>
+                            </div>
+                          </div>
+                          {(() => {
+                            const kmGPS = historialRuta.length >= 2
+                              ? Math.round(historialRuta.reduce((total, p, i) => {
+                                  if (i === 0) return 0;
+                                  return total + haversineKm(historialRuta[i-1].lat, historialRuta[i-1].lng, p.lat, p.lng);
+                                }, 0) * 10) / 10
+                              : 0;
+                            const rango = `${new Date(historialDesde).toLocaleDateString('en-CA')}_${new Date(historialHasta).toLocaleDateString('en-CA')}`;
+                            const exportarCSV = () => {
+                              const u = selectedUnidad;
+                              const SEP = ';';
+                              const encabezado = `sep=${SEP}\nINT-${u.unidad} | ${u.patente} | ${u.chofer} | ${rango} | ${kmGPS} km\n`;
+                              const columnas = ['Fecha','Hora','Latitud','Longitud','Velocidad (km/h)','Km acumulado'].join(SEP) + '\n';
+                              let kmAcum = 0;
+                              const filas = historialRuta.map((p, i) => {
+                                if (i > 0) kmAcum += haversineKm(historialRuta[i-1].lat, historialRuta[i-1].lng, p.lat, p.lng);
+                                return [
+                                  p.timestamp.toLocaleDateString('es-AR'),
+                                  p.timestamp.toLocaleTimeString('es-AR'),
+                                  p.lat.toFixed(6).replace('.', ','),
+                                  p.lng.toFixed(6).replace('.', ','),
+                                  p.speed.toFixed(1).replace('.', ','),
+                                  (Math.round(kmAcum * 10) / 10).toFixed(1).replace('.', ',')
+                                ].join(SEP);
+                              }).join('\n');
+                              const blob = new Blob(['\uFEFF' + encabezado + columnas + filas], { type: 'text/csv;charset=utf-8;' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url; a.download = `historial_INT${u.unidad}_${rango}.csv`; a.click();
+                              URL.revokeObjectURL(url);
+                            };
+                            return (
+                              <div className="bg-blue-900/40 border border-blue-700/50 rounded-lg p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-blue-300 font-bold text-sm">🛣️ {kmGPS} km recorridos</p>
+                                  <button onClick={exportarCSV} className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1.5 rounded-lg transition-colors" title="Descargar CSV">↓ CSV</button>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          <button onClick={limpiarHistorial} className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition-colors">
+                            Ocultar ruta
+                          </button>
+                        </div>
+                      )
+                    )}
                   </div>
                 ) : (
-                  <button
-                    onClick={() => cargarHistorial(selectedUnidad.id)}
-                    disabled={loadingHistorial}
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
-                  >
-                    {loadingHistorial ? '⏳ Cargando...' : '🗺️ Ver ruta de hoy'}
-                  </button>
+                  /* ---- DIST / VITAL_AIRE: comportamiento original ---- */
+                  historialUnidadId === selectedUnidad.id && historialCargado && historialRuta.length === 0 ? (
+                    <div className="space-y-2">
+                      <div className="bg-gray-700/40 rounded-lg p-3 text-center">
+                        <p className="text-gray-400 text-xs">Sin recorrido registrado</p>
+                        <p className="text-gray-500 text-[10px] mt-1">El historial se genera con el nuevo APK</p>
+                      </div>
+                      <button onClick={limpiarHistorial} className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition-colors">
+                        Cerrar
+                      </button>
+                    </div>
+                  ) : historialUnidadId === selectedUnidad.id && historialRuta.length > 0 ? (
+                    <div className="space-y-2">
+                      {historialFecha && (
+                        <p className="text-[10px] text-gray-400 text-center">
+                          📅 {new Date(historialFecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' })}
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-gray-700/60 rounded-lg p-2 text-center">
+                          <p className="text-[10px] text-gray-400">Puntos GPS</p>
+                          <p className="text-white font-bold text-sm">{historialRuta.length}</p>
+                        </div>
+                        <div className="bg-gray-700/60 rounded-lg p-2 text-center">
+                          <p className="text-[10px] text-gray-400">Vel. máx.</p>
+                          <p className="text-white font-bold text-sm">
+                            {Math.max(...historialRuta.map(p => p.speed)).toFixed(0)} km/h
+                          </p>
+                        </div>
+                      </div>
+                      {/* Card km recorridos + tarifa */}
+                      {(() => {
+                        const kmGPS = historialRuta.length >= 2
+                          ? Math.round(historialRuta.reduce((total, p, i) => {
+                              if (i === 0) return 0;
+                              return total + haversineKm(historialRuta[i-1].lat, historialRuta[i-1].lng, p.lat, p.lng);
+                            }, 0) * 10) / 10
+                          : 0;
+                        const kmParaTarifa = selectedUnidad.kmRecorridos ?? kmGPS;
+                        const tarifa = selectedUnidad.sector === 'distribucion' ? buscarTarifa(kmParaTarifa) : null;
+                        const exportarCSV = () => {
+                          const u = selectedUnidad;
+                          const fecha = historialFecha ?? new Date().toLocaleDateString('en-CA');
+                          const SEP = ';';
+                          const encabezado = `sep=${SEP}\nINT-${u.unidad} | ${u.patente} | ${u.chofer} | ${fecha} | ${kmGPS} km\n`;
+                          const columnas = ['Fecha','Hora','Latitud','Longitud','Velocidad (km/h)','Km acumulado'].join(SEP) + '\n';
+                          let kmAcum = 0;
+                          const filas = historialRuta.map((p, i) => {
+                            if (i > 0) kmAcum += haversineKm(historialRuta[i-1].lat, historialRuta[i-1].lng, p.lat, p.lng);
+                            return [
+                              p.timestamp.toLocaleDateString('es-AR'),
+                              p.timestamp.toLocaleTimeString('es-AR'),
+                              p.lat.toFixed(6).replace('.', ','),
+                              p.lng.toFixed(6).replace('.', ','),
+                              p.speed.toFixed(1).replace('.', ','),
+                              (Math.round(kmAcum * 10) / 10).toFixed(1).replace('.', ',')
+                            ].join(SEP);
+                          }).join('\n');
+                          const blob = new Blob(['\uFEFF' + encabezado + columnas + filas], { type: 'text/csv;charset=utf-8;' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url; a.download = `historial_INT${u.unidad}_${fecha}.csv`; a.click();
+                          URL.revokeObjectURL(url);
+                        };
+                        return (
+                          <div className="bg-blue-900/40 border border-blue-700/50 rounded-lg p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-blue-300 font-bold text-sm">
+                                  🛣️ {selectedUnidad.kmRecorridos ?? kmGPS} km recorridos
+                                </p>
+                                {selectedUnidad.sector === 'distribucion' && (
+                                  <p className="text-[10px] text-amber-400 mt-1 truncate" title={tarifa ? `${tarifa.ruta} · ${tarifa.cliente} · ref. ${tarifa.km} km` : 'REPARTO'}>
+                                    🗺️ {tarifa ? `${tarifa.ruta} · ${tarifa.cliente} · ${tarifa.km} km` : 'REPARTO'}
+                                  </p>
+                                )}
+                              </div>
+                              <button onClick={exportarCSV} className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1.5 rounded-lg transition-colors" title="Descargar CSV del recorrido">↓ CSV</button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {/* Card combustible del día */}
+                      {cargaCombustibleDia !== undefined && (
+                        cargaCombustibleDia ? (
+                          <div className="bg-orange-900/40 border border-orange-700/50 rounded-lg p-3">
+                            <p className="text-orange-300 font-bold text-sm">⛽ {cargaCombustibleDia.litros} L cargados</p>
+                            <p className="text-[10px] text-orange-400/80 mt-0.5">{cargaCombustibleDia.hora}hs ese día</p>
+                          </div>
+                        ) : (
+                          <div className="bg-gray-700/30 border border-gray-600/40 rounded-lg p-3">
+                            <p className="text-gray-500 text-xs">⛽ Sin carga de combustible ese día</p>
+                          </div>
+                        )
+                      )}
+                      <button onClick={limpiarHistorial} className="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-xs transition-colors">
+                        Ocultar ruta
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => cargarHistorial(selectedUnidad.id)}
+                      disabled={loadingHistorial}
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
+                    >
+                      {loadingHistorial ? '⏳ Cargando...' : '🗺️ Ver ruta de hoy'}
+                    </button>
+                  )
                 )}
               </div>
 

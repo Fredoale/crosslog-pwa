@@ -29,12 +29,13 @@ import { useTallerStore, type PersonalMantenimiento } from '../../stores/tallerS
 import type { OrdenTrabajo, ConsumoCombustible, ChecklistRegistro } from '../../types/checklist';
 import { getAllCargasCombustible } from '../../services/combustibleService';
 import { ModalCrearOrden } from '../modals/ModalCrearOrden';
-import { TODAS_LAS_UNIDADES } from '../CarouselSector';
+import { TODAS_LAS_UNIDADES, UNIDADES_VRAC, UNIDADES_VITAL_AIRE, UNIDADES_DISTRIBUCION } from '../CarouselSector';
 import AlertasTrenRodante, { type DatosOTTrenRodante } from '../trenRodante/AlertasTrenRodante';
 import ChecklistTrenRodante40K from '../trenRodante/ChecklistTrenRodante40K';
 import ChecklistTrenRodante80K from '../trenRodante/ChecklistTrenRodante80K';
 import ChecklistTrenRodante160K from '../trenRodante/ChecklistTrenRodante160K';
 import { PanelCubiertas } from '../cubiertas';
+import { obtenerAlertasFlota, UNIDADES_CONFIG } from '../../services/cubiertasService';
 
 // Función para obtener patente de una unidad (usa TODAS_LAS_UNIDADES de CarouselSector)
 const obtenerPatente = (numeroUnidad: string): string => {
@@ -703,7 +704,23 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       {vista !== 'dashboard' && vista !== 'checklists' && vista !== 'historial' && vista !== 'trenRodante' && vista !== 'cubiertas' && (
         <div className="bg-gradient-to-br from-green-50 to-gray-50 border-b border-green-200 p-3 md:p-4">
           <div className="max-w-7xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 md:gap-4">
+              {/* Filtro Módulo */}
+              <div>
+                <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5">Módulo</label>
+                <select
+                  value={filtros.sector}
+                  onChange={(e) => setFiltros({ ...filtros, sector: e.target.value as any })}
+                  className="w-full px-3 py-2.5 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#56ab2f] focus:border-[#56ab2f] bg-white"
+                  style={{ fontSize: '16px' }}
+                >
+                  <option value="">Todos los módulos</option>
+                  <option value="vrac">🛢️ VRAC</option>
+                  <option value="distribucion">📦 Distribución</option>
+                  <option value="vital-aire">🚐 Vital Aire</option>
+                </select>
+              </div>
+
               {/* Filtro Estado */}
               <div>
                 <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5">Estado</label>
@@ -781,11 +798,19 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
 
             {vista === 'activas' && (
               <ListaOrdenesActivas
-                ordenes={ordenesActivas.filter(o =>
-                  (!filtros.prioridad || o.prioridad === filtros.prioridad) &&
-                  (!filtros.estado || o.estado === filtros.estado) &&
-                  (!filtros.unidad || o.unidad.numero.includes(filtros.unidad))
-                )}
+                ordenes={ordenesActivas.filter(o => {
+                  const unidadesSector: Record<string, string[]> = {
+                    'vrac': UNIDADES_VRAC.map(u => u.numero),
+                    'distribucion': UNIDADES_DISTRIBUCION.map(u => u.numero),
+                    'vital-aire': UNIDADES_VITAL_AIRE.map(u => u.numero),
+                  };
+                  return (
+                    (!filtros.prioridad || o.prioridad === filtros.prioridad) &&
+                    (!filtros.estado || o.estado === filtros.estado) &&
+                    (!filtros.unidad || o.unidad.numero.includes(filtros.unidad)) &&
+                    (!filtros.sector || (unidadesSector[filtros.sector] || []).includes(o.unidad?.numero))
+                  );
+                })}
                 onTomarOT={handleTomarOT}
                 onVerHistorial={handleVerHistorialUnidad}
                 onVerDetalle={(orden) => {
@@ -798,11 +823,19 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
 
             {vista === 'asignadas' && (
               <ListaOrdenesAsignadas
-                ordenes={ordenesAsignadas.filter(o =>
-                  (!filtros.prioridad || o.prioridad === filtros.prioridad) &&
-                  (!filtros.estado || o.estado === filtros.estado) &&
-                  (!filtros.unidad || o.unidad.numero.includes(filtros.unidad))
-                )}
+                ordenes={ordenesAsignadas.filter(o => {
+                  const unidadesSector: Record<string, string[]> = {
+                    'vrac': UNIDADES_VRAC.map(u => u.numero),
+                    'distribucion': UNIDADES_DISTRIBUCION.map(u => u.numero),
+                    'vital-aire': UNIDADES_VITAL_AIRE.map(u => u.numero),
+                  };
+                  return (
+                    (!filtros.prioridad || o.prioridad === filtros.prioridad) &&
+                    (!filtros.estado || o.estado === filtros.estado) &&
+                    (!filtros.unidad || o.unidad.numero.includes(filtros.unidad)) &&
+                    (!filtros.sector || (unidadesSector[filtros.sector] || []).includes(o.unidad?.numero))
+                  );
+                })}
                 onRegistrarTrabajo={handleAbrirRegistroTrabajo}
                 onMarcarEsperando={handleMarcarEsperandoRepuestos}
                 onCerrarOT={handleAbrirCierreOT}
@@ -1404,6 +1437,79 @@ function VistaDashboard({ ordenes }: VistaDashboardProps) {
   const [mostrarModalFlota, setMostrarModalFlota] = useState(false);
   const [cargasCombustible, setCargasCombustible] = useState<any[]>([]);
   const [loadingCombustible, setLoadingCombustible] = useState(true);
+  const [moduloSeleccionado, setModuloSeleccionado] = useState<'vrac' | 'distribucion' | 'vital-aire'>('vrac');
+  const [metricasPanel, setMetricasPanel] = useState({
+    vrac:         { checklistsHoy: 0, checklistsTotal: 0, otsActivas: 0, neumaticosCriticos: 0, neumaticosRegulares: 0 },
+    distribucion: { checklistsHoy: 0, checklistsTotal: 0, otsActivas: 0, neumaticosCriticos: 0, neumaticosRegulares: 0 },
+    'vital-aire': { checklistsHoy: 0, checklistsTotal: 0, otsActivas: 0, neumaticosCriticos: 0, neumaticosRegulares: 0 },
+  });
+  const [loadingMetricas, setLoadingMetricas] = useState(false);
+
+  // Cargar métricas por sector (espejo de ConsultaInterna)
+  useEffect(() => {
+    const cargarMetricas = async () => {
+      setLoadingMetricas(true);
+      try {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+
+        const unidadesVRAC = UNIDADES_CONFIG.filter(u => u.sector === 'vrac').map(u => u.numero);
+        const unidadesVitalAire = UNIDADES_CONFIG.filter(u => u.sector === 'vital-aire').map(u => u.numero);
+        const unidadesDistribucion = UNIDADES_CONFIG.filter(u => u.sector === 'distribucion').map(u => u.numero);
+
+        const checklistsSnap = await getDocs(collection(db, 'checklists'));
+        const checklists = checklistsSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
+            timestamp: data.timestamp instanceof Timestamp ? data.timestamp.toDate() : new Date(data.timestamp)
+          };
+        }) as ChecklistRegistro[];
+
+        const otsSnap = await getDocs(query(
+          collection(db, 'ordenes_trabajo'),
+          where('estado', 'in', ['PENDIENTE', 'EN_PROCESO', 'ESPERANDO_REPUESTOS'])
+        ));
+        const ots = otsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as OrdenTrabajo[];
+
+        // Cargar alertas reales de cubiertas desde Firestore
+        const alertasCubiertas = await obtenerAlertasFlota();
+
+        const contarCubiertas = (unidades: string[], tipo: 'DESGASTE_CRITICO' | 'DESGASTE_REGULAR') =>
+          alertasCubiertas.filter(a => unidades.includes(a.unidadNumero) && a.tipo === tipo).length;
+
+        const calcularMetricasSector = (unidades: string[], sector: string) => {
+          const checklistsSector = checklists.filter(c =>
+            c.sector === sector || unidades.includes(c.unidad.numero)
+          );
+          const checklistsHoy = checklistsSector.filter(c => {
+            const fecha = new Date(c.timestamp);
+            fecha.setHours(0, 0, 0, 0);
+            return fecha.getTime() === hoy.getTime();
+          }).length;
+          const otsSector = ots.filter(ot => unidades.includes(ot.unidad.numero));
+          return {
+            checklistsHoy,
+            checklistsTotal: checklistsSector.length,
+            otsActivas: otsSector.length,
+            neumaticosCriticos: contarCubiertas(unidades, 'DESGASTE_CRITICO'),
+            neumaticosRegulares: contarCubiertas(unidades, 'DESGASTE_REGULAR'),
+          };
+        };
+
+        setMetricasPanel({
+          vrac:         calcularMetricasSector(unidadesVRAC, 'vrac'),
+          distribucion: calcularMetricasSector(unidadesDistribucion, 'distribucion'),
+          'vital-aire': calcularMetricasSector(unidadesVitalAire, 'vital-aire'),
+        });
+      } catch (error) {
+        console.error('[VistaDashboard] Error cargando métricas:', error);
+      } finally {
+        setLoadingMetricas(false);
+      }
+    };
+    cargarMetricas();
+  }, []);
 
   // Cargar datos de combustible
   useEffect(() => {
@@ -1421,22 +1527,31 @@ function VistaDashboard({ ordenes }: VistaDashboardProps) {
     cargarCombustible();
   }, []);
 
+  // Filtrar órdenes por módulo de negocio seleccionado
+  const unidadesPorModulo: Record<string, string[]> = {
+    'vrac': UNIDADES_VRAC.map(u => u.numero),
+    'distribucion': UNIDADES_DISTRIBUCION.map(u => u.numero),
+    'vital-aire': UNIDADES_VITAL_AIRE.map(u => u.numero),
+  };
+  const unidadesModulo = unidadesPorModulo[moduloSeleccionado] || [];
+  const ordenesFiltradas = ordenes.filter(o => unidadesModulo.includes(o.unidad?.numero));
+
   // Calcular métricas
   const hoy = new Date();
   const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 
-  const ordenesDelMes = ordenes.filter(o => {
+  const ordenesDelMes = ordenesFiltradas.filter(o => {
     const fecha = convertirTimestampFirebase(o.timestamp);
     return fecha >= primerDiaMes;
   });
 
   const totalOTs = ordenesDelMes.length;
-  const otsCompletadas = ordenes.filter(o => o.estado === 'CERRADO').length;
-  const otsPendientes = ordenes.filter(o => ['PENDIENTE', 'EN_PROCESO', 'ESPERANDO_REPUESTOS'].includes(o.estado)).length;
-  const porcentajeCompletadas = totalOTs > 0 ? Math.round((otsCompletadas / ordenes.length) * 100) : 0;
+  const otsCompletadas = ordenesFiltradas.filter(o => o.estado === 'CERRADO').length;
+  const otsPendientes = ordenesFiltradas.filter(o => ['PENDIENTE', 'EN_PROCESO', 'ESPERANDO_REPUESTOS'].includes(o.estado)).length;
+  const porcentajeCompletadas = totalOTs > 0 ? Math.round((otsCompletadas / ordenesFiltradas.length) * 100) : 0;
 
   // Mecánicos con más trabajo (Top 5)
-  const trabajoPorMecanico = ordenes
+  const trabajoPorMecanico = ordenesFiltradas
     .filter(o => o.mecanico && o.estado === 'CERRADO')
     .reduce((acc, o) => {
       const nombre = o.mecanico!;
@@ -1455,7 +1570,7 @@ function VistaDashboard({ ordenes }: VistaDashboardProps) {
   const maxOTs = Math.max(...topMecanicos.map(m => m.ots), 1);
 
   // Unidades de la flota con historial
-  const unidadesConHistorial = ordenes.reduce((acc, o) => {
+  const unidadesConHistorial = ordenesFiltradas.reduce((acc, o) => {
     const key = `${o.unidad.numero}-${o.unidad.patente}`;
     if (!acc[key]) {
       acc[key] = {
@@ -1482,7 +1597,7 @@ function VistaDashboard({ ordenes }: VistaDashboardProps) {
     const inicioSemana = new Date(semanaAtras);
     inicioSemana.setDate(semanaAtras.getDate() - 7);
 
-    const count = ordenes.filter(o => {
+    const count = ordenesFiltradas.filter(o => {
       const fecha = convertirTimestampFirebase(o.timestamp);
       return fecha >= inicioSemana && fecha < semanaAtras;
     }).length;
@@ -1494,13 +1609,89 @@ function VistaDashboard({ ordenes }: VistaDashboardProps) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Welcome Banner */}
-      <div className="bg-[#1a2332] rounded-2xl shadow-xl p-6 sm:p-8 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-bold mb-2">Dashboard Taller</h2>
-            <p className="text-white/90 text-sm sm:text-base">Vista general de métricas y rendimiento del taller</p>
-          </div>
+      {/* Panel de Módulos de Negocio */}
+      <div className="bg-white rounded-2xl shadow-xl border-2 border-gray-200 overflow-hidden">
+        {/* Tabs de módulos */}
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setModuloSeleccionado('vrac')}
+            className={`flex-1 py-3 px-4 flex items-center justify-center gap-2 font-semibold transition-all ${
+              moduloSeleccionado === 'vrac'
+                ? 'bg-cyan-50 text-cyan-700 border-b-2 border-cyan-500'
+                : 'text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <span className="text-lg">🛢️</span>
+            <span className="hidden sm:inline">VRAC</span>
+          </button>
+          <button
+            onClick={() => setModuloSeleccionado('distribucion')}
+            className={`flex-1 py-3 px-4 flex items-center justify-center gap-2 font-semibold transition-all ${
+              moduloSeleccionado === 'distribucion'
+                ? 'bg-green-50 text-green-700 border-b-2 border-green-500'
+                : 'text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <span className="text-lg">📦</span>
+            <span className="hidden sm:inline">DISTRIBUCIÓN</span>
+          </button>
+          <button
+            onClick={() => setModuloSeleccionado('vital-aire')}
+            className={`flex-1 py-3 px-4 flex items-center justify-center gap-2 font-semibold transition-all ${
+              moduloSeleccionado === 'vital-aire'
+                ? 'bg-orange-50 text-orange-700 border-b-2 border-orange-500'
+                : 'text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <span className="text-lg">🚐</span>
+            <span className="hidden sm:inline">VITAL AIRE</span>
+          </button>
+        </div>
+
+        {/* Métricas del módulo seleccionado */}
+        <div className="p-4">
+          {loadingMetricas ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#56ab2f]"></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
+              {/* Checklists */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-3 sm:p-4 border border-green-100 cursor-pointer hover:shadow-md transition-all hover:scale-[1.02] text-center">
+                <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Checklists</p>
+                <div className="text-xl sm:text-2xl font-bold text-green-700">
+                  {metricasPanel[moduloSeleccionado].checklistsHoy}
+                  <span className="text-xs sm:text-sm font-normal text-gray-500"> / {metricasPanel[moduloSeleccionado].checklistsTotal}</span>
+                </div>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-1">hoy / total</p>
+              </div>
+
+              {/* OTs Activas */}
+              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-3 sm:p-4 border border-purple-100 cursor-pointer hover:shadow-md transition-all hover:scale-[1.02] text-center">
+                <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">OTs Activas</p>
+                <div className="text-xl sm:text-2xl font-bold text-purple-700">
+                  {metricasPanel[moduloSeleccionado].otsActivas}
+                </div>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-1">pendientes</p>
+              </div>
+
+              {/* Neumáticos */}
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-3 sm:p-4 border border-amber-100 cursor-pointer hover:shadow-md transition-all hover:scale-[1.02] text-center">
+                <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Neumáticos</p>
+                <div className="flex items-center justify-center gap-2 sm:gap-3">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs sm:text-sm font-bold bg-red-100 text-red-700">
+                    <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                    {metricasPanel[moduloSeleccionado].neumaticosCriticos}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs sm:text-sm font-bold bg-yellow-100 text-yellow-700">
+                    <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                    {metricasPanel[moduloSeleccionado].neumaticosRegulares}
+                  </span>
+                </div>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-1">críticos / regulares</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

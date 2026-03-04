@@ -24,13 +24,13 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../config/firebase';
 import type { ChecklistRegistro, Novedad, OrdenTrabajo, CargaCombustible, AlertaCombustible, ConsumoCombustible } from '../../types/checklist';
 import { KanbanBoard } from './KanbanBoard';
-import { getAllCargasCombustible, getAlertasByUnidad, getConsumoUnidad, deleteCargaCombustible } from '../../services/combustibleService';
+import { getAllCargasCombustible, getCargasCombustibleByUnidad, getAlertasByUnidad, getConsumoUnidad, deleteCargaCombustible } from '../../services/combustibleService';
 import { showSuccess, showError, showWarning } from '../../utils/toast';
 import { generateOrdenTrabajoPDF, type PDFResult } from '../../utils/pdfGenerator';
 import { ModalPrevisualizacionPDF } from './ModalPrevisualizacionPDF';
 import { convertirTimestampFirebase } from '../../utils/dateUtils';
 import { generarNumeroOT, inicializarContadorOT, obtenerContadorActual } from '../../services/ordenTrabajoService';
-import { TODAS_LAS_UNIDADES } from '../CarouselSector';
+import { TODAS_LAS_UNIDADES, UNIDADES_VRAC, UNIDADES_DISTRIBUCION, UNIDADES_VITAL_AIRE } from '../CarouselSector';
 import AlertasTrenRodante, { type DatosOTTrenRodante } from '../trenRodante/AlertasTrenRodante';
 import ChecklistTrenRodante40K from '../trenRodante/ChecklistTrenRodante40K';
 import ChecklistTrenRodante80K from '../trenRodante/ChecklistTrenRodante80K';
@@ -45,21 +45,24 @@ const obtenerPatente = (numeroUnidad: string): string => {
 
 interface DashboardMantenimientoProps {
   onBack: () => void;
+  tabInicial?: 'checklists' | 'novedades' | 'ordenes' | 'kanban' | 'historial' | 'combustible' | 'trenRodante' | 'cubiertas';
 }
 
 type TabType = 'checklists' | 'novedades' | 'ordenes' | 'kanban' | 'historial' | 'combustible' | 'trenRodante' | 'cubiertas';
 
 interface Filtros {
-  sector: '' | 'vrac' | 'vital-aire';
+  sector: '' | 'vrac' | 'vital-aire' | 'distribucion';
   unidad: string;
   fechaDesde: string;
   fechaHasta: string;
   resultado: '' | 'APTO' | 'NO_APTO' | 'PENDIENTE';
   prioridad: '' | 'ALTA' | 'MEDIA' | 'BAJA';
   estado: '' | 'EN_PROCESO' | 'ESPERANDO_REPUESTOS' | 'CERRADO';
+  sectorOTs: '' | 'vrac' | 'vital-aire' | 'distribucion';
   // Filtros para Novedades
   novedadEstado: '' | 'PROCESADA' | 'RESUELTA' | 'RECHAZADA';
   novedadUnidad: string;
+  novedadSector: '' | 'vrac' | 'vital-aire' | 'distribucion';
   novedadFechaDesde: string;
   novedadFechaHasta: string;
 }
@@ -2743,30 +2746,106 @@ const ModalCompletarOrden: React.FC<ModalCompletarOrdenProps> = ({ orden, onClos
 // ============================================================================
 
 /**
+ * Rangos de consumo esperado por tipo de unidad (L/100km)
+ */
+const RANGOS_CONSUMO: { [key: string]: { min: number; max: number; tipo: string } } = {
+  // Tractores VRAC: 30-35 L/100km
+  '806': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '805': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '40': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '48': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '50': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '802': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '810': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '812': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '814': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '815': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '45': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  '41': { min: 30, max: 35, tipo: 'Tractor VRAC' },
+  // Semiremolques/Balancín: 28-32 L/100km
+  '46': { min: 28, max: 32, tipo: 'Tractor Distribución' },
+  '813': { min: 28, max: 32, tipo: 'Tractor Distribución' },
+  // Camionetas/Chasis: 25-30 L/100km
+  '64': { min: 25, max: 30, tipo: 'Camioneta/Chasis' },
+  '63': { min: 25, max: 30, tipo: 'Camioneta/Chasis' },
+  '62': { min: 25, max: 30, tipo: 'Camioneta/Chasis' },
+};
+
+// Rango por defecto para unidades no configuradas
+const RANGO_DEFAULT = { min: 28, max: 35, tipo: 'General' };
+
+function obtenerRangoConsumo(unidadNumero: string): { min: number; max: number; tipo: string } {
+  return RANGOS_CONSUMO[unidadNumero] || RANGO_DEFAULT;
+}
+
+/**
  * Componente para mostrar el consumo calculado de una unidad
  */
-function DetalleConsumoUnidad({ unidadNumero }: { unidadNumero: string }) {
-  const [consumo, setConsumo] = useState<ConsumoCombustible | null>(null);
+function DetalleConsumoUnidad({ unidadNumero, cargas }: { unidadNumero: string; cargas?: CargaCombustible[] }) {
+  const [consumoCalculado, setConsumoCalculado] = useState<{
+    consumoPromedio: number;
+    totalKm: number;
+    totalLitros: number;
+    costoPorKm: number;
+    cantidadCargas: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const cargarConsumo = async () => {
+    const calcularConsumo = async () => {
       try {
         setLoading(true);
-        const consumoData = await getConsumoUnidad(unidadNumero);
-        setConsumo(consumoData);
+
+        // Obtener cargas de la unidad
+        const cargasUnidad = cargas?.filter(c => c.unidad.numero === unidadNumero) ||
+                            await getCargasCombustibleByUnidad(unidadNumero, 50);
+
+        if (cargasUnidad.length < 2) {
+          setConsumoCalculado(null);
+          return;
+        }
+
+        // Ordenar por kilometraje
+        const cargasOrdenadas = [...cargasUnidad].sort((a, b) => a.kilometrajeActual - b.kilometrajeActual);
+
+        // Calcular consumo: (Total Litros / Total Km) * 100
+        const primeraKm = cargasOrdenadas[0].kilometrajeActual;
+        const ultimaKm = cargasOrdenadas[cargasOrdenadas.length - 1].kilometrajeActual;
+        const totalKm = ultimaKm - primeraKm;
+
+        // Sumar litros (excluyendo la primera carga porque no sabemos cuánto recorrió antes)
+        const totalLitros = cargasOrdenadas.slice(1).reduce((sum, c) => sum + c.litrosCargados, 0);
+        const totalCosto = cargasOrdenadas.reduce((sum, c) => sum + c.costoTotal, 0);
+
+        if (totalKm > 0) {
+          const consumoPromedio = (totalLitros / totalKm) * 100;
+          const costoPorKm = totalCosto / totalKm;
+
+          setConsumoCalculado({
+            consumoPromedio,
+            totalKm,
+            totalLitros,
+            costoPorKm,
+            cantidadCargas: cargasUnidad.length
+          });
+        } else {
+          setConsumoCalculado(null);
+        }
       } catch (error) {
-        console.error('[DetalleConsumoUnidad] Error cargando consumo:', error);
+        console.error('[DetalleConsumoUnidad] Error calculando consumo:', error);
+        setConsumoCalculado(null);
       } finally {
         setLoading(false);
       }
     };
-    cargarConsumo();
-  }, [unidadNumero]);
+    calcularConsumo();
+  }, [unidadNumero, cargas]);
+
+  const rango = obtenerRangoConsumo(unidadNumero);
 
   if (loading) {
     return (
-      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-6">
+      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-4">
         <div className="flex items-center justify-center py-4">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0033A0]"></div>
         </div>
@@ -2774,57 +2853,67 @@ function DetalleConsumoUnidad({ unidadNumero }: { unidadNumero: string }) {
     );
   }
 
-  if (!consumo) {
+  if (!consumoCalculado) {
     return (
-      <div className="bg-yellow-50 rounded-lg p-4 border-2 border-yellow-200 mb-6">
+      <div className="bg-yellow-50 rounded-lg p-3 sm:p-4 border-2 border-yellow-200 mb-4">
         <div className="flex items-center gap-2 text-yellow-700">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <span className="font-semibold">Sin consumo calculado</span>
         </div>
         <p className="text-sm text-yellow-600 mt-2">
-          Se necesitan al menos 2 cargas en el mes para calcular el consumo promedio (L/100km).
+          Se necesitan al menos 2 cargas con km diferentes para calcular.
+        </p>
+        <p className="text-xs text-yellow-500 mt-1">
+          Fórmula: (Litros cargados ÷ Km recorridos) × 100
         </p>
       </div>
     );
   }
 
+  // Determinar estado según rango esperado
+  const estaEnRango = consumoCalculado.consumoPromedio >= rango.min && consumoCalculado.consumoPromedio <= rango.max;
+  const estaPorEncima = consumoCalculado.consumoPromedio > rango.max;
+
   return (
-    <div className="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 border-2 border-green-200 mb-6">
-      <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className={`rounded-lg p-3 sm:p-4 border-2 mb-4 ${
+      estaEnRango ? 'bg-gradient-to-br from-green-50 to-blue-50 border-green-200' :
+      estaPorEncima ? 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200' :
+      'bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200'
+    }`}>
+      <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2 text-sm sm:text-base">
+        <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
-        Consumo Calculado - {consumo.mes}
+        Consumo Calculado ({consumoCalculado.cantidadCargas} cargas)
       </h3>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <div className="bg-white rounded-lg p-3 border border-green-200">
-          <p className="text-xs text-gray-600">Consumo Promedio</p>
-          <p className="text-2xl font-bold text-green-700">{consumo.consumoPromedio.toFixed(2)} <span className="text-sm">L/100km</span></p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+        <div className="bg-white rounded-lg p-2 sm:p-3 border border-green-200">
+          <p className="text-xs text-gray-600">Consumo</p>
+          <p className={`text-lg sm:text-2xl font-bold ${
+            estaEnRango ? 'text-green-700' : estaPorEncima ? 'text-red-700' : 'text-blue-700'
+          }`}>
+            {consumoCalculado.consumoPromedio.toFixed(1)} <span className="text-xs sm:text-sm">L/100km</span>
+          </p>
         </div>
-        <div className="bg-white rounded-lg p-3 border border-blue-200">
-          <p className="text-xs text-gray-600">Total Km Recorridos</p>
-          <p className="text-2xl font-bold text-blue-700">{consumo.totalKilometros.toLocaleString('es-AR')} km</p>
+        <div className="bg-white rounded-lg p-2 sm:p-3 border border-blue-200">
+          <p className="text-xs text-gray-600">Km Recorridos</p>
+          <p className="text-lg sm:text-2xl font-bold text-blue-700 truncate">{consumoCalculado.totalKm.toLocaleString('es-AR')}</p>
         </div>
-        <div className="bg-white rounded-lg p-3 border border-gray-200">
-          <p className="text-xs text-gray-600">Costo por Km</p>
-          <p className="text-2xl font-bold text-gray-700">${consumo.costoPorKm.toFixed(2)}/km</p>
+        <div className="bg-white rounded-lg p-2 sm:p-3 border border-gray-200 col-span-2 sm:col-span-1">
+          <p className="text-xs text-gray-600">Costo/Km</p>
+          <p className="text-lg sm:text-2xl font-bold text-gray-700">${consumoCalculado.costoPorKm.toFixed(0)}</p>
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-4 text-sm">
-        <div className="flex items-center gap-1">
-          <span className="text-gray-600">Tendencia vs mes anterior:</span>
-          <span className={`font-bold ${consumo.tendencia > 0 ? 'text-red-600' : consumo.tendencia < 0 ? 'text-green-600' : 'text-gray-600'}`}>
-            {consumo.tendencia > 0 ? '↑' : consumo.tendencia < 0 ? '↓' : '='} {Math.abs(consumo.tendencia).toFixed(1)}%
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="text-gray-600">vs Promedio flota:</span>
-          <span className={`font-bold ${consumo.desviacionPromedio > 0 ? 'text-red-600' : consumo.desviacionPromedio < 0 ? 'text-green-600' : 'text-gray-600'}`}>
-            {consumo.desviacionPromedio > 0 ? '↑' : consumo.desviacionPromedio < 0 ? '↓' : '='} {Math.abs(consumo.desviacionPromedio).toFixed(1)}%
-          </span>
-        </div>
+      {/* Leyenda con fórmula y rango esperado */}
+      <div className="mt-3 p-2 bg-white/70 rounded-lg border border-gray-200">
+        <p className="text-xs text-gray-600">
+          <span className="font-semibold">Rango esperado ({rango.tipo}):</span> {rango.min}-{rango.max} L/100km
+        </p>
+        <p className="text-xs text-gray-500 mt-1">
+          Fórmula: (Litros cargados ÷ Km recorridos) × 100 = L/100km
+        </p>
       </div>
     </div>
   );
@@ -2833,121 +2922,114 @@ function DetalleConsumoUnidad({ unidadNumero }: { unidadNumero: string }) {
 /**
  * Componente para mostrar alertas de consumo de una unidad
  */
-function AlertasUnidad({ unidadNumero }: { unidadNumero: string }) {
-  const [alertas, setAlertas] = useState<AlertaCombustible[]>([]);
+function AlertasUnidad({ unidadNumero, cargas }: { unidadNumero: string; cargas?: CargaCombustible[] }) {
+  const [estado, setEstado] = useState<{
+    consumoPromedio: number;
+    rango: { min: number; max: number; tipo: string };
+    estaEnRango: boolean;
+    estaPorEncima: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const cargarAlertas = async () => {
+    const evaluarConsumo = async () => {
       try {
         setLoading(true);
-        const alertasData = await getAlertasByUnidad(unidadNumero);
-        setAlertas(alertasData);
+
+        const cargasUnidad = cargas?.filter(c => c.unidad.numero === unidadNumero) ||
+                            await getCargasCombustibleByUnidad(unidadNumero, 50);
+
+        if (cargasUnidad.length < 2) {
+          setEstado(null);
+          return;
+        }
+
+        const cargasOrdenadas = [...cargasUnidad].sort((a, b) => a.kilometrajeActual - b.kilometrajeActual);
+        const totalKm = cargasOrdenadas[cargasOrdenadas.length - 1].kilometrajeActual - cargasOrdenadas[0].kilometrajeActual;
+        const totalLitros = cargasOrdenadas.slice(1).reduce((sum, c) => sum + c.litrosCargados, 0);
+
+        if (totalKm > 0) {
+          const consumoPromedio = (totalLitros / totalKm) * 100;
+          const rango = obtenerRangoConsumo(unidadNumero);
+
+          setEstado({
+            consumoPromedio,
+            rango,
+            estaEnRango: consumoPromedio >= rango.min && consumoPromedio <= rango.max,
+            estaPorEncima: consumoPromedio > rango.max
+          });
+        } else {
+          setEstado(null);
+        }
       } catch (error) {
-        console.error('[AlertasUnidad] Error cargando alertas:', error);
+        console.error('[AlertasUnidad] Error evaluando consumo:', error);
+        setEstado(null);
       } finally {
         setLoading(false);
       }
     };
-    cargarAlertas();
-  }, [unidadNumero]);
+    evaluarConsumo();
+  }, [unidadNumero, cargas]);
 
   if (loading) {
     return (
-      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-6">
-        <div className="flex items-center justify-center py-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
+      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-4">
+        <div className="flex items-center justify-center py-2">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-amber-500"></div>
         </div>
       </div>
     );
   }
 
-  if (alertas.length === 0) {
+  if (!estado) {
     return (
-      <div className="bg-green-50 rounded-lg p-4 border-2 border-green-200 mb-6">
+      <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 mb-4">
+        <div className="flex items-center gap-2 text-gray-600">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-sm">Sin datos suficientes para evaluar</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (estado.estaEnRango) {
+    return (
+      <div className="bg-green-50 rounded-lg p-3 border-2 border-green-200 mb-4">
         <div className="flex items-center gap-2 text-green-700">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="font-semibold">✅ Sin alertas - Consumo normal</span>
+          <span className="font-semibold">✅ Consumo Normal</span>
         </div>
-        <p className="text-sm text-green-600 mt-2">
-          El consumo de esta unidad está dentro del rango esperado.
+        <p className="text-sm text-green-600 mt-1">
+          {estado.consumoPromedio.toFixed(1)} L/100km está dentro del rango esperado ({estado.rango.min}-{estado.rango.max} L/100km)
         </p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg border-2 border-amber-300 p-4 mb-6">
-      <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-        <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        Alertas de Consumo ({alertas.length})
-      </h3>
-      <div className="space-y-3">
-        {alertas.map((alerta) => (
-          <div
-            key={alerta.id}
-            className={`rounded-lg p-3 border-2 ${
-              alerta.severidad === 'ALTA' ? 'bg-red-50 border-red-300' :
-              alerta.severidad === 'MEDIA' ? 'bg-amber-50 border-amber-300' :
-              'bg-blue-50 border-blue-300'
-            }`}
-          >
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className={`text-2xl ${
-                  alerta.tipo === 'CONSUMO_ALTO' ? '⚠️' :
-                  alerta.tipo === 'MEJORA_SIGNIFICATIVA' ? '✅' :
-                  '📊'
-                }`}></span>
-                <div>
-                  <div className={`font-semibold ${
-                    alerta.severidad === 'ALTA' ? 'text-red-700' :
-                    alerta.severidad === 'MEDIA' ? 'text-amber-700' :
-                    'text-blue-700'
-                  }`}>
-                    {alerta.tipo === 'CONSUMO_ALTO' ? 'Consumo Alto' :
-                     alerta.tipo === 'MEJORA_SIGNIFICATIVA' ? 'Mejora Significativa' :
-                     alerta.tipo}
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    {convertirTimestampFirebase(alerta.fechaDeteccion).toLocaleDateString('es-AR')} - {alerta.estado}
-                  </div>
-                </div>
-              </div>
-              <span className={`px-2 py-1 rounded text-xs font-bold ${
-                alerta.severidad === 'ALTA' ? 'bg-red-200 text-red-800' :
-                alerta.severidad === 'MEDIA' ? 'bg-amber-200 text-amber-800' :
-                'bg-blue-200 text-blue-800'
-              }`}>
-                {alerta.severidad}
-              </span>
-            </div>
-            <p className="text-sm text-gray-700 mb-2">{alerta.mensaje}</p>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="bg-white rounded p-2 border border-gray-200">
-                <p className="text-gray-600">Consumo Actual</p>
-                <p className="font-bold text-gray-800">{alerta.consumoActual.toFixed(2)} L/100km</p>
-              </div>
-              <div className="bg-white rounded p-2 border border-gray-200">
-                <p className="text-gray-600">Consumo Esperado</p>
-                <p className="font-bold text-gray-800">{alerta.consumoEsperado.toFixed(2)} L/100km</p>
-              </div>
-              <div className="bg-white rounded p-2 border border-gray-200">
-                <p className="text-gray-600">Diferencia</p>
-                <p className={`font-bold ${
-                  alerta.diferenciaPorcentual > 0 ? 'text-red-600' : 'text-green-600'
-                }`}>
-                  {alerta.diferenciaPorcentual > 0 ? '+' : ''}{alerta.diferenciaPorcentual.toFixed(1)}%
-                </p>
-              </div>
-            </div>
+    <div className={`rounded-lg p-3 border-2 mb-4 ${
+      estado.estaPorEncima ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-300'
+    }`}>
+      <div className="flex items-center gap-2">
+        <span className="text-xl">{estado.estaPorEncima ? '⚠️' : '📉'}</span>
+        <div>
+          <div className={`font-semibold ${estado.estaPorEncima ? 'text-red-700' : 'text-blue-700'}`}>
+            {estado.estaPorEncima ? 'Consumo Elevado' : 'Consumo Bajo'}
           </div>
-        ))}
+          <div className="text-sm text-gray-600">
+            {estado.consumoPromedio.toFixed(1)} L/100km {estado.estaPorEncima ? 'supera' : 'está por debajo del'} rango esperado ({estado.rango.min}-{estado.rango.max})
+          </div>
+        </div>
       </div>
+      {estado.estaPorEncima && (
+        <p className="text-xs text-red-600 mt-2">
+          Verificar: estado de neumáticos, carga excesiva, estilo de conducción, problemas mecánicos.
+        </p>
+      )}
     </div>
   );
 }
@@ -2955,13 +3037,19 @@ function AlertasUnidad({ unidadNumero }: { unidadNumero: string }) {
 // ============================================================================
 // COMPONENTE PRINCIPAL
 // ============================================================================
-const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('kanban');
+const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack, tabInicial }) => {
+  const [activeTab, setActiveTab] = useState<TabType>(tabInicial || 'kanban');
   const [loading, setLoading] = useState(false);
   const [checklists, setChecklists] = useState<ChecklistRegistro[]>([]);
   const [novedades, setNovedades] = useState<Novedad[]>([]);
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
   const [cargas, setCargas] = useState<CargaCombustible[]>([]);
+  const [consumosResumen, setConsumosResumen] = useState<Record<string, {
+    consumoPromedio: number;
+    rango: { min: number; max: number; tipo: string };
+    estaEnRango: boolean;
+    estaPorEncima: boolean;
+  } | null>>({});
   const [estadisticas, setEstadisticas] = useState<Estadisticas>({
     totalChecklists: 0,
     checklistsApto: 0,
@@ -2979,9 +3067,11 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
     resultado: '',
     prioridad: '',
     estado: '',
+    sectorOTs: '',
     // Filtros para Novedades
     novedadEstado: '',
     novedadUnidad: '',
+    novedadSector: '',
     novedadFechaDesde: '',
     novedadFechaHasta: ''
   });
@@ -3014,6 +3104,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   // Estado para modal de detalles de combustible
   const [showDetalleCombustible, setShowDetalleCombustible] = useState(false);
   const [unidadCombustibleSeleccionada, setUnidadCombustibleSeleccionada] = useState<string | null>(null);
+  const [alertasConsumoDesplegadas, setAlertasConsumoDesplegadas] = useState(false);
 
   // Estados para Tren Rodante VRAC
   const [showChecklistTR, setShowChecklistTR] = useState<'40K' | '80K' | '160K' | null>(null);
@@ -3033,6 +3124,31 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
   useEffect(() => {
     cargarDatos();
   }, [filtros, activeTab]);
+
+  // Calcular consumo de todas las unidades cuando cambian las cargas
+  useEffect(() => {
+    if (cargas.length === 0) { setConsumosResumen({}); return; }
+    const cargasPorUnidad: Record<string, CargaCombustible[]> = {};
+    cargas.forEach(c => {
+      if (!cargasPorUnidad[c.unidad.numero]) cargasPorUnidad[c.unidad.numero] = [];
+      cargasPorUnidad[c.unidad.numero].push(c);
+    });
+    const resultado: Record<string, { consumoPromedio: number; rango: { min: number; max: number; tipo: string }; estaEnRango: boolean; estaPorEncima: boolean } | null> = {};
+    Object.entries(cargasPorUnidad).forEach(([numero, cargasU]) => {
+      if (cargasU.length < 2) { resultado[numero] = null; return; }
+      const ordenadas = [...cargasU].sort((a, b) => a.kilometrajeActual - b.kilometrajeActual);
+      const totalKm = ordenadas[ordenadas.length - 1].kilometrajeActual - ordenadas[0].kilometrajeActual;
+      const totalLitros = ordenadas.slice(1).reduce((sum, c) => sum + c.litrosCargados, 0);
+      if (totalKm > 0) {
+        const consumoPromedio = (totalLitros / totalKm) * 100;
+        const rango = obtenerRangoConsumo(numero);
+        resultado[numero] = { consumoPromedio, rango, estaEnRango: consumoPromedio >= rango.min && consumoPromedio <= rango.max, estaPorEncima: consumoPromedio > rango.max };
+      } else {
+        resultado[numero] = null;
+      }
+    });
+    setConsumosResumen(resultado);
+  }, [cargas]);
 
   // 🛠️ Exponer funciones de administración para consola del navegador
   useEffect(() => {
@@ -3453,8 +3569,10 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
       resultado: '',
       prioridad: '',
       estado: '',
+      sectorOTs: '',
       novedadEstado: '',
       novedadUnidad: '',
+      novedadSector: '',
       novedadFechaDesde: '',
       novedadFechaHasta: ''
     });
@@ -3978,7 +4096,22 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                   <div>
                     {/* Filtros para Novedades */}
                     <div className="bg-gradient-to-br from-amber-50 to-gray-50 rounded-xl p-3 md:p-4 mb-4 md:mb-6 border border-amber-200">
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 md:gap-4">
+                        <div>
+                          <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Módulo</label>
+                          <select
+                            value={filtros.novedadSector}
+                            onChange={(e) => setFiltros({ ...filtros, novedadSector: e.target.value as any })}
+                            className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white touch-target-48"
+                            style={{ fontSize: '16px' }}
+                          >
+                            <option value="">Todos los módulos</option>
+                            <option value="vrac">🛢️ VRAC</option>
+                            <option value="distribucion">📦 Distribución</option>
+                            <option value="vital-aire">🚐 Vital Aire</option>
+                          </select>
+                        </div>
+
                         <div>
                           <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Estado</label>
                           <select
@@ -4076,9 +4209,15 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                     <div className="space-y-3 md:space-y-4">
                       {(() => {
                         // Filtrar novedades
+                        const _unidadesSectorNov: Record<string, string[]> = {
+                          'vrac': UNIDADES_VRAC.map(u => u.numero),
+                          'distribucion': UNIDADES_DISTRIBUCION.map(u => u.numero),
+                          'vital-aire': UNIDADES_VITAL_AIRE.map(u => u.numero),
+                        };
                         const novedadesFiltradas = novedades.filter(novedad => {
                           if (filtros.novedadEstado && novedad.estado !== filtros.novedadEstado) return false;
                           if (filtros.novedadUnidad && novedad.unidad?.numero !== filtros.novedadUnidad) return false;
+                          if (filtros.novedadSector && !(_unidadesSectorNov[filtros.novedadSector] || []).includes(novedad.unidad?.numero)) return false;
                           if (filtros.novedadFechaDesde) {
                             const fechaNovedad = convertirTimestampFirebase(novedad.timestamp);
                             const fechaDesde = new Date(filtros.novedadFechaDesde);
@@ -4287,7 +4426,22 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                   <div>
                     {/* Filtros optimizados para móvil */}
                     <div className="bg-gradient-to-br from-purple-50 to-gray-50 rounded-xl p-3 md:p-4 mb-4 md:mb-6 border border-purple-200">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
+                        <div>
+                          <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Módulo</label>
+                          <select
+                            value={filtros.sectorOTs}
+                            onChange={(e) => setFiltros({ ...filtros, sectorOTs: e.target.value as any })}
+                            className="w-full px-3 md:px-4 py-2.5 md:py-2 text-base border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white touch-target-48"
+                            style={{ fontSize: '16px' }}
+                          >
+                            <option value="">Todos los módulos</option>
+                            <option value="vrac">🛢️ VRAC</option>
+                            <option value="distribucion">📦 Distribución</option>
+                            <option value="vital-aire">🚐 Vital Aire</option>
+                          </select>
+                        </div>
+
                         <div>
                           <label className="block text-xs md:text-sm font-semibold text-gray-700 mb-1.5 md:mb-2">Estado</label>
                           <select
@@ -4330,8 +4484,20 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                     </div>
 
                     {/* Lista de Órdenes - Optimizada móvil */}
+                    {(() => {
+                      const unidadesSectorOTs: Record<string, string[]> = {
+                        'vrac': UNIDADES_VRAC.map(u => u.numero),
+                        'distribucion': UNIDADES_DISTRIBUCION.map(u => u.numero),
+                        'vital-aire': UNIDADES_VITAL_AIRE.map(u => u.numero),
+                      };
+                      const ordenesFiltradas = ordenes.filter(o =>
+                        (!filtros.estado || o.estado === filtros.estado) &&
+                        (!filtros.prioridad || o.prioridad === filtros.prioridad) &&
+                        (!filtros.sectorOTs || (unidadesSectorOTs[filtros.sectorOTs] || []).includes(o.unidad?.numero))
+                      );
+                      return (
                     <div className="space-y-3 md:space-y-4">
-                      {ordenes.length === 0 ? (
+                      {ordenesFiltradas.length === 0 ? (
                         <div className="text-center py-12 md:py-16">
                           <svg className="w-12 h-12 md:w-16 md:h-16 text-gray-400 mx-auto mb-3 md:mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -4340,7 +4506,7 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                           <p className="text-gray-400 text-sm mt-2">Las OTs generadas aparecerán aquí</p>
                         </div>
                       ) : (
-                        ordenes.map((orden) => (
+                        ordenesFiltradas.map((orden) => (
                           <div
                             key={orden.id}
                             className={`bg-white border-l-4 rounded-lg p-4 md:p-6 shadow-md hover:shadow-lg transition-all ${
@@ -4444,6 +4610,8 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                         ))
                       )}
                     </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -4712,137 +4880,189 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
 
                       {/* Resumen rápido */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mt-4">
-                        <div className="bg-white rounded-lg p-3 border border-blue-200">
+                        <div className="bg-white rounded-lg p-2 md:p-3 border border-blue-200">
                           <p className="text-xs text-gray-600">Total Cargas</p>
-                          <p className="text-xl md:text-2xl font-bold text-[#0033A0]">{cargas.length}</p>
+                          <p className="text-lg md:text-2xl font-bold text-[#0033A0]">{cargas.length}</p>
                         </div>
-                        <div className="bg-white rounded-lg p-3 border border-blue-200">
+                        <div className="bg-white rounded-lg p-2 md:p-3 border border-blue-200">
                           <p className="text-xs text-gray-600">Total Litros</p>
-                          <p className="text-xl md:text-2xl font-bold text-[#0033A0]">
+                          <p className="text-lg md:text-2xl font-bold text-[#0033A0] truncate">
                             {cargas.reduce((sum, c) => sum + c.litrosCargados, 0).toFixed(0)} L
                           </p>
                         </div>
-                        <div className="bg-white rounded-lg p-3 border border-blue-200">
+                        <div className="bg-white rounded-lg p-2 md:p-3 border border-blue-200">
                           <p className="text-xs text-gray-600">Costo Total</p>
-                          <p className="text-xl md:text-2xl font-bold text-[#0033A0]">
-                            ${cargas.reduce((sum, c) => sum + c.costoTotal, 0).toLocaleString('es-AR')}
+                          <p className="text-sm md:text-2xl font-bold text-[#0033A0] truncate" title={`$${cargas.reduce((sum, c) => sum + c.costoTotal, 0).toLocaleString('es-AR')}`}>
+                            ${cargas.reduce((sum, c) => sum + c.costoTotal, 0).toLocaleString('es-AR', { notation: 'compact', maximumFractionDigits: 1 })}
                           </p>
                         </div>
-                        <div className="bg-white rounded-lg p-3 border border-blue-200">
-                          <p className="text-xs text-gray-600">Promedio L/Carga</p>
-                          <p className="text-xl md:text-2xl font-bold text-[#0033A0]">
-                            {cargas.length > 0 ? (cargas.reduce((sum, c) => sum + c.litrosCargados, 0) / cargas.length).toFixed(1) : 0} L
+                        <div className="bg-white rounded-lg p-2 md:p-3 border border-blue-200">
+                          <p className="text-xs text-gray-600">Prom. L/Carga</p>
+                          <p className="text-lg md:text-2xl font-bold text-[#0033A0] truncate">
+                            {cargas.length > 0 ? (cargas.reduce((sum, c) => sum + c.litrosCargados, 0) / cargas.length).toFixed(0) : 0} L
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Tabla de cargas */}
-                    <div className="overflow-x-auto bg-white rounded-xl border-2 border-gray-200">
-                      <table className="w-full">
-                        <thead className="bg-[#0033A0] text-white">
-                          <tr>
-                            <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-semibold">Fecha</th>
-                            <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-semibold">Unidad</th>
-                            <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-semibold">Km</th>
-                            <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-semibold">Litros</th>
-                            <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-semibold">Tipo</th>
-                            <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-semibold">Costo</th>
-                            <th className="px-3 md:px-4 py-3 text-left text-xs md:text-sm font-semibold">Operador</th>
-                            <th className="px-3 md:px-4 py-3 text-center text-xs md:text-sm font-semibold">Acciones</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cargas.length > 0 ? (
-                            cargas.map((carga, index) => (
-                              <tr
-                                key={carga.id}
-                                onClick={() => {
-                                  setUnidadCombustibleSeleccionada(carga.unidad.numero);
-                                  setShowDetalleCombustible(true);
-                                }}
-                                className={`${
-                                  index % 2 === 0 ? 'bg-white' : 'bg-blue-50'
-                                } hover:bg-blue-100 transition-colors border-b border-gray-200 cursor-pointer`}
-                              >
-                                <td className="px-3 md:px-4 py-3 text-xs md:text-sm text-gray-700">
-                                  {new Date(carga.fecha).toLocaleDateString('es-AR')}
-                                  <span className="block text-xs text-gray-500">
-                                    {new Date(carga.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                </td>
-                                <td className="px-3 md:px-4 py-3">
-                                  <div className="font-semibold text-[#0033A0] text-xs md:text-sm">
-                                    INT-{carga.unidad.numero}
+                    {/* Alertas de consumo anormal */}
+                    {(() => {
+                      const alertas = Object.entries(consumosResumen)
+                        .filter(([, e]) => e && e.estaPorEncima)
+                        .map(([numero, e]) => ({ numero, estado: e! }));
+                      if (alertas.length === 0) return null;
+                      return (
+                        <div className="mb-4 border-2 border-[#0033A0] rounded-xl overflow-hidden">
+                          <button
+                            onClick={() => setAlertasConsumoDesplegadas(v => !v)}
+                            className="w-full flex items-center justify-between px-4 py-3 bg-[#0033A0] hover:bg-[#002280] transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white">⚠️ Alertas de Consumo</span>
+                              <span className="bg-white text-[#0033A0] text-xs font-bold px-2 py-0.5 rounded-full">{alertas.length}</span>
+                            </div>
+                            <svg
+                              className={`w-5 h-5 text-white transition-transform ${alertasConsumoDesplegadas ? 'rotate-180' : ''}`}
+                              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                          {alertasConsumoDesplegadas && (
+                            <div className="px-4 pb-4 pt-3 space-y-2 bg-white">
+                              {alertas.map(({ numero, estado }) => (
+                                <div
+                                  key={numero}
+                                  onClick={() => { setUnidadCombustibleSeleccionada(numero); setShowDetalleCombustible(true); }}
+                                  className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                                    estado.estaPorEncima
+                                      ? 'bg-red-100 hover:bg-red-200 border border-red-300'
+                                      : 'bg-blue-100 hover:bg-blue-200 border border-blue-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span>{estado.estaPorEncima ? '⚠️' : '📉'}</span>
+                                    <span className="font-bold text-gray-800">INT-{numero}</span>
+                                    <span className={`text-sm ${estado.estaPorEncima ? 'text-red-700' : 'text-blue-700'}`}>
+                                      {estado.estaPorEncima ? 'Consumo elevado' : 'Consumo bajo'}
+                                    </span>
                                   </div>
-                                  <div className="text-xs text-gray-500">{carga.unidad.patente}</div>
-                                </td>
-                                <td className="px-3 md:px-4 py-3 text-xs md:text-sm font-semibold text-gray-700">
-                                  {carga.kilometrajeActual.toLocaleString('es-AR')} km
-                                </td>
-                                <td className="px-3 md:px-4 py-3 text-xs md:text-sm font-semibold text-blue-700">
-                                  {carga.litrosCargados.toFixed(2)} L
-                                </td>
-                                <td className="px-3 md:px-4 py-3">
-                                  <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
-                                    carga.tipoCombustible === 'COMÚN' ? 'bg-gray-200 text-gray-700' :
-                                    carga.tipoCombustible === 'INFINIA' ? 'bg-purple-200 text-purple-700' :
-                                    'bg-blue-200 text-blue-700'
-                                  }`}>
-                                    {carga.tipoCombustible}
-                                  </span>
-                                </td>
-                                <td className="px-3 md:px-4 py-3 text-xs md:text-sm font-bold text-green-700">
-                                  ${carga.costoTotal.toLocaleString('es-AR')}
-                                </td>
-                                <td className="px-3 md:px-4 py-3 text-xs md:text-sm text-gray-600">
-                                  {carga.operador}
-                                </td>
-                                <td className="px-3 md:px-4 py-3 text-center">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation(); // Evitar que se abra el modal al hacer click en eliminar
-                                      handleDeleteCarga(carga.id, carga.unidad.numero);
-                                    }}
-                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg hover:bg-red-100 transition-colors group"
-                                    title="Eliminar registro"
-                                  >
-                                    <svg
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      className="h-5 w-5 text-gray-700 group-hover:text-red-600"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                      />
-                                    </svg>
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td colSpan={8} className="px-4 py-12 text-center">
-                                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                                  <span className="text-3xl">⛽</span>
+                                  <div className="text-right">
+                                    <span className={`font-bold ${estado.estaPorEncima ? 'text-red-700' : 'text-blue-700'}`}>
+                                      {estado.consumoPromedio.toFixed(1)} L/100km
+                                    </span>
+                                    <span className="text-xs text-gray-500 ml-1">(rango: {estado.rango.min}-{estado.rango.max})</span>
+                                  </div>
                                 </div>
-                                <p className="text-lg text-gray-600 font-medium">
-                                  No hay cargas de combustible registradas
-                                </p>
-                                <p className="text-sm text-gray-500 mt-2">
-                                  Las cargas aparecerán aquí cuando los choferes las registren
-                                </p>
-                              </td>
-                            </tr>
+                              ))}
+                            </div>
                           )}
-                        </tbody>
-                      </table>
-                    </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Grid de unidades agrupadas */}
+                    {(() => {
+                      // Agrupar cargas por unidad
+                      const cargasPorUnidad = cargas.reduce((acc, carga) => {
+                        const key = carga.unidad.numero;
+                        if (!acc[key]) {
+                          acc[key] = {
+                            unidad: carga.unidad,
+                            cargas: [],
+                            totalLitros: 0,
+                            totalCosto: 0
+                          };
+                        }
+                        acc[key].cargas.push(carga);
+                        acc[key].totalLitros += carga.litrosCargados;
+                        acc[key].totalCosto += carga.costoTotal;
+                        return acc;
+                      }, {} as Record<string, { unidad: typeof cargas[0]['unidad']; cargas: typeof cargas; totalLitros: number; totalCosto: number }>);
+
+                      const unidadesAgrupadas = Object.values(cargasPorUnidad).sort((a, b) =>
+                        b.cargas[0]?.fecha?.getTime?.() - a.cargas[0]?.fecha?.getTime?.() || 0
+                      );
+
+                      if (unidadesAgrupadas.length === 0) {
+                        return (
+                          <div className="bg-white rounded-xl border-2 border-gray-200 p-8 text-center">
+                            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                              <span className="text-3xl">⛽</span>
+                            </div>
+                            <p className="text-lg text-gray-600 font-medium">
+                              No hay cargas de combustible registradas
+                            </p>
+                            <p className="text-sm text-gray-500 mt-2">
+                              Las cargas aparecerán aquí cuando los choferes las registren
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+                          {unidadesAgrupadas.map((grupo) => {
+                            const consumo = consumosResumen[grupo.unidad.numero];
+                            const cardClass = !consumo
+                              ? 'bg-white border-gray-200 hover:border-[#0033A0]'
+                              : consumo.estaPorEncima
+                              ? 'bg-red-50 border-red-300 hover:border-red-500'
+                              : !consumo.estaEnRango
+                              ? 'bg-blue-50 border-blue-300 hover:border-blue-500'
+                              : 'bg-white border-gray-200 hover:border-[#0033A0]';
+                            return (
+                            <div
+                              key={grupo.unidad.numero}
+                              onClick={() => {
+                                setUnidadCombustibleSeleccionada(grupo.unidad.numero);
+                                setShowDetalleCombustible(true);
+                              }}
+                              className={`rounded-xl border-2 p-3 md:p-4 cursor-pointer hover:shadow-lg transition-all ${cardClass}`}
+                            >
+                              {/* Header */}
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-10 h-10 md:w-12 md:h-12 bg-[#0033A0] rounded-full flex items-center justify-center">
+                                    <span className="text-white font-bold text-sm md:text-base">{grupo.unidad.numero}</span>
+                                  </div>
+                                  <div>
+                                    <div className="font-bold text-[#0033A0]">INT-{grupo.unidad.numero}</div>
+                                    <div className="text-xs text-gray-500">{grupo.unidad.patente}</div>
+                                  </div>
+                                </div>
+                                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </div>
+
+                              {/* Stats */}
+                              <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className="bg-blue-50 rounded-lg p-2">
+                                  <p className="text-xs text-gray-500">Cargas</p>
+                                  <p className="font-bold text-[#0033A0]">{grupo.cargas.length}</p>
+                                </div>
+                                <div className="bg-blue-50 rounded-lg p-2">
+                                  <p className="text-xs text-gray-500">Litros</p>
+                                  <p className="font-bold text-blue-700 text-sm truncate">{grupo.totalLitros.toFixed(0)} L</p>
+                                </div>
+                                <div className="bg-green-50 rounded-lg p-2">
+                                  <p className="text-xs text-gray-500">Total</p>
+                                  <p className="font-bold text-green-700 text-sm truncate">${grupo.totalCosto.toLocaleString('es-AR', { notation: 'compact' })}</p>
+                                </div>
+                              </div>
+
+                              {/* Última carga */}
+                              <div className="mt-3 pt-2 border-t border-gray-100 text-xs text-gray-500 flex justify-between">
+                                <span>Última: {new Date(grupo.cargas[0]?.fecha).toLocaleDateString('es-AR')}</span>
+                                <span>{grupo.cargas[0]?.operador || 'N/A'}</span>
+                              </div>
+                            </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -4998,38 +5218,38 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
               </div>
 
               {/* Content */}
-              <div className="p-6 max-h-[70vh] overflow-y-auto">
+              <div className="p-3 sm:p-6 max-h-[70vh] overflow-y-auto">
                 {/* Estadísticas Generales */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-6">
+                  <div className="bg-blue-50 rounded-lg p-2 sm:p-4 border-2 border-blue-200">
                     <p className="text-xs text-gray-600 mb-1">Total Cargas</p>
-                    <p className="text-3xl font-bold text-[#0033A0]">{cargasUnidad.length}</p>
+                    <p className="text-xl sm:text-3xl font-bold text-[#0033A0]">{cargasUnidad.length}</p>
                   </div>
-                  <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
+                  <div className="bg-blue-50 rounded-lg p-2 sm:p-4 border-2 border-blue-200">
                     <p className="text-xs text-gray-600 mb-1">Total Litros</p>
-                    <p className="text-3xl font-bold text-[#0033A0]">
+                    <p className="text-xl sm:text-3xl font-bold text-[#0033A0] truncate">
                       {cargasUnidad.reduce((sum, c) => sum + c.litrosCargados, 0).toFixed(0)} L
                     </p>
                   </div>
-                  <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
+                  <div className="bg-blue-50 rounded-lg p-2 sm:p-4 border-2 border-blue-200">
                     <p className="text-xs text-gray-600 mb-1">Costo Total</p>
-                    <p className="text-3xl font-bold text-[#0033A0]">
-                      ${cargasUnidad.reduce((sum, c) => sum + c.costoTotal, 0).toLocaleString('es-AR')}
+                    <p className="text-base sm:text-3xl font-bold text-[#0033A0] truncate" title={`$${cargasUnidad.reduce((sum, c) => sum + c.costoTotal, 0).toLocaleString('es-AR')}`}>
+                      ${cargasUnidad.reduce((sum, c) => sum + c.costoTotal, 0).toLocaleString('es-AR', { notation: 'compact', maximumFractionDigits: 1 })}
                     </p>
                   </div>
-                  <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
-                    <p className="text-xs text-gray-600 mb-1">Promedio/Carga</p>
-                    <p className="text-3xl font-bold text-[#0033A0]">
-                      {(cargasUnidad.reduce((sum, c) => sum + c.litrosCargados, 0) / cargasUnidad.length).toFixed(1)} L
+                  <div className="bg-blue-50 rounded-lg p-2 sm:p-4 border-2 border-blue-200">
+                    <p className="text-xs text-gray-600 mb-1">Prom/Carga</p>
+                    <p className="text-xl sm:text-3xl font-bold text-[#0033A0] truncate">
+                      {(cargasUnidad.reduce((sum, c) => sum + c.litrosCargados, 0) / cargasUnidad.length).toFixed(0)} L
                     </p>
                   </div>
                 </div>
 
                 {/* Consumo Calculado */}
-                <DetalleConsumoUnidad unidadNumero={unidadCombustibleSeleccionada} />
+                <DetalleConsumoUnidad unidadNumero={unidadCombustibleSeleccionada} cargas={cargas} />
 
                 {/* Alertas de la Unidad */}
-                <AlertasUnidad unidadNumero={unidadCombustibleSeleccionada} />
+                <AlertasUnidad unidadNumero={unidadCombustibleSeleccionada} cargas={cargas} />
 
                 {/* Historial de Cargas */}
                 <div className="bg-white rounded-xl border-2 border-gray-200 p-4 mt-6">
@@ -5054,13 +5274,22 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack 
                               <div className="text-xs text-gray-600">Operador: {carga.operador}</div>
                             </div>
                           </div>
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                            carga.tipoCombustible === 'COMÚN' ? 'bg-gray-200 text-gray-700' :
-                            carga.tipoCombustible === 'INFINIA' ? 'bg-purple-200 text-purple-700' :
-                            'bg-blue-200 text-blue-700'
-                          }`}>
-                            {carga.tipoCombustible}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                              carga.tipoCombustible === 'COMÚN' ? 'bg-gray-200 text-gray-700' :
+                              carga.tipoCombustible === 'INFINIA' ? 'bg-purple-200 text-purple-700' :
+                              'bg-blue-200 text-blue-700'
+                            }`}>
+                              {carga.tipoCombustible}
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteCarga(carga.id, carga.unidad.numero); }}
+                              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar registro"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </div>
                         <div className="grid grid-cols-3 gap-3 text-sm">
                           <div>

@@ -220,6 +220,7 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
   const [filtroChofer, setFiltroChofer] = useState('');
 
   const [odometro, setOdometro] = useState('');
+  const [ultimoOdometro, setUltimoOdometro] = useState<number | null>(null);
   const [items, setItems] = useState<ItemChecklist[]>(
     ITEMS_VITAL_AIRE.map(item => ({
       ...item,
@@ -260,6 +261,25 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
     };
     cargarConfigGPS();
   }, []);
+
+  // Pre-cargar último odómetro al entrar al paso
+  useEffect(() => {
+    if (currentStep !== 'odometro' || !unidad.numero) return;
+    const cargarUltimoOdometro = async () => {
+      try {
+        const ubicDoc = await getDoc(doc(db, 'ubicaciones', `INT-${unidad.numero}`));
+        if (!ubicDoc.exists()) return;
+        const valor = ubicDoc.data()?.ultimoOdometro;
+        if (valor && !odometro) {
+          setUltimoOdometro(Math.round(valor));
+          setOdometro(String(Math.round(valor)));
+        }
+      } catch (e) {
+        console.warn('[ChecklistVitalAire] No se pudo cargar último odómetro:', e);
+      }
+    };
+    cargarUltimoOdometro();
+  }, [currentStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filtrar choferes según búsqueda
   const choferesFiltrados = CHOFERES_VITAL_AIRE.filter(c =>
@@ -502,22 +522,6 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
       // Notificar éxito
       showSuccess('Checklist guardado exitosamente');
 
-      // GPS automático si está habilitado
-      if (gpsHabilitadoConfig) {
-        setChecklistGuardado(checklistData);
-        const success = await gpsTracking.startTracking({
-          unidad: unidad.numero,
-          patente: unidad.patente,
-          chofer,
-          sector: 'vital_aire',
-        });
-        if (success) {
-          setIsSubmitting(false);
-          setMostrarBienvenida(true);
-          return;
-        }
-      }
-
       onComplete(checklistData);
     } catch (error) {
       console.error('[ChecklistVitalAire] Error guardando checklist:', error);
@@ -704,9 +708,15 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
               inputMode="numeric"
               autoFocus
             />
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              Ejemplo: 125450
-            </p>
+            {ultimoOdometro !== null ? (
+              <p className="text-xs text-green-600 mt-2 text-center font-medium">
+                ↑ Último viaje registrado: {ultimoOdometro.toLocaleString('es-AR')} km · Editable
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                Ejemplo: 125450
+              </p>
+            )}
 
             {/* Botones */}
             <div className="flex gap-3 mt-6">
@@ -1114,22 +1124,6 @@ export function ChecklistVitalAire({ unidad, onComplete, onCancel }: ChecklistVi
           </div>
         </div>
       </>
-    );
-  }
-
-  // Modal de bienvenida al iniciar GPS (debe estar ANTES del render resumen)
-  if (mostrarBienvenida) {
-    return (
-      <BienvenidaViajeModal
-        chofer={chofer}
-        unidad={unidad.numero}
-        patente={unidad.patente}
-        sector="vital_aire"
-        onDismiss={() => {
-          showSuccess('¡Checklist guardado correctamente!');
-          onComplete(checklistGuardado!);
-        }}
-      />
     );
   }
 

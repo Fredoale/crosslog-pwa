@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, where, getDocs, Timestamp } from 'firebase/firestore';
+import MapaViajeModal from './MapaViajeModal';
 import { db } from '../config/firebase';
 import { buscarTarifa } from '../utils/tarifas';
 
@@ -71,6 +72,7 @@ export default function HistorialViajes({ onClose }: HistorialViajesProps) {
   const [viajes, setViajes] = useState<ViajeRegistro[]>([]);
   const [loading, setLoading] = useState(false);
   const [buscado, setBuscado] = useState(false);
+  const [viajeMapaAbierto, setViajeMapaAbierto] = useState<ViajeRegistro | null>(null);
   const [filtros, setFiltros] = useState<Filtros>({
     fechaDesde: '',
     fechaHasta: '',
@@ -140,18 +142,20 @@ export default function HistorialViajes({ onClose }: HistorialViajesProps) {
 
   const exportarCSV = (v: ViajeRegistro) => {
     const tarifa = v.kmRecorridos != null ? buscarTarifa(v.kmRecorridos) : null;
+    const SEP = ';';
     const row = [
       v.unidad, v.patente, v.chofer, v.sector.toUpperCase(),
       v.hdr ?? '', tarifa?.ruta ?? '', tarifa?.cliente ?? '',
       formatFecha(v.fechaInicio),
       v.fechaFin ? formatFecha(v.fechaFin) : '',
       v.kmRecorridos ?? '', v.baseNombre ?? '', v.estado,
-    ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',');
-    const csv = `Unidad,Patente,Chofer,Sector,HDR,Tarifa,Cliente,Inicio,Fin,Km,Base,Estado\n${row}`;
+    ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(SEP);
+    const csv = `sep=${SEP}\nUnidad${SEP}Patente${SEP}Chofer${SEP}Sector${SEP}HDR${SEP}Tarifa${SEP}Cliente${SEP}Inicio${SEP}Fin${SEP}Km${SEP}Base${SEP}Estado\n${row}`;
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `viaje_INT${v.unidad}_${v.id.slice(-8)}.csv`;
+    const fecha = v.fechaInicio.toLocaleDateString('en-CA');
+    a.download = `viaje_INT${v.unidad}_${fecha}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -287,60 +291,60 @@ export default function HistorialViajes({ onClose }: HistorialViajesProps) {
           return (
             <div
               key={v.id}
-              className="bg-gray-800 border border-gray-700 rounded-xl p-4 hover:border-gray-600 transition-colors"
+              className="bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 hover:border-gray-600 transition-colors"
             >
-              {/* Fila 1: unidad + sector badge + estado */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-white font-bold text-base">INT-{v.unidad}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sectorColor}`}>
+              {/* Fila 1 (principal): unidad · sector · chofer · HDR ── estado + acciones */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                  <span className="text-white font-bold text-sm">INT-{v.unidad}</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${sectorColor}`}>
                     {sectorLabel}
                   </span>
+                  <span className="text-gray-300 text-xs truncate">{v.chofer}</span>
+                  {v.hdr && <span className="text-blue-400 text-xs">· HDR {v.hdr}</span>}
+                  <span className="text-xs text-gray-400">
+                    {v.estado === 'completado'   && <>· Viaje completado {estadoBadge}</>}
+                    {v.estado === 'en_curso'      && <>· En curso {estadoBadge}</>}
+                    {v.estado === 'interrumpido'  && <>· Interrumpido {estadoBadge}</>}
+                  </span>
                 </div>
-                <span className="text-sm">{estadoBadge} <span className="text-xs text-gray-400">{v.estado}</span></span>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => setViajeMapaAbierto(v)}
+                    className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg transition-colors"
+                    title="Ver ruta en mapa"
+                  >
+                    🗺 Ruta
+                  </button>
+                  <button
+                    onClick={() => exportarCSV(v)}
+                    className="flex items-center gap-1 px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition-colors"
+                    title="Exportar CSV"
+                  >
+                    ↓ CSV
+                  </button>
+                </div>
               </div>
 
-              {/* Fila 2: chofer + HDR */}
-              <div className="text-sm text-gray-300 mb-1">
-                {v.chofer}
-                {v.hdr && <span className="ml-2 text-blue-400 text-xs">📋 HDR {v.hdr}</span>}
-              </div>
-
-              {/* Fila 3: fechas y duración */}
-              <div className="text-xs text-gray-400 mb-1">
-                {formatFecha(v.fechaInicio)}
+              {/* Fila 2 (secundaria): fecha · duración · km · base · tarifa */}
+              <div className="flex items-center gap-1.5 flex-wrap mt-1 text-[11px] text-gray-400">
+                <span>{formatFecha(v.fechaInicio)}</span>
                 {v.fechaFin ? (
-                  <> → {formatFecha(v.fechaFin)} <span className="text-gray-500">({formatDuracion(v.fechaInicio, v.fechaFin)})</span></>
+                  <>
+                    <span className="text-gray-600">→</span>
+                    <span>{formatFecha(v.fechaFin)}</span>
+                    <span className="text-gray-500">({formatDuracion(v.fechaInicio, v.fechaFin)})</span>
+                  </>
                 ) : (
-                  <span className="text-yellow-400 ml-1">· En curso</span>
+                  <span className="text-yellow-400">· En curso</span>
                 )}
-              </div>
-
-              {/* Fila 4: km + base */}
-              <div className="text-xs text-gray-400 mb-2">
-                {v.kmRecorridos != null ? `📏 ${v.kmRecorridos} km` : '📏 —'}
-                {v.baseNombre && <span className="ml-2">· {v.baseNombre}</span>}
-              </div>
-
-              {/* Tarifa (solo distribución) */}
-              {v.sector === 'distribucion' && (
-                <div className="text-xs mb-3">
-                  {tarifa ? (
-                    <span className="text-green-400">🗺️ {tarifa.ruta} · {tarifa.cliente} · {tarifa.km} km</span>
-                  ) : (
-                    <span className="text-gray-500">🗺️ Reparto (sin tarifa exacta)</span>
-                  )}
-                </div>
-              )}
-
-              {/* Botones */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => exportarCSV(v)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition-colors"
-                >
-                  ↓ CSV
-                </button>
+                {v.kmRecorridos != null && <><span className="text-gray-600">·</span><span>📏 {v.kmRecorridos} km</span></>}
+                {v.baseNombre && <><span className="text-gray-600">·</span><span>{v.baseNombre}</span></>}
+                {v.sector === 'distribucion' && (
+                  tarifa
+                    ? <><span className="text-gray-600">·</span><span className="text-green-400">{tarifa.ruta} · {tarifa.cliente}</span></>
+                    : <><span className="text-gray-600">·</span><span className="text-gray-500">Reparto</span></>
+                )}
               </div>
             </div>
           );
@@ -352,6 +356,14 @@ export default function HistorialViajes({ onClose }: HistorialViajesProps) {
         <div className="flex-shrink-0 border-t border-gray-700 px-4 py-2 text-xs text-gray-500 text-center">
           {viajes.length} viaje{viajes.length !== 1 ? 's' : ''} encontrado{viajes.length !== 1 ? 's' : ''}
         </div>
+      )}
+
+      {/* Modal mapa de ruta */}
+      {viajeMapaAbierto && (
+        <MapaViajeModal
+          viaje={viajeMapaAbierto}
+          onClose={() => setViajeMapaAbierto(null)}
+        />
       )}
     </div>
   );
