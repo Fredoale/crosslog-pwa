@@ -32,6 +32,36 @@ const SECTOR_LABELS: Record<string, string> = {
   distribucion: 'DIST', vrac: 'VRAC', vital_aire: 'VITAL',
 };
 
+// ── Douglas-Peucker — simplifica la ruta eliminando puntos redundantes ──────
+function perpendicularDist(p: Punto, a: Punto, b: Punto): number {
+  const R = 6371000;
+  const toRad = (d: number) => d * Math.PI / 180;
+  const cosLat = Math.cos(toRad((a.lat + b.lat) / 2));
+  const px = (p.lng - a.lng) * cosLat * R * Math.PI / 180;
+  const py = (p.lat - a.lat) * R * Math.PI / 180;
+  const dx = (b.lng - a.lng) * cosLat * R * Math.PI / 180;
+  const dy = (b.lat - a.lat) * R * Math.PI / 180;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt(px * px + py * py);
+  const t = Math.max(0, Math.min(1, (px * dx + py * dy) / lenSq));
+  return Math.sqrt(Math.pow(px - t * dx, 2) + Math.pow(py - t * dy, 2));
+}
+
+function douglasPeucker(pts: Punto[], epsilon: number): Punto[] {
+  if (pts.length <= 2) return pts;
+  let maxDist = 0, maxIdx = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = perpendicularDist(pts[i], pts[0], pts[pts.length - 1]);
+    if (d > maxDist) { maxDist = d; maxIdx = i; }
+  }
+  if (maxDist > epsilon) {
+    const left  = douglasPeucker(pts.slice(0, maxIdx + 1), epsilon);
+    const right = douglasPeucker(pts.slice(maxIdx), epsilon);
+    return [...left.slice(0, -1), ...right];
+  }
+  return [pts[0], pts[pts.length - 1]];
+}
+
 function speedColor(s: number) {
   if (s <= 60) return '#22c55e';
   if (s <= 90) return '#f59e0b';
@@ -131,7 +161,11 @@ export default function MapaViajeModal({ viaje, onClose }: Props) {
           speed: (d.data().speed as number) ?? 0,
           timestamp: d.data().timestamp?.toDate() ?? new Date(),
         }));
-        setPuntos(pts);
+        // Douglas-Peucker: elimina puntos redundantes manteniendo la forma de la ruta
+        // epsilon = 8 metros (puntos dentro de 8m de la línea entre vecinos se eliminan)
+        const simplified = pts.length > 10 ? douglasPeucker(pts, 8) : pts;
+        console.log(`[MapaViaje] ${pts.length} puntos → ${simplified.length} tras Douglas-Peucker`);
+        setPuntos(simplified);
       } catch (e) {
         console.error('[MapaViaje] Error:', e);
         setError('Error al cargar la ruta');
@@ -242,6 +276,7 @@ export default function MapaViajeModal({ viaje, onClose }: Props) {
             <span className="flex items-center gap-1"><span className="w-3 h-1.5 rounded-full bg-amber-500 inline-block" /> 60–90 km/h</span>
             <span className="flex items-center gap-1"><span className="w-3 h-1.5 rounded-full bg-red-500 inline-block" /> &gt;90 km/h</span>
             <span className="ml-auto">{puntos.length} puntos GPS</span>
+            <span className="text-gray-600">· simplificado</span>
           </div>
         )}
       </div>

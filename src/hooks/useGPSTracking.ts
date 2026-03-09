@@ -43,7 +43,7 @@ const BASES_CROSSLOG = [
 ];
 
 const GEOFENCE_RADIUS = 100; // metros — distancia para detectar llegada a base
-const DEPARTURE_THRESHOLD = 50; // metros — distancia mínima para considerar que salió de base
+const DEPARTURE_THRESHOLD = 100; // metros — distancia mínima para considerar que salió de base
 const IS_NATIVE = Capacitor.isNativePlatform();
 
 // ============================================================
@@ -410,7 +410,7 @@ export function useGPSTracking() {
       await requestWakeLock();
       await sendLocationToFirebase(position.coords.latitude, position.coords.longitude);
 
-      // Actualización periódica cada 15 segundos
+      // Actualización periódica cada 10 segundos
       webIntervalRef.current = setInterval(async () => {
         try {
           const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -426,7 +426,7 @@ export function useGPSTracking() {
         } catch (err) {
           console.error('[GPS Web] Error obteniendo posición:', err);
         }
-      }, 15000);
+      }, 10000);
 
       // watchPosition para actualizaciones en movimiento
       webWatchIdRef.current = navigator.geolocation.watchPosition(

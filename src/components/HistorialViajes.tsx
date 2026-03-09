@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, limit, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, limit, where, getDocs, Timestamp, deleteDoc, doc } from 'firebase/firestore';
 import MapaViajeModal from './MapaViajeModal';
 import { db } from '../config/firebase';
 import { buscarTarifa } from '../utils/tarifas';
@@ -73,6 +73,7 @@ export default function HistorialViajes({ onClose }: HistorialViajesProps) {
   const [loading, setLoading] = useState(false);
   const [buscado, setBuscado] = useState(false);
   const [viajeMapaAbierto, setViajeMapaAbierto] = useState<ViajeRegistro | null>(null);
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<Filtros>({
     fechaDesde: '',
     fechaHasta: '',
@@ -158,6 +159,17 @@ export default function HistorialViajes({ onClose }: HistorialViajesProps) {
     a.download = `viaje_INT${v.unidad}_${fecha}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
+  };
+
+  const eliminarViaje = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'viajes', id));
+      setViajes(prev => prev.filter(v => v.id !== id));
+    } catch (err) {
+      console.error('Error eliminando viaje:', err);
+    } finally {
+      setConfirmandoEliminar(null);
+    }
   };
 
   const handleFiltroChange = (campo: keyof Filtros, valor: string) => {
@@ -323,6 +335,30 @@ export default function HistorialViajes({ onClose }: HistorialViajesProps) {
                   >
                     ↓ CSV
                   </button>
+                  {confirmandoEliminar === v.id ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => eliminarViaje(v.id)}
+                        className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded-lg transition-colors font-semibold"
+                      >
+                        Confirmar
+                      </button>
+                      <button
+                        onClick={() => setConfirmandoEliminar(null)}
+                        className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded-lg transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmandoEliminar(v.id)}
+                      className="inline-flex items-center justify-center w-7 h-7 bg-gray-700 hover:bg-red-600/80 text-gray-400 hover:text-white text-sm rounded-lg transition-colors flex-shrink-0"
+                      title="Eliminar viaje"
+                    >
+                      🗑
+                    </button>
+                  )}
                 </div>
               </div>
 

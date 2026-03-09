@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import crosslogLogo from '../assets/icon-only - copia.png';
 import { useEntregasStore } from '../stores/entregasStore';
 import { useTallerStore } from '../stores/tallerStore';
 import { useGoogleSheets } from '../hooks/useGoogleSheets';
@@ -731,36 +732,29 @@ export function Login({ onSuccess, onGoToConsultas }: LoginProps) {
       <div className="w-full max-w-md">
         {/* Logo Section */}
         <div className="text-center mb-4">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-3" style={{
-            background: 'linear-gradient(135deg, #a8e063 0%, #7cc33f 100%)',
-            boxShadow: '0 8px 24px rgba(168, 224, 99, 0.35)'
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-full mb-3" style={{
+            background: '#ffffff',
+            boxShadow: '0 8px 24px rgba(255, 255, 255, 0.25)'
           }}>
-            <svg
-              className="w-9 h-9"
-              fill="none"
-              stroke="white"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
+            <img
+              src={crosslogLogo}
+              alt="Crosslog Logo"
+              className="w-16 h-16 object-contain rounded-xl"
+            />
           </div>
           <h1
             onClick={handleLogoClick}
             className="text-4xl font-bold mb-2 tracking-wider cursor-pointer select-none"
             style={{
               color: '#ffffff',
-              textShadow: '0 2px 10px rgba(0, 0, 0, 0.3)'
+              textShadow: '0 2px 10px rgba(0, 0, 0, 0.3)',
+              letterSpacing: '6px'
             }}
           >
             CROSSLOG
           </h1>
           <p className="text-xs font-semibold tracking-wide" style={{
-            color: 'rgba(255, 255, 255, 0.7)',
+            color: '#a8e063',
             textTransform: 'uppercase',
             letterSpacing: '2px'
           }}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, OverlayView } from '@react-google-maps/api';
 import { collection, onSnapshot, query, doc, getDoc, setDoc, getDocs, orderBy, where, limit, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -138,6 +138,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
   const sidebarListRef = useRef<HTMLDivElement>(null); // Ref al contenedor de la lista del sidebar
   const prevUbicacionesRef = useRef<Map<string, UbicacionUnidad>>(new Map());
   const [showHistorial, setShowHistorial] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [historialRuta, setHistorialRuta] = useState<HistorialPunto[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [historialUnidadId, setHistorialUnidadId] = useState<string | null>(null);
@@ -236,20 +237,24 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
 
       // Buscar carga de combustible del mismo día
       try {
-        const inicioDia = new Date(ultimaFecha + 'T00:00:00');
-        const finDia    = new Date(ultimaFecha + 'T23:59:59');
+        const unidadNumero = docId.replace('INT-', '');
         const cargasSnap = await getDocs(
           query(
             collection(db, 'cargas_combustible'),
-            where('unidad.numero', '==', docId.replace('INT-', '')),
-            where('fecha', '>=', inicioDia),
-            where('fecha', '<=', finDia)
+            where('unidad.numero', '==', unidadNumero),
+            limit(50)
           )
         );
-        if (!cargasSnap.empty) {
+        const inicioDia = new Date(ultimaFecha + 'T00:00:00');
+        const finDia    = new Date(ultimaFecha + 'T23:59:59');
+        const delDia = cargasSnap.docs.filter(d => {
+          const f: Date = d.data().fecha?.toDate?.() ?? d.data().timestamp?.toDate?.() ?? new Date(0);
+          return f >= inicioDia && f <= finDia;
+        });
+        if (delDia.length > 0) {
           let totalLitros = 0;
           let primeraHora = '';
-          cargasSnap.docs.forEach(d => {
+          delDia.forEach(d => {
             totalLitros += d.data().litrosCargados ?? 0;
             if (!primeraHora) {
               const f: Date = d.data().fecha?.toDate?.() ?? new Date();
@@ -261,7 +266,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
           setCargaCombustibleDia(null);
         }
       } catch (e) {
-        console.warn('[Historial] Error cargando combustible:', e);
+        console.error('[Combustible] ERROR:', e);
         setCargaCombustibleDia(null);
       }
     } catch (e) {
@@ -399,12 +404,8 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
       try {
         const configDoc = await getDoc(doc(db, 'configuracion', 'gps_tracking'));
         if (configDoc.exists()) {
-          const estadoActual = configDoc.data().habilitado || false;
-          console.log('[PanelFlota] Config GPS cargada:', estadoActual);
-          setGpsHabilitado(estadoActual);
+          setGpsHabilitado(configDoc.data().habilitado || false);
         } else {
-          // Crear documento con valor por defecto (deshabilitado)
-          console.log('[PanelFlota] Creando config GPS por defecto: false');
           await setDoc(doc(db, 'configuracion', 'gps_tracking'), { habilitado: false });
           setGpsHabilitado(false);
         }
@@ -422,11 +423,9 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
   // Toggle GPS habilitado/deshabilitado
   const toggleGpsHabilitado = async () => {
     const nuevoEstado = !gpsHabilitado;
-    console.log('[PanelFlota] Cambiando GPS de', gpsHabilitado, 'a', nuevoEstado);
     try {
       await setDoc(doc(db, 'configuracion', 'gps_tracking'), { habilitado: nuevoEstado });
       setGpsHabilitado(nuevoEstado);
-      console.log('[PanelFlota] GPS tracking guardado:', nuevoEstado ? 'HABILITADO' : 'DESHABILITADO');
     } catch (error) {
       console.error('[PanelFlota] Error actualizando config GPS:', error);
     }
@@ -552,94 +551,56 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
         </div>
 
         {/* Segunda fila: Hamburguesa + Filtros + Refresh + GPS */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-t border-gray-700/30">
+        <div className="flex items-center justify-between px-2 py-1 border-t border-gray-700/30">
           {/* Izquierda: Hamburguesa + Filtros */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               onClick={() => setShowSidebar(!showSidebar)}
-              className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
-                showSidebar
-                  ? 'text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              className={`p-1 rounded transition-all flex-shrink-0 ${
+                showSidebar ? 'text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
               style={showSidebar ? { backgroundColor: '#BFCE2A', color: '#1a2e35' } : {}}
               title="Lista de unidades"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
             <div className="flex gap-0.5">
-              <button
-                onClick={() => setFiltroSector('todos')}
-                className={`px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
-                  filtroSector === 'todos'
-                    ? 'bg-white text-gray-800'
-                    : 'bg-gray-700/80 text-gray-300'
-                }`}
-              >
-                T ({contadores.todos})
-              </button>
-              <button
-                onClick={() => setFiltroSector('vrac')}
-                className={`px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
-                  filtroSector === 'vrac'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-700/80 text-gray-300'
-                }`}
-              >
-                VR ({contadores.vrac})
-              </button>
-              <button
-                onClick={() => setFiltroSector('distribucion')}
-                className={`px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
-                  filtroSector === 'distribucion'
-                    ? 'text-gray-900'
-                    : 'bg-gray-700/80 text-gray-300'
-                }`}
-                style={filtroSector === 'distribucion' ? { backgroundColor: '#BFCE2A' } : {}}
-              >
-                DI ({contadores.distribucion})
-              </button>
-              <button
-                onClick={() => setFiltroSector('vital_aire')}
-                className={`px-1.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
-                  filtroSector === 'vital_aire'
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-gray-700/80 text-gray-300'
-                }`}
-              >
-                VA ({contadores.vital_aire})
-              </button>
+              {([
+                { key: 'todos',       label: `T (${contadores.todos})`,              active: 'bg-white text-gray-800',     activeStyle: undefined as CSSProperties | undefined },
+                { key: 'vrac',        label: `VR (${contadores.vrac})`,              active: 'bg-blue-500 text-white',     activeStyle: undefined as CSSProperties | undefined },
+                { key: 'distribucion',label: `DI (${contadores.distribucion})`,      active: '',                           activeStyle: { backgroundColor: '#BFCE2A', color: '#1a2e35' } as CSSProperties },
+                { key: 'vital_aire',  label: `VA (${contadores.vital_aire})`,        active: 'bg-orange-500 text-white',   activeStyle: undefined as CSSProperties | undefined },
+              ]).map(({ key, label, active, activeStyle }) => (
+                <button
+                  key={key}
+                  onClick={() => setFiltroSector(key as FiltroSector)}
+                  className={`px-1 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                    filtroSector === key ? active || 'text-gray-900' : 'bg-gray-700/80 text-gray-300'
+                  }`}
+                  style={filtroSector === key && activeStyle ? activeStyle : undefined}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Derecha: Contadores + Refresh + GPS */}
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <span className="text-[10px] text-green-400 font-medium">{unidadesActivas.length}🟢</span>
             <span className="text-[10px] text-blue-400 font-medium">{unidadesEnBase.length}🔵</span>
             <button
-              onClick={handleRefresh}
-              className={`p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-all flex items-center justify-center ${
-                refreshing ? 'animate-spin' : ''
-              }`}
-              disabled={refreshing}
-              title="Actualizar"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
-            <button
               onClick={toggleGpsHabilitado}
               disabled={loadingGpsConfig}
-              className={`p-1.5 rounded-lg transition-all flex items-center justify-center ${
+              className={`p-1 rounded transition-all flex items-center justify-center ${
                 gpsHabilitado ? 'text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700'
               } ${loadingGpsConfig ? 'opacity-50' : ''}`}
               style={gpsHabilitado ? { backgroundColor: '#BFCE2A', color: '#1a2e35' } : {}}
               title={gpsHabilitado ? 'GPS Activo' : 'GPS Inactivo'}
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
               </svg>
             </button>
@@ -702,6 +663,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                         map.setZoom(15);
                         limpiarHistorial();
                         setSelectedUnidad(unidad);
+                        setPanelCollapsed(false);
                         setHighlightedUnidad(null);
                         setShowSidebar(false);
                       }
@@ -965,7 +927,37 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
 
         {/* Panel Derecho - Detalles de Unidad (aparece solo al seleccionar) */}
         {selectedUnidad && (
-          <div className="absolute top-0 right-0 bottom-0 z-10 w-72 bg-gray-800/95 backdrop-blur-sm">
+          <>
+          {/* Lengüeta cuando está colapsado */}
+          {panelCollapsed && (
+            <div className="absolute top-0 right-0 bottom-0 z-10 w-8 bg-gray-800/95 backdrop-blur-sm flex flex-col items-center py-3 gap-2 border-l border-gray-700">
+              <button
+                onClick={() => setPanelCollapsed(false)}
+                className="text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 rounded p-1 transition-colors"
+                title="Expandir panel"
+              >
+                ◀
+              </button>
+              <div className="flex-1 flex items-center justify-center">
+                <span
+                  className="text-gray-400 text-[10px] font-bold select-none"
+                  style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                >
+                  INT-{selectedUnidad.unidad}
+                </span>
+              </div>
+              <button
+                onClick={() => { setSelectedUnidad(null); limpiarHistorial(); setPanelCollapsed(false); }}
+                className="text-gray-500 hover:text-red-400 text-xs transition-colors"
+                title="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Panel expandido */}
+          <div className={`absolute top-0 right-0 bottom-0 z-10 w-72 bg-gray-800/95 backdrop-blur-sm transition-transform duration-300 ${panelCollapsed ? 'translate-x-full' : 'translate-x-0'}`}>
           <div className="h-full flex flex-col">
             {/* Header del panel */}
             <div className="p-3 border-b border-gray-700 flex items-center justify-between">
@@ -985,12 +977,22 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                   {selectedUnidad.sector === 'distribucion' ? 'DIST' : selectedUnidad.sector === 'vital_aire' ? 'VITAL' : 'VRAC'}
                 </span>
               </div>
-              <button
-                onClick={() => { setSelectedUnidad(null); limpiarHistorial(); }}
-                className="text-gray-400 hover:text-white text-lg"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPanelCollapsed(true)}
+                  className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-700 transition-colors text-sm"
+                  title="Minimizar panel"
+                >
+                  ▶
+                </button>
+                <button
+                  onClick={() => { setSelectedUnidad(null); limpiarHistorial(); setPanelCollapsed(false); }}
+                  className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-700 transition-colors text-lg leading-none"
+                  title="Cerrar"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Contenido del panel */}
@@ -1245,9 +1247,9 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
                       {/* Card combustible del día */}
                       {cargaCombustibleDia !== undefined && (
                         cargaCombustibleDia ? (
-                          <div className="bg-orange-900/40 border border-orange-700/50 rounded-lg p-3">
-                            <p className="text-orange-300 font-bold text-sm">⛽ {cargaCombustibleDia.litros} L cargados</p>
-                            <p className="text-[10px] text-orange-400/80 mt-0.5">{cargaCombustibleDia.hora}hs ese día</p>
+                          <div className="bg-green-900/40 border border-green-700/50 rounded-lg p-3">
+                            <p className="text-green-300 font-bold text-sm">⛽ {cargaCombustibleDia.litros} Lts Cargados</p>
+                            <p className="text-[10px] text-green-400/80 mt-0.5">{cargaCombustibleDia.hora}hs ese día</p>
                           </div>
                         ) : (
                           <div className="bg-gray-700/30 border border-gray-600/40 rounded-lg p-3">
@@ -1283,6 +1285,7 @@ export function PanelFlota({ onClose }: PanelFlotaProps) {
             </div>
           </div>
           </div>
+          </>
         )}
       </div>
 
