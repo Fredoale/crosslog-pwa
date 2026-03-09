@@ -91,4 +91,12 @@ public class CrosslogGpsPlugin extends Plugin {
         result.put("isTracking", CrosslogGpsService.isRunning);
         call.resolve(result);
     }
+
+    @Override
+    protected void handleOnDestroy() {
+        // Limpiar eventCallback cuando la Activity se destruye
+        // Evita que el HandlerThread del servicio falle al intentar notificar a un bridge destruido
+        CrosslogGpsService.eventCallback = null;
+        Log.d("CrosslogGpsPlugin", "Plugin destruido — eventCallback limpiado");
+    }
 }

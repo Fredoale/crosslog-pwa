@@ -7,8 +7,9 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
-import android.os.Looper;
 import android.util.Log;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -45,7 +46,7 @@ public class CrosslogGpsService extends Service {
     public static final String EVENT_BASE = "GPS_BASE";
 
     private static final double GEOFENCE_RADIUS = 100.0;      // metros — llegada a base
-    private static final double DEPARTURE_THRESHOLD = 50.0;    // metros — salida de base
+    private static final double DEPARTURE_THRESHOLD = 100.0;   // metros — salida de base
     private static final float  MAX_ACCURACY_METERS = 50.0f;  // descartar puntos con error > 50m
     private static final double MAX_SPEED_KMH = 130.0;        // cap de velocidad máxima razonable
 
@@ -69,6 +70,7 @@ public class CrosslogGpsService extends Service {
     // Clientes y estado interno
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
+    private HandlerThread locationHandlerThread;
     private FirebaseFirestore db;
 
     private String unidad = "";
@@ -86,6 +88,20 @@ public class CrosslogGpsService extends Service {
     private double lngAnterior = Double.NaN;
     private long timestampAnterior = 0;
     private String viajeIdActual = "";
+
+    // ── Kalman Filter ────────────────────────────────────────────
+    private double kalmanLat      = Double.NaN;
+    private double kalmanLng      = Double.NaN;
+    private double kalmanVariance = -1.0;
+    private long   kalmanTs       = 0;
+    private static final double KALMAN_Q = 3.0; // ruido de proceso (m/s)
+
+    // ── Heading Filter ───────────────────────────────────────────
+    private double ultimoBearing = Double.NaN;
+
+    // true solo cuando el servicio se detiene intencionalmente (llegó a base o el chofer lo paró)
+    // false cuando Android mata el proceso por apagado/sistema → SharedPreferences se conservan
+    private boolean stoppedIntentionally = false;
 
     // ========================================================
     // CICLO DE VIDA DEL SERVICIO
@@ -105,6 +121,18 @@ public class CrosslogGpsService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         // Detener si se recibe la acción STOP
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            stoppedIntentionally = true;
+            // Marcar el viaje como interrumpido en Firestore (si no llegó a base)
+            if (!viajeIdActual.isEmpty()) {
+                Map<String, Object> update = new HashMap<>();
+                update.put("estado", "interrumpido");
+                update.put("fechaFin", FieldValue.serverTimestamp());
+                update.put("kmRecorridos", Math.round(distanciaAcumuladaKm * 10.0) / 10.0);
+                db.collection("viajes").document(viajeIdActual)
+                    .update(update)
+                    .addOnSuccessListener(v -> Log.d(TAG, "✅ Viaje interrumpido: " + viajeIdActual))
+                    .addOnFailureListener(e -> Log.w(TAG, "❌ Error marcando viaje interrumpido: " + e.getMessage()));
+            }
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             nm.cancel(NOTIFICATION_ID);
             stopSelf();
@@ -113,8 +141,8 @@ public class CrosslogGpsService extends Service {
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-        if (intent != null) {
-            // Inicio normal — leer config del Intent y guardar en SharedPreferences
+        if (intent != null && intent.hasExtra("unidad")) {
+            // Inicio normal desde el plugin — leer config del Intent y guardar en SharedPreferences
             unidad           = getExtra(intent, "unidad", "");
             patente          = getExtra(intent, "patente", "");
             chofer           = getExtra(intent, "chofer", "");
@@ -128,6 +156,9 @@ public class CrosslogGpsService extends Service {
             lngAnterior = Double.NaN;
             timestampAnterior = 0;
             viajeIdActual = "viaje_" + unidad + "_" + System.currentTimeMillis();
+            kalmanLat = Double.NaN; kalmanLng = Double.NaN;
+            kalmanVariance = -1.0;  kalmanTs = 0;
+            ultimoBearing = Double.NaN;
 
             prefs.edit()
                 .putString("unidad",      unidad)
@@ -164,7 +195,7 @@ public class CrosslogGpsService extends Service {
                 .addOnSuccessListener(v -> Log.d(TAG, "✅ Viaje creado: " + viajeIdActual))
                 .addOnFailureListener(e -> Log.w(TAG, "❌ Error creando viaje: " + e.getMessage()));
         } else {
-            // Reinicio por START_STICKY — restaurar config desde SharedPreferences
+            // Reinicio por BOOT_COMPLETED o START_STICKY — restaurar config desde SharedPreferences
             unidad            = prefs.getString("unidad",      "");
             patente           = prefs.getString("patente",     "");
             chofer            = prefs.getString("chofer",      "");
@@ -197,10 +228,10 @@ public class CrosslogGpsService extends Service {
     // ========================================================
 
     private void startLocationUpdates() {
-        LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000L)
+        LocationRequest request = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000L)
             .setWaitForAccurateLocation(false)
-            .setMinUpdateIntervalMillis(10000L)
-            .setMinUpdateDistanceMeters(30f)
+            .setMinUpdateIntervalMillis(5000L)
+            .setMinUpdateDistanceMeters(20f)
             .build();
 
         locationCallback = new LocationCallback() {
@@ -209,31 +240,12 @@ public class CrosslogGpsService extends Service {
                 if (result.getLastLocation() != null) {
                     android.location.Location loc = result.getLastLocation();
 
-                    // Descartar puntos con baja precisión (GPS noise)
-                    if (loc.hasAccuracy() && loc.getAccuracy() > MAX_ACCURACY_METERS) {
-                        Log.w(TAG, "⚠️ Punto descartado — accuracy: " + (int) loc.getAccuracy() + "m > " + (int) MAX_ACCURACY_METERS + "m");
-                        return;
-                    }
-
                     double lat = loc.getLatitude();
                     double lng = loc.getLongitude();
                     long ahora = System.currentTimeMillis();
+                    float accuracy = loc.hasAccuracy() ? loc.getAccuracy() : MAX_ACCURACY_METERS;
 
-                    // Verificación de consistencia posicional — SIEMPRE, independiente de getSpeed()
-                    // Detecta saltos imposibles aunque el GPS reporte velocidad razonable
-                    if (!Double.isNaN(latAnterior) && timestampAnterior > 0) {
-                        double distMetros = calcularDistancia(latAnterior, lngAnterior, lat, lng);
-                        double tiempoSeg = (ahora - timestampAnterior) / 1000.0;
-                        if (tiempoSeg > 1.0 && distMetros > 5.0) {
-                            double velocidadPosicional = distMetros / tiempoSeg * 3.6;
-                            if (velocidadPosicional > MAX_SPEED_KMH) {
-                                Log.w(TAG, "⚠️ Salto posicional irreal descartado: " + (int) velocidadPosicional + " km/h | " + (int) distMetros + "m en " + (int) tiempoSeg + "s");
-                                return;
-                            }
-                        }
-                    }
-
-                    // Velocidad para mostrar: preferir GPS speed, fallback a posicional
+                    // ── Velocidad preliminar (GPS speed o posicional) ─────────
                     double speedKmh = 0.0;
                     float gpsSpeedMs = loc.getSpeed();
                     if (loc.hasSpeed() && gpsSpeedMs > 0.5f) {
@@ -241,20 +253,68 @@ public class CrosslogGpsService extends Service {
                     } else if (!Double.isNaN(latAnterior) && timestampAnterior > 0) {
                         double distMetros = calcularDistancia(latAnterior, lngAnterior, lat, lng);
                         double tiempoSeg = (ahora - timestampAnterior) / 1000.0;
-                        if (tiempoSeg > 1.0 && distMetros > 5.0) {
+                        if (tiempoSeg > 1.0 && distMetros > 5.0)
                             speedKmh = Math.round((distMetros / tiempoSeg * 3.6) * 10.0) / 10.0;
+                    }
+
+                    // ── Speed-based Accuracy Filter ───────────────────────────
+                    // Parado: GPS deriva mucho → exigir más precisión
+                    float maxAcc = (speedKmh < 5)  ? 15f :
+                                   (speedKmh < 30) ? 30f : MAX_ACCURACY_METERS;
+                    if (accuracy > maxAcc) {
+                        Log.w(TAG, "⚠️ Acc descartada: " + (int)accuracy + "m > " + (int)maxAcc + "m (speed=" + (int)speedKmh + " km/h)");
+                        return;
+                    }
+
+                    // ── Salto posicional irreal (pre-Kalman) ──────────────────
+                    if (!Double.isNaN(latAnterior) && timestampAnterior > 0) {
+                        double distMetros = calcularDistancia(latAnterior, lngAnterior, lat, lng);
+                        double tiempoSeg = (ahora - timestampAnterior) / 1000.0;
+                        if (tiempoSeg > 1.0 && distMetros > 5.0) {
+                            double velPos = distMetros / tiempoSeg * 3.6;
+                            if (velPos > MAX_SPEED_KMH) {
+                                Log.w(TAG, "⚠️ Salto irreal: " + (int)velPos + " km/h — descartado");
+                                return;
+                            }
                         }
                     }
                     timestampAnterior = ahora;
 
-                    Log.d(TAG, "📍 Posición recibida: " + lat + ", " + lng + " | " + speedKmh + " km/h | acc: " + (loc.hasAccuracy() ? (int) loc.getAccuracy() + "m" : "N/A"));
+                    // ── Kalman Filter ─────────────────────────────────────────
+                    double[] smooth = kalmanFilter(lat, lng, accuracy, ahora);
+                    lat = smooth[0];
+                    lng = smooth[1];
+
+                    // ── Heading Filter ────────────────────────────────────────
+                    // Descarta giros imposibles a velocidades > 30 km/h
+                    if (!Double.isNaN(latAnterior) && speedKmh > 30) {
+                        double bearing = calcularBearing(latAnterior, lngAnterior, lat, lng);
+                        if (!Double.isNaN(ultimoBearing)) {
+                            double diff = Math.abs(bearing - ultimoBearing);
+                            if (diff > 180) diff = 360 - diff;
+                            if (diff > 120) {
+                                Log.w(TAG, "⚠️ Heading imposible: " + (int)diff + "° a " + (int)speedKmh + " km/h — descartado");
+                                return;
+                            }
+                        }
+                        ultimoBearing = bearing;
+                    } else if (!Double.isNaN(latAnterior)) {
+                        ultimoBearing = calcularBearing(latAnterior, lngAnterior, lat, lng);
+                    }
+
+                    Log.d(TAG, "📍 Pos filtrada: " + lat + ", " + lng + " | " + speedKmh + " km/h | acc: " + (int)accuracy + "m");
                     processLocation(lat, lng, speedKmh);
                 }
             }
         };
 
         try {
-            fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper());
+            // HandlerThread dedicado — independiente del hilo de la Activity
+            // Garantiza que los callbacks GPS llegan aunque la app esté cerrada
+            locationHandlerThread = new HandlerThread("CrosslogGpsThread");
+            locationHandlerThread.start();
+            Handler locationHandler = new Handler(locationHandlerThread.getLooper());
+            fusedLocationClient.requestLocationUpdates(request, locationCallback, locationHandler.getLooper());
         } catch (SecurityException e) {
             Log.e(TAG, "Error de permisos: " + e.getMessage());
         }
@@ -265,13 +325,17 @@ public class CrosslogGpsService extends Service {
     // ========================================================
 
     private void processLocation(double lat, double lng, double speedKmh) {
+        // Llegada solo se detecta en Base Los Cardales (índice 0)
+        double distanciaCardales = calcularDistancia(lat, lng, BASES[0][0], BASES[0][1]);
+
+        // Para la salida usamos la base más cercana (puede salir desde cualquiera)
         int nearestIdx = encontrarBaseCercana(lat, lng);
         double distancia = calcularDistancia(lat, lng, BASES[nearestIdx][0], BASES[nearestIdx][1]);
         String baseNombre = BASE_NOMBRES[nearestIdx];
 
-        Log.d(TAG, "Distancia a " + baseNombre + ": " + (int) distancia + "m");
+        Log.d(TAG, "Distancia a " + baseNombre + ": " + (int) distancia + "m | Cardales: " + (int) distanciaCardales + "m");
 
-        // Detectar salida de base (primera vez que supera 500m)
+        // Detectar salida de base (primera vez que supera el umbral desde cualquier base)
         if (!hasLeftBase && distancia > DEPARTURE_THRESHOLD) {
             hasLeftBase = true;
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean("hasLeftBase", true).apply();
@@ -280,9 +344,13 @@ public class CrosslogGpsService extends Service {
             latAnterior = lat;
             lngAnterior = lng;
             if (eventCallback != null) {
-                Map<String, Object> data = new HashMap<>();
-                data.put("unidad", unidad);
-                eventCallback.onEvent(EVENT_SALIDA, data);
+                try {
+                    Map<String, Object> data = new HashMap<>();
+                    data.put("unidad", unidad);
+                    eventCallback.onEvent(EVENT_SALIDA, data);
+                } catch (Exception e) {
+                    Log.w(TAG, "eventCallback GPS_SALIDA falló (app cerrada): " + e.getMessage());
+                }
             }
         }
 
@@ -296,28 +364,33 @@ public class CrosslogGpsService extends Service {
         latAnterior = lat;
         lngAnterior = lng;
 
-        // Detectar llegada a base (solo si ya salió antes)
-        if (hasLeftBase && distancia <= GEOFENCE_RADIUS) {
-            Log.d(TAG, "🎯 Llegó a base: " + baseNombre + " | Km recorridos: " + Math.round(distanciaAcumuladaKm * 10.0) / 10.0);
+        // Detectar llegada SOLO a Base Los Cardales (índice 0)
+        if (hasLeftBase && distanciaCardales <= GEOFENCE_RADIUS) {
+            stoppedIntentionally = true;
+            Log.d(TAG, "🎯 Llegó a Base Los Cardales | Km recorridos: " + Math.round(distanciaAcumuladaKm * 10.0) / 10.0);
             guardarKmEnFirestore();
-            writeToFirebase(BASES[nearestIdx][0], BASES[nearestIdx][1], 0.0, false, true, baseNombre);
+            writeToFirebase(BASES[0][0], BASES[0][1], 0.0, false, true, BASE_NOMBRES[0]);
             // Actualizar documento de viaje al completarse
             if (!viajeIdActual.isEmpty()) {
                 Map<String, Object> viajeUpdate = new HashMap<>();
                 viajeUpdate.put("estado", "completado");
                 viajeUpdate.put("fechaFin", FieldValue.serverTimestamp());
                 viajeUpdate.put("kmRecorridos", Math.round(distanciaAcumuladaKm * 10.0) / 10.0);
-                viajeUpdate.put("baseNombre", baseNombre);
+                viajeUpdate.put("baseNombre", BASE_NOMBRES[0]);
                 db.collection("viajes").document(viajeIdActual)
                     .update(viajeUpdate)
                     .addOnSuccessListener(v -> Log.d(TAG, "✅ Viaje completado: " + viajeIdActual))
                     .addOnFailureListener(e -> Log.w(TAG, "❌ Error actualizando viaje: " + e.getMessage()));
             }
             if (eventCallback != null) {
-                Map<String, Object> data = new HashMap<>();
-                data.put("unidad", unidad);
-                data.put("baseNombre", baseNombre);
-                eventCallback.onEvent(EVENT_BASE, data);
+                try {
+                    Map<String, Object> data = new HashMap<>();
+                    data.put("unidad", unidad);
+                    data.put("baseNombre", BASE_NOMBRES[0]);
+                    eventCallback.onEvent(EVENT_BASE, data);
+                } catch (Exception e) {
+                    Log.w(TAG, "eventCallback GPS_BASE falló (app cerrada): " + e.getMessage());
+                }
             }
             // Notificaci\u00F3n de llegada con bot\u00F3n "Cerrar"
             Intent stopIntent = new Intent(this, CrosslogGpsService.class);
@@ -330,10 +403,11 @@ public class CrosslogGpsService extends Service {
                 this, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE);
             Notification llegadaNotif = new Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("CROSSLOG GPS")
-                .setContentText("INT-" + unidad + " \u00B7 Lleg\u00F3 a " + baseNombre + " \u2705")
+                .setContentText("INT-" + unidad + " \u00B7 Lleg\u00F3 a " + BASE_NOMBRES[0] + " \u2705")
                 .setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .setContentIntent(tapPI)
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cerrar", stopPI)
+                .setAutoCancel(true)
                 .build();
             stopForeground(false);
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -439,6 +513,40 @@ public class CrosslogGpsService extends Service {
         return nearest;
     }
 
+    /**
+     * Kalman Filter 1D aplicado a lat y lng por separado.
+     * Combina la predicción física con la medición GPS ponderada por accuracy.
+     */
+    private double[] kalmanFilter(double lat, double lng, float accuracy, long timestamp) {
+        double R = accuracy * accuracy; // varianza de medición
+        if (Double.isNaN(kalmanLat)) {
+            // Inicializar con el primer punto
+            kalmanLat = lat; kalmanLng = lng;
+            kalmanVariance = R; kalmanTs = timestamp;
+            return new double[]{lat, lng};
+        }
+        double dt = Math.max((timestamp - kalmanTs) / 1000.0, 0.1);
+        kalmanTs = timestamp;
+        // Predicción: la incertidumbre crece con el tiempo
+        kalmanVariance += KALMAN_Q * KALMAN_Q * dt;
+        // Actualización: combinar predicción con medición
+        double K = kalmanVariance / (kalmanVariance + R);
+        kalmanLat      += K * (lat - kalmanLat);
+        kalmanLng      += K * (lng - kalmanLng);
+        kalmanVariance *= (1.0 - K);
+        return new double[]{kalmanLat, kalmanLng};
+    }
+
+    /** Calcula el ángulo de viaje (bearing) entre dos puntos en grados 0-360 */
+    private double calcularBearing(double lat1, double lng1, double lat2, double lng2) {
+        double dLng = Math.toRadians(lng2 - lng1);
+        double lat1R = Math.toRadians(lat1), lat2R = Math.toRadians(lat2);
+        double y = Math.sin(dLng) * Math.cos(lat2R);
+        double x = Math.cos(lat1R) * Math.sin(lat2R)
+                 - Math.sin(lat1R) * Math.cos(lat2R) * Math.cos(dLng);
+        return (Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
+    }
+
     private double calcularDistancia(double lat1, double lng1, double lat2, double lng2) {
         double R = 6371000.0;
         double dLat = (lat2 - lat1) * Math.PI / 180;
@@ -491,9 +599,20 @@ public class CrosslogGpsService extends Service {
         if (locationCallback != null) {
             fusedLocationClient.removeLocationUpdates(locationCallback);
         }
-        // Limpiar prefs para que no se reinicie con datos viejos si se instaló de nuevo
-        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().clear().apply();
-        Log.d(TAG, "Servicio detenido");
+        if (locationHandlerThread != null) {
+            locationHandlerThread.quitSafely();
+            locationHandlerThread = null;
+        }
+        if (stoppedIntentionally) {
+            // Viaje terminado correctamente (llegó a base o el chofer lo detuvo)
+            // → limpiar prefs para que no se reinicie al próximo encendido
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().clear().apply();
+            Log.d(TAG, "✅ Servicio detenido intencionalmente — prefs limpiadas");
+        } else {
+            // Android mató el proceso (apagado, batería, sistema)
+            // → conservar prefs para que BOOT_COMPLETED pueda reanudar el viaje
+            Log.d(TAG, "⚡ Servicio detenido por sistema — prefs conservadas para BOOT_COMPLETED");
+        }
     }
 
     @Override

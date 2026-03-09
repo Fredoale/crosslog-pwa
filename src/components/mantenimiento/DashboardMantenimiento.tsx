@@ -3344,7 +3344,9 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack,
     setLoading(true);
     try {
       if (activeTab === 'checklists') {
-        await cargarChecklists();
+        // No llamamos cargarChecklists() aquí — el listener onSnapshot en tiempo real
+        // se encarga de mantener los checklists actualizados automáticamente.
+        // Llamarlo aquí compite con onSnapshot y puede reaparecer un item recién eliminado.
       } else if (activeTab === 'novedades') {
         await cargarNovedades();
       } else if (activeTab === 'combustible') {

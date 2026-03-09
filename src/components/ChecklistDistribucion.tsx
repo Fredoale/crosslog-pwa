@@ -7,7 +7,7 @@ import {
   CategoriaItem
 } from '../types/checklist';
 import { saveChecklistDistribucion, checkChecklistExists } from '../services/checklistService';
-import { doc, setDoc, getDoc, Timestamp, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, Timestamp, serverTimestamp, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { showSuccess, showError, showWarning, showInfo } from '../utils/toast';
 import { TODAS_LAS_UNIDADES } from './CarouselSector';
@@ -513,6 +513,25 @@ export function ChecklistDistribucion({ hdr, chofer, unidad, onComplete, onCance
 
       // Verificar si GPS está habilitado en la configuración
       if (gpsHabilitadoConfig) {
+        // Cerrar viajes anteriores en_curso para esta unidad/HDR (evita zombies)
+        try {
+          const qViajes = query(
+            collection(db, 'viajes'),
+            where('unidad', '==', unidad),
+            where('estado', '==', 'en_curso')
+          );
+          const snap = await getDocs(qViajes);
+          for (const d of snap.docs) {
+            await updateDoc(d.ref, {
+              estado: 'interrumpido',
+              fechaFin: serverTimestamp(),
+            });
+          }
+          if (!snap.empty) console.log(`[ChecklistDistribucion] ${snap.size} viaje(s) anterior(es) marcado(s) interrumpido`);
+        } catch (e) {
+          console.warn('[ChecklistDistribucion] No se pudo cerrar viaje anterior:', e);
+        }
+
         const patente = TODAS_LAS_UNIDADES.find(u => u.numero === unidad)?.patente || 'N/A';
         const success = await startTracking({
           unidad,
