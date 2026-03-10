@@ -190,7 +190,7 @@ function DroppableEtapa({
         flex-shrink-0 md:flex-shrink md:w-full text-left
         px-2 py-2 md:px-3 md:py-3 rounded-lg transition-all
         flex flex-col md:flex-row items-center md:justify-between gap-0.5 md:gap-2
-        min-w-[70px] md:min-w-0
+        min-w-[60px] md:min-w-0
         ${isActive
           ? 'bg-[#56ab2f] text-white shadow-md'
           : 'hover:bg-gray-100 text-gray-700 bg-gray-50 md:bg-transparent'

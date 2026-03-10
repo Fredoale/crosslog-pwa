@@ -52,6 +52,31 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
   const [loadingStock, setLoadingStock] = useState(false);
   const [filtroStock, setFiltroStock] = useState('');
 
+  // Alerta de actualización periódica
+  const LS_KEY = 'crosslog_cubiertas_control_fecha';
+  const [diasSinControl, setDiasSinControl] = useState<number>(0);
+  const [alertaControlVisible, setAlertaControlVisible] = useState(false);
+
+  useEffect(() => {
+    const ultimaFechaStr = localStorage.getItem(LS_KEY);
+    if (!ultimaFechaStr) {
+      setDiasSinControl(999);
+      setAlertaControlVisible(true);
+    } else {
+      const ultima = new Date(ultimaFechaStr);
+      const dias = Math.floor((Date.now() - ultima.getTime()) / (1000 * 60 * 60 * 24));
+      setDiasSinControl(dias);
+      setAlertaControlVisible(dias >= 15);
+    }
+  }, []);
+
+  const marcarControlHoy = () => {
+    localStorage.setItem(LS_KEY, new Date().toISOString());
+    setDiasSinControl(0);
+    setAlertaControlVisible(false);
+    showSuccess('✅ Control de cubiertas marcado como actualizado hoy');
+  };
+
   // Estados para modal de medición/instalación
   const [showModalMedicion, setShowModalMedicion] = useState(false);
   const [posicionSeleccionada, setPosicionSeleccionada] = useState<CubiertaEnPosicion | null>(null);
@@ -167,7 +192,39 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
     }
   };
 
-  // Filtrar unidades para el selector
+  // Vista de flota completa (lista con diagramas)
+  const [estadosFlota, setEstadosFlota] = useState<Map<string, EstadoCubiertasUnidad>>(new Map());
+  const [loadingFlota, setLoadingFlota] = useState(false);
+  const [flotaCargada, setFlotaCargada] = useState(false);
+
+  // Cargar todos los estados de la flota de a lotes
+  const cargarFlota = async () => {
+    if (flotaCargada) return;
+    setLoadingFlota(true);
+    const map = new Map<string, EstadoCubiertasUnidad>();
+    const lote = 5;
+    for (let i = 0; i < UNIDADES_CONFIG.length; i += lote) {
+      const batch = UNIDADES_CONFIG.slice(i, i + lote);
+      await Promise.all(batch.map(async (u) => {
+        try {
+          const estado = await obtenerEstadoCubiertasUnidad(u.numero);
+          if (estado) map.set(u.numero, estado);
+        } catch { /* silenciar errores de unidades sin datos */ }
+      }));
+      setEstadosFlota(new Map(map)); // actualizar progresivamente
+    }
+    setLoadingFlota(false);
+    setFlotaCargada(true);
+  };
+
+  // Cargar flota al entrar al tab unidad sin selección
+  useEffect(() => {
+    if (tabActiva === 'unidad' && !unidadSeleccionada) {
+      cargarFlota();
+    }
+  }, [tabActiva, unidadSeleccionada]);
+
+  // Filtrar unidades para la vista de flota
   const unidadesFiltradas = UNIDADES_CONFIG.filter(u =>
     u.numero.toLowerCase().includes(filtroUnidad.toLowerCase()) ||
     u.patente.toLowerCase().includes(filtroUnidad.toLowerCase())
@@ -542,64 +599,82 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
         </div>
       </div>
 
+      {/* Alerta de control periódico */}
+      {alertaControlVisible && (
+        <div className={`rounded-xl border-l-4 p-4 flex items-start justify-between gap-3 ${
+          diasSinControl >= 30
+            ? 'bg-red-50 border-red-500'
+            : 'bg-amber-50 border-amber-400'
+        }`}>
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
+              diasSinControl >= 30 ? 'bg-red-500' : 'bg-amber-400'
+            }`}>
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className={`font-bold text-sm ${diasSinControl >= 30 ? 'text-red-800' : 'text-amber-800'}`}>
+                {diasSinControl >= 999
+                  ? 'Sin registro de control de cubiertas'
+                  : diasSinControl >= 30
+                  ? `Datos sin actualizar hace ${diasSinControl} días`
+                  : `Último control hace ${diasSinControl} días`}
+              </p>
+              <p className={`text-xs mt-0.5 ${diasSinControl >= 30 ? 'text-red-700' : 'text-amber-700'}`}>
+                {diasSinControl >= 30
+                  ? 'Se recomienda revisar profundidades y presiones de toda la flota.'
+                  : `En ${30 - diasSinControl} días se vence el periodo de control (30 días).`}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={marcarControlHoy}
+            className={`flex-shrink-0 text-xs font-semibold px-3 py-2 rounded-lg transition-colors ${
+              diasSinControl >= 30
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-amber-400 hover:bg-amber-500 text-white'
+            }`}
+          >
+            Marcar revisado hoy
+          </button>
+        </div>
+      )}
+
       {/* TAB: Por Unidad */}
       {tabActiva === 'unidad' && (
         <>
-          {/* Selector de Unidad */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Seleccionar Unidad
-            </label>
-            <div className="relative">
+          {/* Barra superior sticky */}
+          <div className="sticky top-0 z-20 bg-white rounded-xl shadow-sm border border-gray-200 p-3">
+            {unidadSeleccionada && datosUnidad ? (
+              /* Unidad seleccionada — mostrar nombre + botón volver */
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setUnidadSeleccionada('')}
+                    className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <span className="font-bold text-gray-800">INT-{unidadSeleccionada}</span>
+                  <span className="text-gray-500 text-sm">{datosUnidad.patente}</span>
+                  <span className="text-xs text-gray-400">({datosUnidad.sector.toUpperCase()})</span>
+                </div>
+                <span className="text-xs text-gray-400">Tocá ← para volver a la flota</span>
+              </div>
+            ) : (
+              /* Sin selección — buscador para filtrar la lista */
               <input
                 type="text"
                 value={filtroUnidad}
                 onChange={(e) => setFiltroUnidad(e.target.value)}
-                placeholder="Buscar por número o patente..."
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="🔍  Buscar unidad por número o patente..."
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                style={{ fontSize: '16px' }}
               />
-              {filtroUnidad && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  {unidadesFiltradas.length > 0 ? (
-                    unidadesFiltradas.map(unidad => (
-                      <button
-                        key={unidad.numero}
-                        onClick={() => {
-                          setUnidadSeleccionada(unidad.numero);
-                          setFiltroUnidad('');
-                        }}
-                        className={`w-full px-4 py-3 text-left hover:bg-blue-50 flex items-center justify-between ${
-                          unidadSeleccionada === unidad.numero ? 'bg-blue-100' : ''
-                        }`}
-                      >
-                        <span className="font-semibold">INT-{unidad.numero}</span>
-                        <span className="text-gray-500 text-sm">{unidad.patente}</span>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-4 py-3 text-gray-500">No se encontraron unidades</div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Unidad seleccionada */}
-            {unidadSeleccionada && datosUnidad && (
-              <div className="mt-3 p-3 bg-blue-50 rounded-lg flex items-center justify-between">
-                <div>
-                  <span className="font-bold text-blue-800">INT-{unidadSeleccionada}</span>
-                  <span className="text-blue-600 ml-2">{datosUnidad.patente}</span>
-                  <span className="text-blue-500 ml-2 text-sm">({datosUnidad.sector.toUpperCase()})</span>
-                </div>
-                <button
-                  onClick={() => setUnidadSeleccionada('')}
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
             )}
           </div>
 
@@ -745,17 +820,98 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
             </>
           )}
 
-          {/* Estado vacío */}
-          {!loading && !estadoCubiertas && !unidadSeleccionada && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                  <circle cx="12" cy="12" r="3" strokeWidth={2} />
-                </svg>
-              </div>
-              <p className="text-gray-600 font-medium">Selecciona una unidad</p>
-              <p className="text-gray-400 text-sm mt-1">para ver el estado de sus cubiertas</p>
+          {/* Vista de flota completa — cuando no hay unidad seleccionada */}
+          {!unidadSeleccionada && (
+            <div className="space-y-3">
+              {/* Indicador de carga progresiva */}
+              {loadingFlota && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                  <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full flex-shrink-0" />
+                  Cargando estado de la flota... ({estadosFlota.size}/{UNIDADES_CONFIG.length} unidades)
+                </div>
+              )}
+
+              {/* Lista de unidades con diagrama */}
+              {unidadesFiltradas.map(unidad => {
+                const estado = estadosFlota.get(unidad.numero);
+                const tieneCritico = (estado?.alertasCriticas ?? 0) > 0;
+                const tieneRegular = (estado?.alertasRegulares ?? 0) > 0;
+                return (
+                  <div
+                    key={unidad.numero}
+                    onClick={() => setUnidadSeleccionada(unidad.numero)}
+                    className={`bg-white rounded-xl border-2 shadow-sm cursor-pointer active:scale-[0.99] transition-all ${
+                      tieneCritico ? 'border-red-300' :
+                      tieneRegular ? 'border-amber-300' :
+                      'border-gray-200'
+                    }`}
+                  >
+                    {/* Header de la unidad */}
+                    <div className={`px-4 py-2.5 border-b flex items-center justify-between ${
+                      tieneCritico ? 'bg-red-50 border-red-200' :
+                      tieneRegular ? 'bg-amber-50 border-amber-200' :
+                      'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-800">INT-{unidad.numero}</span>
+                        <span className="text-xs text-gray-500">{unidad.patente}</span>
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase ${
+                          unidad.sector === 'vrac' ? 'bg-blue-100 text-blue-700' :
+                          unidad.sector === 'vital-aire' ? 'bg-green-100 text-green-700' :
+                          'bg-purple-100 text-purple-700'
+                        }`}>{unidad.sector === 'vital-aire' ? 'VA' : unidad.sector.toUpperCase()}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {tieneCritico && (
+                          <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">
+                            {estado!.alertasCriticas} crítica{estado!.alertasCriticas > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {!tieneCritico && tieneRegular && (
+                          <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">
+                            {estado!.alertasRegulares} regular{estado!.alertasRegulares > 1 ? 'es' : ''}
+                          </span>
+                        )}
+                        {estado && !tieneCritico && !tieneRegular && (
+                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">OK</span>
+                        )}
+                        {!estado && !loadingFlota && (
+                          <span className="text-xs text-gray-400">Sin datos</span>
+                        )}
+                        <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Diagrama compacto */}
+                    <div className="px-4 py-3">
+                      {estado ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <DiagramaVehiculo
+                            configuracion={estado.configuracion}
+                            cubiertas={estado.cubiertas}
+                            auxilios={estado.auxilios}
+                            compacto={true}
+                            mostrarNumeros={false}
+                          />
+                          <div className="text-right text-xs text-gray-500 flex-shrink-0">
+                            <div>{estado.cubiertasInstaladas}/{estado.totalCubiertas}</div>
+                            <div>cubiertas</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-12 flex items-center justify-center">
+                          {loadingFlota
+                            ? <div className="animate-spin w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full" />
+                            : <span className="text-xs text-gray-400">Tocá para cargar</span>
+                          }
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </>
@@ -860,26 +1016,30 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                             }`}>
                               {cubierta.tipo}
                             </span>
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              cubierta.estado === 'NUEVA' ? 'bg-emerald-100 text-emerald-700' :
-                              cubierta.estado === 'RECAPADA' ? 'bg-blue-100 text-blue-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {cubierta.estado}
-                            </span>
+                            {/* Solo mostrar estado si aporta info adicional al tipo */}
+                            {cubierta.estado !== cubierta.tipo && (
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                cubierta.estado === 'NUEVA' ? 'bg-emerald-100 text-emerald-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {cubierta.estado}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className="text-right">
+                        <div className="flex flex-col items-center gap-1">
                           {cubierta.ultimaProfundidadMm !== undefined && (
-                            <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                            <div className={`px-3 py-1 rounded-full text-sm font-bold text-center ${
                               getEstadoVisual(cubierta.ultimaProfundidadMm).bg
                             } ${getEstadoVisual(cubierta.ultimaProfundidadMm).color}`}>
                               {cubierta.ultimaProfundidadMm} mm
                             </div>
                           )}
-                          <p className="text-xs text-gray-400 mt-1">{cubierta.kmTotales.toLocaleString()} km</p>
+                          {cubierta.kmTotales > 0 && (
+                            <p className="text-xs text-gray-400 whitespace-nowrap">{cubierta.kmTotales.toLocaleString()} km</p>
+                          )}
                         </div>
                         <button
                           onClick={() => handleEliminarCubierta(cubierta)}

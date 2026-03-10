@@ -36,6 +36,8 @@ import ChecklistTrenRodante80K from '../trenRodante/ChecklistTrenRodante80K';
 import ChecklistTrenRodante160K from '../trenRodante/ChecklistTrenRodante160K';
 import { PanelCubiertas } from '../cubiertas';
 import { obtenerAlertasFlota, UNIDADES_CONFIG } from '../../services/cubiertasService';
+import AlertasMantenimiento from './AlertasMantenimiento';
+import { getAlertasMantenimiento, contarAlertasActivas } from '../../services/alertasMantenimientoService';
 
 // Función para obtener patente de una unidad (usa TODAS_LAS_UNIDADES de CarouselSector)
 const obtenerPatente = (numeroUnidad: string): string => {
@@ -47,7 +49,7 @@ interface DashboardTallerProps {
   onLogout: () => void;
 }
 
-type VistaType = 'dashboard' | 'activas' | 'asignadas' | 'checklists' | 'historial' | 'trenRodante' | 'cubiertas';
+type VistaType = 'dashboard' | 'activas' | 'asignadas' | 'checklists' | 'historial' | 'trenRodante' | 'cubiertas' | 'alertas';
 
 interface Filtros {
   prioridad: '' | 'ALTA' | 'MEDIA' | 'BAJA';
@@ -71,12 +73,14 @@ interface RegistroTrabajo {
 export function DashboardTaller({ onLogout }: DashboardTallerProps) {
   const { personal } = useTallerStore();
 
-  // Estado de selección de técnico
-  const [tecnicoSeleccionado, setTecnicoSeleccionado] = useState<PersonalMantenimiento | null>(null);
-  const [mostrarSeleccionTecnico, setMostrarSeleccionTecnico] = useState(true);
+  // Selección de técnico al tomar OT
+  const [mostrarModalTecnico, setMostrarModalTecnico] = useState(false);
+  const [ordenParaTomar, setOrdenParaTomar] = useState<OrdenTrabajo | null>(null);
 
   // Estado principal
   const [vista, setVista] = useState<VistaType>('dashboard');
+  const [badgeAlertas, setBadgeAlertas] = useState(0);
+  const [badgeCub, setBadgeCub] = useState(0);
   const [ordenesActivas, setOrdenesActivas] = useState<OrdenTrabajo[]>([]);
   const [ordenesAsignadas, setOrdenesAsignadas] = useState<OrdenTrabajo[]>([]);
   const [todasOrdenes, setTodasOrdenes] = useState<OrdenTrabajo[]>([]);
@@ -123,10 +127,6 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
 
   // Cargar datos con listeners en tiempo real
   useEffect(() => {
-    if (!tecnicoSeleccionado) {
-      console.log('[DashboardTaller] ⚠️ No hay técnico seleccionado, saltando carga de datos');
-      return;
-    }
 
     console.log('[DashboardTaller] 🔄 Iniciando carga de datos para vista:', vista);
     setLoading(true);
@@ -217,7 +217,6 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       // Query simplificada SIN orderBy para evitar necesidad de índices compuestos
       const q = query(
         ordenesRef,
-        where('asignadoA', '==', tecnicoSeleccionado.nombre),
         where('estado', 'in', ['EN_PROCESO', 'ESPERANDO_REPUESTOS'])
         // SIN orderBy - se ordena en cliente
       );
@@ -344,6 +343,10 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       // Cubiertas: El componente PanelCubiertas maneja su propio loading
       console.log('[DashboardTaller] 🛞 Vista Cubiertas - loading manejado por componente');
       setLoading(false);
+    } else if (vista === 'alertas') {
+      // Alertas: El componente AlertasMantenimiento maneja su propio loading
+      console.log('[DashboardTaller] 🔔 Vista Alertas - loading manejado por componente');
+      setLoading(false);
     }
 
     // Cleanup: Desuscribirse cuando cambie la vista o el componente se desmonte
@@ -353,30 +356,44 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
         console.log('[DashboardTaller] Listener desuscrito');
       }
     };
-  }, [tecnicoSeleccionado, vista]);
+  }, [vista]);
+
+  // Cargar badges al montar
+  useEffect(() => {
+    getAlertasMantenimiento().then(alertas => {
+      setBadgeAlertas(contarAlertasActivas(alertas));
+    }).catch(() => {});
+    obtenerAlertasFlota().then(alertas => {
+      setBadgeCub(alertas.filter(a => a.estado !== 'ok').length);
+    }).catch(() => {});
+  }, []);
 
   const cargarOrdenes = () => {
     // Función vacía - los datos se cargan automáticamente con onSnapshot
     console.log('[DashboardTaller] Datos en tiempo real - no necesita recarga manual');
   };
 
-  const handleTomarOT = async (orden: OrdenTrabajo) => {
-    if (!tecnicoSeleccionado || !orden.id) return;
+  const handleTomarOT = (orden: OrdenTrabajo) => {
+    setOrdenParaTomar(orden);
+    setMostrarModalTecnico(true);
+  };
 
+  const confirmarTomarOT = async (tecnico: PersonalMantenimiento) => {
+    if (!ordenParaTomar?.id) return;
+    setMostrarModalTecnico(false);
     try {
-      const ordenRef = doc(db, 'ordenes_trabajo', orden.id);
+      const ordenRef = doc(db, 'ordenes_trabajo', ordenParaTomar.id);
       await updateDoc(ordenRef, {
         estado: 'EN_PROCESO',
-        asignadoA: tecnicoSeleccionado.nombre,
+        asignadoA: tecnico.nombre,
         fechaInicio: serverTimestamp()
       });
-
-      console.log('[DashboardTaller] OT tomada:', orden.numeroOT);
-      showSuccess(`Orden ${orden.numeroOT} asignada correctamente`);
-      // No necesita cargarOrdenes() - onSnapshot actualiza automáticamente
+      showSuccess(`OT asignada a ${tecnico.nombre}`);
     } catch (error) {
       console.error('[DashboardTaller] Error tomando OT:', error);
       showError('Error al tomar la orden. Intenta nuevamente.');
+    } finally {
+      setOrdenParaTomar(null);
     }
   };
 
@@ -450,56 +467,6 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
     }
   };
 
-  // Renderizar selección de técnico
-  if (mostrarSeleccionTecnico && !tecnicoSeleccionado) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{
-        background: 'linear-gradient(135deg, #1a2332 0%, #2d3e50 100%)'
-      }}>
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
-          <div className="text-center mb-6">
-            <div className="text-6xl mb-3">👷</div>
-            <h2 className="text-2xl font-bold text-gray-900">Selecciona tu perfil</h2>
-            <p className="text-gray-600 text-sm mt-2">Elige tu nombre para continuar</p>
-          </div>
-
-          <div className="space-y-3">
-            {personal.filter(p => p.activo).map((tecnico) => (
-              <button
-                key={tecnico.id}
-                onClick={() => {
-                  setTecnicoSeleccionado(tecnico);
-                  setMostrarSeleccionTecnico(false);
-                }}
-                className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl">
-                    {tecnico.rol === 'Encargado' && '🚛'}
-                    {tecnico.rol === 'Mecánico' && '🔧'}
-                    {tecnico.rol === 'Herrero' && '⚙️'}
-                    {tecnico.rol === 'Ayudante' && '🛠️'}
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-900">{tecnico.nombre}</p>
-                    <p className="text-sm text-gray-600">{tecnico.rol}</p>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={onLogout}
-            className="w-full mt-6 py-3 px-6 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all"
-          >
-            Volver al Login
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Renderizar dashboard principal
   return (
     <div className="min-h-screen bg-gray-50">
@@ -507,15 +474,10 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       <div className="bg-[#1a2332] text-white p-4 md:p-6 shadow-lg">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3 md:gap-4">
-            <div className="text-3xl md:text-4xl">
-              {tecnicoSeleccionado?.rol === 'Encargado' && '🚛'}
-              {tecnicoSeleccionado?.rol === 'Mecánico' && '🔧'}
-              {tecnicoSeleccionado?.rol === 'Herrero' && '⚙️'}
-              {tecnicoSeleccionado?.rol === 'Ayudante' && '🛠️'}
-            </div>
+            <div className="text-3xl md:text-4xl">🔧</div>
             <div>
-              <h1 className="text-xl md:text-2xl font-bold">{tecnicoSeleccionado?.nombre}</h1>
-              <p className="text-white/90 text-xs md:text-sm">{tecnicoSeleccionado?.rol}</p>
+              <h1 className="text-xl md:text-2xl font-bold">Panel Taller</h1>
+              <p className="text-white/90 text-xs md:text-sm">Crosslog Mantenimiento</p>
             </div>
           </div>
 
@@ -532,15 +494,6 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
               </span>
             </button>
             <button
-              onClick={() => {
-                setTecnicoSeleccionado(null);
-                setMostrarSeleccionTecnico(true);
-              }}
-              className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs md:text-sm font-semibold transition-all backdrop-blur-sm"
-            >
-              Cambiar Perfil
-            </button>
-            <button
               onClick={onLogout}
               className="px-3 py-1.5 md:px-4 md:py-2 bg-white/20 hover:bg-white/30 rounded-lg text-xs md:text-sm font-semibold transition-all backdrop-blur-sm"
             >
@@ -550,158 +503,105 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
         </div>
       </div>
 
-      {/* Tabs compactos - Diseño unificado */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-2 md:px-6">
-          <div className="flex border-b border-gray-200">
-            {/* Tab Dashboard */}
-            <button
-              onClick={() => setVista('dashboard')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                vista === 'dashboard'
-                  ? 'text-[#56ab2f] border-b-3 border-[#56ab2f] bg-[#f0f9e8]'
-                  : 'text-gray-500 hover:text-[#56ab2f] hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="text-[10px] sm:text-xs">Dash</span>
-              </div>
-            </button>
+      {/* Tabs — mismo patrón que DashboardMantenimiento */}
+      <div className="w-full px-1 sm:px-2 md:px-2">
+        <div className="bg-white rounded-t-2xl shadow-lg">
+          <div className="overflow-x-auto scrollbar-hide">
+            <div className="flex border-b border-gray-200 min-w-max sm:min-w-0">
 
-            {/* Tab Órdenes Disponibles */}
-            <button
-              onClick={() => setVista('activas')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                vista === 'activas'
-                  ? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
-                  : 'text-gray-500 hover:text-blue-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    vista === 'activas' ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{ordenesActivas.length}</span>
+              {/* Dash */}
+              <button onClick={() => setVista('dashboard')} className={`flex-1 min-w-[38px] sm:min-w-0 px-1 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 font-semibold transition-colors ${vista === 'dashboard' ? 'text-[#56ab2f] border-b-2 border-[#56ab2f] bg-[#f0f9e8]' : 'text-gray-500 hover:text-[#56ab2f] hover:bg-gray-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Dash</span>
                 </div>
-                <span className="text-[10px] sm:text-xs">Disp</span>
-              </div>
-            </button>
+              </button>
 
-            {/* Tab Mis Órdenes */}
-            <button
-              onClick={() => setVista('asignadas')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                vista === 'asignadas'
-                  ? 'text-purple-600 border-b-3 border-purple-600 bg-purple-50'
-                  : 'text-gray-500 hover:text-purple-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    vista === 'asignadas' ? 'bg-purple-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{ordenesAsignadas.length}</span>
+              {/* Disponibles */}
+              <button onClick={() => setVista('activas')} className={`flex-1 min-w-[38px] sm:min-w-0 px-1 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 font-semibold transition-colors ${vista === 'activas' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:text-blue-600 hover:bg-gray-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${vista === 'activas' ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-700'}`}>{ordenesActivas.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Disp</span>
                 </div>
-                <span className="text-[10px] sm:text-xs">Mías</span>
-              </div>
-            </button>
+              </button>
 
-            {/* Tab Checklists */}
-            <button
-              onClick={() => setVista('checklists')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                vista === 'checklists'
-                  ? 'text-emerald-600 border-b-3 border-emerald-600 bg-emerald-50'
-                  : 'text-gray-500 hover:text-emerald-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    vista === 'checklists' ? 'bg-emerald-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{checklists.length}</span>
+              {/* Asignadas */}
+              <button onClick={() => setVista('asignadas')} className={`flex-1 min-w-[38px] sm:min-w-0 px-1 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 font-semibold transition-colors ${vista === 'asignadas' ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50' : 'text-gray-500 hover:text-purple-600 hover:bg-gray-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${vista === 'asignadas' ? 'bg-purple-600 text-white' : 'bg-gray-300 text-gray-700'}`}>{ordenesAsignadas.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Asign</span>
                 </div>
-                <span className="text-[10px] sm:text-xs">Check</span>
-              </div>
-            </button>
+              </button>
 
-            {/* Tab Historial */}
-            <button
-              onClick={() => setVista('historial')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                vista === 'historial'
-                  ? 'text-amber-600 border-b-3 border-amber-600 bg-amber-50'
-                  : 'text-gray-500 hover:text-amber-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-                    vista === 'historial' ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-700'
-                  }`}>{ordenesCerradas.length}</span>
+              {/* Checklists */}
+              <button onClick={() => setVista('checklists')} className={`flex-1 min-w-[38px] sm:min-w-0 px-1 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 font-semibold transition-colors ${vista === 'checklists' ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50' : 'text-gray-500 hover:text-emerald-600 hover:bg-gray-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${vista === 'checklists' ? 'bg-emerald-600 text-white' : 'bg-gray-300 text-gray-700'}`}>{checklists.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Check</span>
                 </div>
-                <span className="text-[10px] sm:text-xs">Hist</span>
-              </div>
-            </button>
+              </button>
 
-            {/* Tab Tren Rodante */}
-            <button
-              onClick={() => setVista('trenRodante')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                vista === 'trenRodante'
-                  ? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
-                  : 'text-gray-500 hover:text-blue-600 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <span className="text-base">🚛</span>
+              {/* Historial */}
+              <button onClick={() => setVista('historial')} className={`flex-1 min-w-[38px] sm:min-w-0 px-1 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 font-semibold transition-colors ${vista === 'historial' ? 'text-amber-600 border-b-2 border-amber-600 bg-amber-50' : 'text-gray-500 hover:text-amber-600 hover:bg-gray-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${vista === 'historial' ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-700'}`}>{ordenesCerradas.length}</span>
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Hist</span>
                 </div>
-                <span className="text-[10px] sm:text-xs">T.Rod</span>
-              </div>
-            </button>
+              </button>
 
-            {/* Tab Cubiertas */}
-            <button
-              onClick={() => setVista('cubiertas')}
-              className={`flex-1 px-1.5 sm:px-3 md:px-4 py-2.5 md:py-3 font-semibold transition-colors text-xs sm:text-sm ${
-                vista === 'cubiertas'
-                  ? 'text-gray-800 border-b-3 border-gray-800 bg-gray-100'
-                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5">
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="9" strokeWidth={2} />
-                    <circle cx="12" cy="12" r="3" strokeWidth={2} />
-                  </svg>
+              {/* Tren Rodante */}
+              <button onClick={() => setVista('trenRodante')} className={`flex-1 min-w-[38px] sm:min-w-0 px-1 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 font-semibold transition-colors ${vista === 'trenRodante' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:text-blue-600 hover:bg-gray-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3m0 0h2l3 3v4h-2m-3-7v7M7 17a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4z" /></svg>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">T.Rod</span>
                 </div>
-                <span className="text-[10px] sm:text-xs">Cub</span>
-              </div>
-            </button>
+              </button>
+
+              {/* Cubiertas */}
+              <button onClick={() => setVista('cubiertas')} className={`flex-1 min-w-[38px] sm:min-w-0 px-1 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 font-semibold transition-colors ${vista === 'cubiertas' ? 'text-gray-800 border-b-2 border-gray-800 bg-gray-100' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" strokeWidth={2} /><circle cx="12" cy="12" r="3" strokeWidth={2} /></svg>
+                    {badgeCub > 0 && (
+                      <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${vista === 'cubiertas' ? 'bg-gray-800 text-white' : 'bg-gray-300 text-gray-700'}`}>{badgeCub}</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Cub</span>
+                </div>
+              </button>
+
+              {/* Alertas */}
+              <button onClick={() => setVista('alertas')} className={`flex-1 min-w-[38px] sm:min-w-0 px-1 sm:px-2 md:px-3 py-1.5 sm:py-2 md:py-2.5 font-semibold transition-colors ${vista === 'alertas' ? 'text-amber-600 border-b-2 border-amber-600 bg-amber-50' : 'text-gray-500 hover:text-amber-600 hover:bg-gray-50'}`}>
+                <div className="flex flex-col items-center justify-center gap-0.5">
+                  <div className="relative">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                    {badgeAlertas > 0 && (
+                      <span className={`absolute -top-1.5 -right-2 text-[8px] min-w-[16px] h-4 flex items-center justify-center px-1 rounded-full font-bold ${vista === 'alertas' ? 'bg-amber-600 text-white' : 'bg-gray-300 text-gray-700'}`}>{badgeAlertas}</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] sm:text-xs whitespace-nowrap">Aler</span>
+                </div>
+              </button>
+
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Filtros - Solo mostrar si no es dashboard, checklists, historial, trenRodante o cubiertas */}
-      {vista !== 'dashboard' && vista !== 'checklists' && vista !== 'historial' && vista !== 'trenRodante' && vista !== 'cubiertas' && (
+      {/* Filtros - Solo mostrar si no es dashboard, checklists, historial, trenRodante, cubiertas o alertas */}
+      {vista !== 'dashboard' && vista !== 'checklists' && vista !== 'historial' && vista !== 'trenRodante' && vista !== 'cubiertas' && vista !== 'alertas' && (
         <div className="bg-gradient-to-br from-green-50 to-gray-50 border-b border-green-200 p-3 md:p-4">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3 md:gap-4">
@@ -817,7 +717,7 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                   setOrdenSeleccionada(orden);
                   setMostrarModalDetalleOT(true);
                 }}
-                tecnicoActual={tecnicoSeleccionado?.nombre || ''}
+                tecnicoActual={''}
               />
             )}
 
@@ -1261,9 +1161,62 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
                 }}
               />
             )}
+
+            {/* Tab Alertas de Mantenimiento */}
+            {vista === 'alertas' && (
+              <AlertasMantenimiento
+                modo="taller"
+                onGenerarOT={(alerta) => {
+                  console.log('[DashboardTaller] Generar OT desde alerta:', alerta);
+                  // TODO: Abrir modal de nueva OT PREVENTIVO pre-completada
+                }}
+              />
+            )}
           </div>
         )}
       </div>
+
+      {/* Modal selección de técnico al tomar OT */}
+      {mostrarModalTecnico && ordenParaTomar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="text-center mb-4">
+              <div className="text-4xl mb-2">👷</div>
+              <h3 className="text-lg font-bold text-gray-900">¿Quién toma esta OT?</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {ordenParaTomar.numeroOT} · INT-{ordenParaTomar.unidad?.numero}
+              </p>
+            </div>
+            <div className="space-y-2">
+              {personal.filter(p => p.activo).map((tecnico) => (
+                <button
+                  key={tecnico.id}
+                  onClick={() => confirmarTomarOT(tecnico)}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-[#56ab2f] hover:bg-[#f0f9e8] transition-all text-left"
+                >
+                  <span className="text-2xl">
+                    {tecnico.rol === 'Encargado' ? '🔑'
+                     : tecnico.rol === 'Mecánico' ? '🔧'
+                     : tecnico.rol === 'Herrero'  ? '⚙️'
+                     : tecnico.rol === 'Ayudante' ? '🛠️'
+                     : '👷'}
+                  </span>
+                  <div>
+                    <p className="font-bold text-gray-900">{tecnico.nombre}</p>
+                    <p className="text-xs text-gray-500">{tecnico.rol}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => { setMostrarModalTecnico(false); setOrdenParaTomar(null); }}
+              className="w-full mt-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all text-sm"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modales Tren Rodante */}
       {showChecklistTR === '40K' && (
@@ -1336,7 +1289,7 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       {mostrarModalCierre && ordenSeleccionada && (
         <ModalCierreOT
           orden={ordenSeleccionada}
-          tecnico={tecnicoSeleccionado?.nombre || ''}
+          tecnico={''}
           onClose={() => {
             setMostrarModalCierre(false);
             setOrdenSeleccionada(null);
@@ -1417,7 +1370,7 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
             setMostrarModalDetalleOT(false);
             handleTomarOT(ordenSeleccionada);
           }}
-          tecnicoActual={tecnicoSeleccionado?.nombre || ''}
+          tecnicoActual={''}
         />
       )}
     </div>
@@ -2268,40 +2221,42 @@ function ListaOrdenesAsignadas({
               {orden.descripcion}
             </p>
 
-            {/* Botones compactos */}
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={(e) => { e.stopPropagation(); onVerDetalle(orden); }}
-                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-all"
-              >
-                Ver Detalle
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onRegistrarTrabajo(orden); }}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-all"
-              >
-                ✏️ Registrar
-              </button>
+            {/* Botones — 4 iguales en una fila */}
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-4 gap-1.5">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onVerDetalle(orden); }}
+                  className="py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-all text-center"
+                >
+                  Ver Det.
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRegistrarTrabajo(orden); }}
+                  className="py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-all text-center"
+                >
+                  ✏️ Regist.
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onCerrarOT(orden); }}
+                  className="py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-all text-center"
+                >
+                  ✓ Cerrar
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onVerHistorial(orden.unidad.numero); }}
+                  className="py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-all text-center"
+                >
+                  📋 Hist
+                </button>
+              </div>
               {(orden.estado === 'EN_PROCESO' || orden.estado === 'PENDIENTE') && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onMarcarEsperando(orden); }}
-                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-all"
+                  className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-all"
                 >
-                  ⏳ Esperando
+                  ⏳ Marcar esperando repuestos
                 </button>
               )}
-              <button
-                onClick={(e) => { e.stopPropagation(); onCerrarOT(orden); }}
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-all"
-              >
-                ✓ Cerrar
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onVerHistorial(orden.unidad.numero); }}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg transition-all"
-              >
-                📋 Hist
-              </button>
             </div>
           </div>
         );

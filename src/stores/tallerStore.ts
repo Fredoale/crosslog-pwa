@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export interface PersonalMantenimiento {
   id: string;
   nombre: string;
-  rol: 'Encargado' | 'Mecánico' | 'Herrero' | 'Ayudante';
+  rol: 'Encargado' | 'Mecánico' | 'Herrero' | 'Ayudante' | 'Asistente';
   activo: boolean;
   fechaIngreso?: string;
 }
@@ -21,36 +21,13 @@ interface TallerState {
   eliminarPersonal: (id: string) => void;
 }
 
-// Personal inicial por defecto
+// Personal de mantenimiento
 const PERSONAL_INICIAL: PersonalMantenimiento[] = [
-  {
-    id: 'per001',
-    nombre: 'Encargado de Mantenimiento',
-    rol: 'Encargado',
-    activo: true,
-    fechaIngreso: '2024-01-01'
-  },
-  {
-    id: 'per002',
-    nombre: 'Mecánico',
-    rol: 'Mecánico',
-    activo: true,
-    fechaIngreso: '2024-01-01'
-  },
-  {
-    id: 'per003',
-    nombre: 'Herrero',
-    rol: 'Herrero',
-    activo: true,
-    fechaIngreso: '2024-01-01'
-  },
-  {
-    id: 'per004',
-    nombre: 'Ayudante Mecánico',
-    rol: 'Ayudante',
-    activo: true,
-    fechaIngreso: '2024-01-01'
-  }
+  { id: 'per001', nombre: 'Rubén', rol: 'Encargado',  activo: true },
+  { id: 'per002', nombre: 'Lucas', rol: 'Mecánico',   activo: true },
+  { id: 'per003', nombre: 'Juan',  rol: 'Herrero',    activo: true },
+  { id: 'per004', nombre: 'Maxi',  rol: 'Ayudante',   activo: true },
+  { id: 'per005', nombre: 'Camilo',rol: 'Asistente',  activo: true },
 ];
 
 // Código de acceso único para el taller

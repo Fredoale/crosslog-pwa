@@ -6,8 +6,7 @@
 import React, { useState } from 'react';
 import {
   collection,
-  addDoc,
-  serverTimestamp
+  addDoc
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../config/firebase';
@@ -53,12 +52,16 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
     return datosIniciales?.descripcion || '';
   };
 
+  // Fecha de hoy como valor por defecto
+  const hoy = new Date().toISOString().split('T')[0];
+
   const [formData, setFormData] = useState({
     unidadNumero: datosIniciales?.unidadNumero || '',
     unidadPatente: datosIniciales?.unidadPatente || '',
     tipo: datosIniciales?.tipo || 'PREVENTIVO' as 'PREVENTIVO' | 'CORRECTIVO' | 'URGENTE',
     descripcion: generarDescripcionTR(),
     prioridad: datosIniciales?.prioridad || 'MEDIA' as 'ALTA' | 'MEDIA' | 'BAJA',
+    fechaManual: hoy,
   });
   const [imagenesEvidencia, setImagenesEvidencia] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -100,9 +103,14 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
       // Generar número de OT correlativo usando el servicio
       const nuevoNumero = await generarNumeroOT();
 
+      // Usar la fecha manual ingresada (puede ser retroactiva)
+      const fechaSeleccionada = formData.fechaManual
+        ? new Date(formData.fechaManual + 'T12:00:00')
+        : new Date();
+
       const orden: Omit<OrdenTrabajo, 'id'> = {
         numeroOT: nuevoNumero,
-        fecha: new Date(),
+        fecha: fechaSeleccionada,
         unidad: {
           numero: formData.unidadNumero,
           patente: formData.unidadPatente
@@ -111,14 +119,14 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
         descripcion: formData.descripcion,
         estado: 'PENDIENTE',
         prioridad: formData.prioridad,
-        timestamp: new Date(),
+        timestamp: fechaSeleccionada,
         ...(urlsImagenes.length > 0 && { fotosEvidencia: urlsImagenes })
       };
 
       await addDoc(collection(db, 'ordenes_trabajo'), {
         ...orden,
-        fecha: serverTimestamp(),
-        timestamp: serverTimestamp()
+        fecha: fechaSeleccionada,
+        timestamp: fechaSeleccionada
       });
 
       console.log('[ModalCrearOrden] Orden creada exitosamente con', urlsImagenes.length, 'imágenes');
@@ -232,6 +240,31 @@ export const ModalCrearOrden: React.FC<ModalCrearOrdenProps> = ({ onClose, onCre
                 readOnly={!!formData.unidadPatente}
               />
             </div>
+          </div>
+
+          {/* Fecha de la OT */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Fecha de la OT *
+              <span className="ml-2 text-xs font-normal text-gray-500">(podés ingresar una fecha anterior)</span>
+            </label>
+            <input
+              type="date"
+              required
+              value={formData.fechaManual}
+              max={hoy}
+              onChange={(e) => setFormData({ ...formData, fechaManual: e.target.value })}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              style={{ fontSize: '16px' }}
+            />
+            {formData.fechaManual !== hoy && (
+              <p className="mt-1.5 text-xs text-amber-600 font-medium flex items-center gap-1">
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                OT retroactiva — se registrará con la fecha seleccionada
+              </p>
+            )}
           </div>
 
           {/* Tipo y Prioridad */}

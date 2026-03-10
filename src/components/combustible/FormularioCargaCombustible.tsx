@@ -61,57 +61,90 @@ export function FormularioCargaCombustible({
   const [loadingKm, setLoadingKm] = useState(true);
   const [ultimaCarga, setUltimaCarga] = useState<CargaCombustible | null>(null);
   const [consumoCalculado, setConsumoCalculado] = useState<number | null>(null);
+  const [kmFuenteChecklist, setKmFuenteChecklist] = useState(false);
+
+  // Autocomplete chofer
+  const [sugerenciasChofer, setSugerenciasChofer] = useState<string[]>([]);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+  const [choferesCargados, setChoferesCargados] = useState<string[]>([]);
+
+  // Cargar lista de choferes únicos de checklists recientes
+  useEffect(() => {
+    const cargarChoferes = async () => {
+      try {
+        const q = query(
+          collection(db, 'checklists'),
+          orderBy('timestamp', 'desc'),
+          limit(200)
+        );
+        const snap = await getDocs(q);
+        const nombres = new Set<string>();
+        snap.docs.forEach(doc => {
+          const nombre = doc.data().chofer?.nombre;
+          if (nombre && nombre.trim()) nombres.add(nombre.trim());
+        });
+        setChoferesCargados(Array.from(nombres).sort());
+      } catch { /* silencioso */ }
+    };
+    cargarChoferes();
+  }, []);
+
+  // Filtrar sugerencias al escribir
+  useEffect(() => {
+    if (!nombreChofer.trim()) {
+      setSugerenciasChofer(choferesCargados.slice(0, 8));
+    } else {
+      const filtradas = choferesCargados.filter(c =>
+        c.toLowerCase().includes(nombreChofer.toLowerCase())
+      );
+      setSugerenciasChofer(filtradas.slice(0, 8));
+    }
+  }, [nombreChofer, choferesCargados]);
 
   // Cargar último kilometraje registrado (del último checklist o carga)
   useEffect(() => {
     const cargarUltimoKilometraje = async () => {
       try {
         setLoadingKm(true);
-        console.log('[FormularioCombustible] Buscando último kilometraje para unidad:', unidad.numero);
 
-        // Primero buscar en checklists
-        const checklistsRef = collection(db, 'checklists');
+        // Buscar en checklists — odometroFinal primero, luego odometroInicial
         const qChecklists = query(
-          checklistsRef,
+          collection(db, 'checklists'),
           where('unidad.numero', '==', unidad.numero),
           orderBy('timestamp', 'desc'),
           limit(1)
         );
-
         const checklistSnapshot = await getDocs(qChecklists);
         let ultimoKm = 0;
+        let kmDeChecklist = false;
 
         if (!checklistSnapshot.empty) {
-          const ultimoChecklist = checklistSnapshot.docs[0].data();
-          ultimoKm = ultimoChecklist.odometroInicial?.valor || 0;
-          console.log('[FormularioCombustible] Último km del checklist:', ultimoKm);
+          const data = checklistSnapshot.docs[0].data();
+          ultimoKm = data.odometroFinal?.valor ?? data.odometroInicial?.valor ?? 0;
+          if (ultimoKm > 0) kmDeChecklist = true;
         }
 
         // Buscar última carga de combustible
-        const cargasRef = collection(db, 'cargas_combustible');
         const qCargas = query(
-          cargasRef,
+          collection(db, 'cargas_combustible'),
           where('unidad.numero', '==', unidad.numero),
           orderBy('timestamp', 'desc'),
           limit(1)
         );
-
         const cargasSnapshot = await getDocs(qCargas);
 
         if (!cargasSnapshot.empty) {
           const ultimaCargaData = cargasSnapshot.docs[0].data() as CargaCombustible;
           setUltimaCarga(ultimaCargaData);
-
-          // Si la carga tiene km más reciente, usar ese
           if (ultimaCargaData.kilometrajeActual > ultimoKm) {
             ultimoKm = ultimaCargaData.kilometrajeActual;
-            console.log('[FormularioCombustible] Último km de carga anterior:', ultimoKm);
+            kmDeChecklist = false;
           }
         }
 
-        // Auto-completar con el último km
         if (ultimoKm > 0) {
           setKilometrajeActual(ultimoKm.toString());
+          setKmFuenteChecklist(kmDeChecklist);
         }
 
       } catch (error) {
@@ -376,18 +409,40 @@ export function FormularioCargaCombustible({
             <p className="text-xs text-blue-600 mt-1">Capacidad máxima: {capacidadMaxima} litros</p>
           </div>
 
-          {/* Nombre del Chofer */}
-          <div>
+          {/* Nombre del Chofer — autocomplete */}
+          <div className="relative">
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Nombre del Chofer *
             </label>
             <input
               type="text"
               value={nombreChofer}
-              onChange={(e) => setNombreChofer(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              placeholder="Nombre completo del chofer"
+              onChange={(e) => { setNombreChofer(e.target.value); setMostrarSugerencias(true); }}
+              onFocus={() => setMostrarSugerencias(true)}
+              onBlur={() => setTimeout(() => setMostrarSugerencias(false), 150)}
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 transition-all ${
+                !nombreChofer.trim() ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-200'
+              }`}
+              placeholder="Escribí para buscar o ingresá el nombre..."
+              autoComplete="off"
             />
+            {!nombreChofer.trim() && (
+              <p className="text-xs text-red-500 mt-1">Campo obligatorio</p>
+            )}
+            {mostrarSugerencias && sugerenciasChofer.length > 0 && (
+              <div className="absolute z-50 w-full bg-white border-2 border-blue-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
+                {sugerenciasChofer.map((chofer) => (
+                  <button
+                    key={chofer}
+                    type="button"
+                    onMouseDown={() => { setNombreChofer(chofer); setMostrarSugerencias(false); }}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 hover:text-blue-800 transition-colors border-b border-gray-100 last:border-0 font-medium"
+                  >
+                    👤 {chofer}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {loadingKm && (
@@ -412,9 +467,15 @@ export function FormularioCargaCombustible({
                   placeholder="Ej: 145678"
                   min="0"
                 />
+                {kmFuenteChecklist && (
+                  <p className="text-xs text-[#56ab2f] mt-1 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    Autocompletado desde último checklist — podés editarlo
+                  </p>
+                )}
                 {ultimaCarga && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Última carga: {ultimaCarga.kilometrajeActual.toLocaleString()} km
+                    Última carga registrada: {ultimaCarga.kilometrajeActual.toLocaleString()} km
                   </p>
                 )}
               </div>

@@ -158,6 +158,9 @@ export interface OrdenTrabajo {
   tipo: 'PREVENTIVO' | 'CORRECTIVO' | 'URGENTE';
   descripcion: string;
 
+  // Kilometraje al momento del service (para alertas de mantenimiento)
+  kmService?: number;
+
   // Asignación
   asignadoA?: string;           // Mecánico/Taller asignado
   fechaAsignacion?: Date;
