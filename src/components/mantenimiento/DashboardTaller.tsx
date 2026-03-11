@@ -364,7 +364,7 @@ export function DashboardTaller({ onLogout }: DashboardTallerProps) {
       setBadgeAlertas(contarAlertasActivas(alertas));
     }).catch(() => {});
     obtenerAlertasFlota().then(alertas => {
-      setBadgeCub(alertas.filter(a => a.estado !== 'ok').length);
+      setBadgeCub(alertas.length);
     }).catch(() => {});
   }, []);
 
