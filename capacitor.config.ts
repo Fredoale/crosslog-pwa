@@ -7,6 +7,8 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
     iosScheme: 'https',
+    url: 'https://appcrosslog.netlify.app',
+    cleartext: false,
   },
   plugins: {
     Camera: {

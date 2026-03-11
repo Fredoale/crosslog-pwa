@@ -28,6 +28,7 @@ import {
   instalarCubierta,
   retirarCubierta,
   eliminarCubierta,
+  guardarCubierta,
 } from '../../services/cubiertasService';
 import { showSuccess, showError } from '../../utils/toast';
 import { getEstadisticasUnidad, getChecklistsByUnidad } from '../../services/checklistService';
@@ -51,6 +52,11 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
   const [cubiertasStock, setCubiertasStock] = useState<Cubierta[]>([]);
   const [loadingStock, setLoadingStock] = useState(false);
   const [filtroStock, setFiltroStock] = useState('');
+
+  // Edición de cubierta
+  const [cubiertaEditando, setCubiertaEditando] = useState<Cubierta | null>(null);
+  const [formEdit, setFormEdit] = useState<Partial<Cubierta>>({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Alerta de actualización periódica
   const LS_KEY = 'crosslog_cubiertas_control_fecha';
@@ -143,6 +149,37 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
       showError('Error al cargar estado de cubiertas');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const abrirEdicion = (cubierta: Cubierta) => {
+    setCubiertaEditando(cubierta);
+    setFormEdit({
+      codigo: cubierta.codigo,
+      marca: cubierta.marca,
+      modelo: cubierta.modelo,
+      medida: cubierta.medida,
+      dot: cubierta.dot,
+      tipo: cubierta.tipo,
+      tipoUso: cubierta.tipoUso,
+      estado: cubierta.estado,
+      sector: cubierta.sector,
+      ultimaProfundidadMm: cubierta.ultimaProfundidadMm,
+    });
+  };
+
+  const handleGuardarEdicion = async () => {
+    if (!cubiertaEditando) return;
+    setSavingEdit(true);
+    try {
+      await guardarCubierta({ id: cubiertaEditando.id, ...formEdit });
+      showSuccess(`Cubierta ${formEdit.codigo} actualizada`);
+      setCubiertaEditando(null);
+      await cargarStock();
+    } catch {
+      showError('Error al guardar cambios');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -872,8 +909,11 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                             {estado!.alertasRegulares} regular{estado!.alertasRegulares > 1 ? 'es' : ''}
                           </span>
                         )}
-                        {estado && !tieneCritico && !tieneRegular && (
+                        {estado && !tieneCritico && !tieneRegular && estado.cubiertasInstaladas === estado.totalCubiertas && estado.totalCubiertas > 0 && (
                           <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">OK</span>
+                        )}
+                        {estado && !tieneCritico && !tieneRegular && (estado.cubiertasInstaladas < estado.totalCubiertas || estado.totalCubiertas === 0) && (
+                          <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">Incompleto</span>
                         )}
                         {!estado && !loadingFlota && (
                           <span className="text-xs text-gray-400">Sin datos</span>
@@ -996,7 +1036,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="divide-y divide-gray-100">
                 {stockFiltrado.map((cubierta) => (
-                  <div key={cubierta.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div key={cubierta.id} className="p-4 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => abrirEdicion(cubierta)}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
@@ -1042,7 +1082,7 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
                           )}
                         </div>
                         <button
-                          onClick={() => handleEliminarCubierta(cubierta)}
+                          onClick={(e) => { e.stopPropagation(); handleEliminarCubierta(cubierta); }}
                           className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
                           title="Eliminar cubierta"
                         >
@@ -1057,6 +1097,173 @@ export function PanelCubiertas({ unidadInicial, onGenerarOT }: PanelCubiertasPro
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal Editar Cubierta */}
+      {cubiertaEditando && (
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={() => setCubiertaEditando(null)}>
+          <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Editar Cubierta</h2>
+                <p className="text-sm text-gray-500">{cubiertaEditando.codigo}</p>
+              </div>
+              <button onClick={() => setCubiertaEditando(null)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Formulario */}
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Código</label>
+                  <input
+                    type="text"
+                    value={formEdit.codigo ?? ''}
+                    onChange={e => setFormEdit(f => ({ ...f, codigo: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Medida</label>
+                  <input
+                    type="text"
+                    value={formEdit.medida ?? ''}
+                    onChange={e => setFormEdit(f => ({ ...f, medida: e.target.value }))}
+                    placeholder="295/80 R22.5"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Marca</label>
+                  <input
+                    type="text"
+                    value={formEdit.marca ?? ''}
+                    onChange={e => setFormEdit(f => ({ ...f, marca: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Modelo</label>
+                  <input
+                    type="text"
+                    value={formEdit.modelo ?? ''}
+                    onChange={e => setFormEdit(f => ({ ...f, modelo: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
+                  <select
+                    value={formEdit.tipo ?? 'LINEAL'}
+                    onChange={e => setFormEdit(f => ({ ...f, tipo: e.target.value as Cubierta['tipo'] }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="LINEAL">Lineal</option>
+                    <option value="RECAPADA">Recapada</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
+                  <select
+                    value={formEdit.estado ?? 'NUEVA'}
+                    onChange={e => setFormEdit(f => ({ ...f, estado: e.target.value as Cubierta['estado'] }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="NUEVA">Nueva</option>
+                    <option value="EN_USO">En uso</option>
+                    <option value="RECAPADA">Recapada</option>
+                    <option value="EN_RECAPADO">En recapado</option>
+                    <option value="EN_STOCK">En stock</option>
+                    <option value="AUXILIO">Auxilio</option>
+                    <option value="BAJA">Baja</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de uso</label>
+                  <select
+                    value={formEdit.tipoUso ?? 'LIBRE'}
+                    onChange={e => setFormEdit(f => ({ ...f, tipoUso: e.target.value as Cubierta['tipoUso'] }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="DIRECCIONAL">Direccional</option>
+                    <option value="TRACCION">Tracción</option>
+                    <option value="LIBRE">Libre</option>
+                    <option value="MIXTA">Mixta</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Sector</label>
+                  <select
+                    value={formEdit.sector ?? ''}
+                    onChange={e => setFormEdit(f => ({ ...f, sector: e.target.value as Cubierta['sector'] || undefined }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Sin asignar</option>
+                    <option value="vrac">VRAC</option>
+                    <option value="distribucion">Distribución</option>
+                    <option value="vital-aire">Vital Aire</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Profundidad (mm)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="25"
+                    value={formEdit.ultimaProfundidadMm ?? ''}
+                    onChange={e => setFormEdit(f => ({ ...f, ultimaProfundidadMm: e.target.value ? parseFloat(e.target.value) : undefined }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">DOT</label>
+                  <input
+                    type="text"
+                    value={formEdit.dot ?? ''}
+                    onChange={e => setFormEdit(f => ({ ...f, dot: e.target.value || undefined }))}
+                    placeholder="ej: 2024"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => setCubiertaEditando(null)}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleGuardarEdicion}
+                disabled={savingEdit}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold transition-colors"
+              >
+                {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

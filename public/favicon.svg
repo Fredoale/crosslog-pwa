@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <!-- Fondo blanco -->
+  <rect width="192" height="192" rx="20" fill="#ffffff"/>
+
+  <!-- X de Crosslog centrada con margen -->
+  <path d="M54 46 L86 96 L54 146 L70 146 L96 102 L122 146 L138 146 L106 96 L138 46 L122 46 L96 90 L70 46 Z" fill="#8dc63f"/>
+
+  <!-- Punta derecha oscura -->
+  <path d="M96 96 L122 146 L138 146 L106 96 L138 46 L122 46 Z" fill="#1a2e44"/>
+</svg>
