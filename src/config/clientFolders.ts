@@ -63,8 +63,8 @@ export const CLIENT_FOLDERS: Record<string, ClientFolderConfig> = {
     folderId: '1L_ib8P1MV2hP5SZyn44VuFJ6u57mTfqC', // ID de la carpeta "REMITOS APN"
     folderName: 'REMITOS APN',
   },
-  'EVE': {
-    id: 'EVE',
+  'EVER': {
+    id: 'EVER',
     nombre: 'EVERLLENCE',
     folderId: '1zOoyeyq63-5dMDgXVVBO_fRgP67r_tKy', // ID de la carpeta "REMITOS EVERLLENCE"
     folderName: 'REMITOS EVERLLENCE',
