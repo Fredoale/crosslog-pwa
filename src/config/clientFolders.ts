@@ -35,9 +35,9 @@ export const CLIENT_FOLDERS: Record<string, ClientFolderConfig> = {
   },
   'ACO': {
     id: 'ACO',
-    nombre: 'ACOMCAGUA',
-    folderId: '1G2z0CWsQ-utWq70ETuYIP8WtzK-h01PB', // ID de la carpeta "REMITOS ACOMCAGUA"
-    folderName: 'REMITOS ACOMCAGUA',
+    nombre: 'ACONCAGUA',
+    folderId: '1G2z0CWsQ-utWq70ETuYIP8WtzK-h01PB', // ID de la carpeta "REMITOS ACONCAGUA"
+    folderName: 'REMITOS ACONCAGUA',
   },
   'INQ': {
     id: 'INQ',
@@ -63,13 +63,25 @@ export const CLIENT_FOLDERS: Record<string, ClientFolderConfig> = {
     folderId: '1L_ib8P1MV2hP5SZyn44VuFJ6u57mTfqC', // ID de la carpeta "REMITOS APN"
     folderName: 'REMITOS APN',
   },
+  'EVE': {
+    id: 'EVE',
+    nombre: 'EVERLLENCE',
+    folderId: '1zOoyeyq63-5dMDgXVVBO_fRgP67r_tKy', // ID de la carpeta "REMITOS EVERLLENCE"
+    folderName: 'REMITOS EVERLLENCE',
+  },
+  'EVERLLENCE': {
+    id: 'EVERLLENCE',
+    nombre: 'EVERLLENCE',
+    folderId: '1zOoyeyq63-5dMDgXVVBO_fRgP67r_tKy', // alias nombre completo
+    folderName: 'REMITOS EVERLLENCE',
+  },
 };
 
 /**
  * Carpeta por defecto (fallback) cuando no se encuentra el cliente
  * IMPORTANTE: Esta carpeta debe estar compartida con la cuenta de Google que usa la PWA
  */
-export const DEFAULT_FOLDER_ID = '1MDmsMNaHYeWWvxjk4wF7_xTpYr-Ut3hJ'; // REMITOS ECOLAB (fallback)
+export const DEFAULT_FOLDER_ID = '1ou1ui5uqjcW_gjsWA6OMfOkYrC2xagfb'; // REMITOS CLIENTES NUEVOS (fallback)
 
 /**
  * Obtiene la configuración de carpeta para un cliente
