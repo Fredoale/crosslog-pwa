@@ -41,6 +41,7 @@ export interface FotoCapturada {
   scanned?: boolean; // Document scanned with OpenCV
   originalBlob?: Blob; // Original before scanning
   scanCorners?: { x: number; y: number }[]; // Detected document corners
+  grupoId?: string; // ID de grupo para fotos del mismo remito multipágina
 }
 
 export interface FirmaData {
