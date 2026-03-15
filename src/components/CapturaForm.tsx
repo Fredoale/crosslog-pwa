@@ -7,7 +7,7 @@ import { useOfflineSync } from '../hooks/useOfflineSync';
 import { SignatureCanvas } from './SignatureCanvas';
 import { ImageEditor } from './ImageEditor';
 import { OCRRegionSelector } from './OCRRegionSelector';
-import { generateIndividualPDF, type SignatureData } from '../utils/pdfGenerator';
+import { generateIndividualPDF, generateMultiPagePDF, type SignatureData } from '../utils/pdfGenerator';
 import { uploadToGoogleDrive } from '../utils/googleDriveService';
 import { ocrScanner } from '../utils/ocrScanner';
 import { scanDocument } from '../utils/documentScanner';
@@ -226,70 +226,62 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   };
 
   const handleFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
     setCapturando(true);
     setError(null);
     setWarning(null);
 
     try {
-      console.log('[CapturaForm] Processing file from input:', file.name);
+      const nuevasFotos: FotoCapturada[] = [];
+      // Si seleccionan múltiples fotos a la vez → mismo grupoId (1 PDF multipágina)
+      const grupoId = files.length > 1 ? `grupo-${Date.now()}` : undefined;
 
-      // Convert File to Blob
-      let blob = file as Blob;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        console.log('[CapturaForm] Processing file:', file.name);
 
-      // Auto-rotate to vertical (90 degrees) for all photos
-      console.log('[CapturaForm] Rotating image to vertical...');
-      const rotationResult = await rotateToVertical(blob);
-      blob = rotationResult.blob;
+        let blob: Blob = file;
 
-      if (rotationResult.rotated) {
-        console.log('[CapturaForm] ✓ Image rotated 90° to vertical');
+        const rotationResult = await rotateToVertical(blob);
+        blob = rotationResult.blob;
+
+        const reader = new FileReader();
+        const thumbnailPromise = new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+
+        const thumbnail = await thumbnailPromise;
+        const fotoId = `foto-${Date.now()}-${i}`;
+
+        nuevasFotos.push({
+          id: fotoId,
+          blob,
+          processed: false,
+          thumbnail,
+          timestamp: new Date().toISOString(),
+          numeroRemito: '',
+          ocrDetecting: false,
+          grupoId,
+        });
       }
 
-      // Create thumbnail
-      const reader = new FileReader();
-      const thumbnailPromise = new Promise<string>((resolve) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
+      setFotos((prev) => [...prev, ...nuevasFotos]);
 
-      const thumbnail = await thumbnailPromise;
-      const fotoId = `foto-${Date.now()}`;
-
-      const nuevaFoto: FotoCapturada = {
-        id: fotoId,
-        blob,
-        processed: false,
-        thumbnail,
-        timestamp: new Date().toISOString(),
-        numeroRemito: '', // Start empty for manual input
-        ocrDetecting: false,
-      };
-
-      setFotos((prev) => [...prev, nuevaFoto]);
-
-      // Auto-open editor after photo is loaded
-      console.log('[CapturaForm] Auto-opening editor for new photo...');
-      setTimeout(() => {
-        setEditingFotoId(fotoId);
-        setShowImageEditor(true);
-      }, 100);
-
-      // Auto-scan if enabled
-      if (autoScan) {
-        console.log('[CapturaForm] Auto-scanning document...');
-        setTimeout(() => handleScanDocument(fotoId), 100);
+      // Si es una sola foto, abrir editor automáticamente
+      if (nuevasFotos.length === 1) {
+        setTimeout(() => {
+          setEditingFotoId(nuevasFotos[0].id);
+          setShowImageEditor(true);
+        }, 100);
       }
 
-      // Reset both inputs
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      if (cameraInputRef.current) {
-        cameraInputRef.current.value = '';
-      }
+      // Reset inputs
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+
     } catch (err) {
       console.error('[CapturaForm] File input error:', err);
       setError('Error al cargar foto. Intenta de nuevo.');
@@ -304,11 +296,16 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
   };
 
   const handleUpdateNumeroRemito = (fotoId: string, numeroRemito: string) => {
-    setFotos((prev) =>
-      prev.map((f) =>
-        f.id === fotoId ? { ...f, numeroRemito: numeroRemito.trim() } : f
-      )
-    );
+    setFotos((prev) => {
+      const foto = prev.find(f => f.id === fotoId);
+      const grupo = foto?.grupoId;
+      return prev.map((f) =>
+        // Si tiene grupoId, actualizar todas las del mismo grupo
+        (grupo && f.grupoId === grupo) || f.id === fotoId
+          ? { ...f, numeroRemito: numeroRemito.trim() }
+          : f
+      );
+    });
   };
 
   const handleOpenOCRSelector = (fotoId: string) => {
@@ -555,33 +552,52 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
       setUploadProgress('Generando PDFs...');
 
-      // Step 1: Generate PDFs (one per foto/remito)
+      // Step 1: Generate PDFs — agrupar fotos por número de remito
+      // Si hay 2 fotos con el mismo remito → 1 PDF multipágina
       console.log('[CapturaForm] ===== STARTING PDF GENERATION =====');
       console.log('[CapturaForm] Number of fotos:', fotos.length);
       console.log('[CapturaForm] Remito numbers:', fotos.map(f => f.numeroRemito));
 
-      const pdfPromises = fotos.map(async (foto, index) => {
-        console.log(`[CapturaForm] Generating PDF ${index + 1}/${fotos.length} for remito:`, foto.numeroRemito);
+      // Agrupar fotos por numeroRemito
+      const fotosByRemito = new Map<string, typeof fotos>();
+      fotos.forEach(foto => {
+        const num = foto.numeroRemito || 'SIN_NUMERO';
+        if (!fotosByRemito.has(num)) fotosByRemito.set(num, []);
+        fotosByRemito.get(num)!.push(foto);
+      });
 
-        const pdf = await generateIndividualPDF({
-          photoBlob: foto.blob,
-          signature,
-          numeroRemito: foto.numeroRemito || 'SIN_NUMERO',
-          cliente,
-          geolocalizacion: finalGeoLocation || undefined,
-        });
+      console.log('[CapturaForm] Remitos únicos:', Array.from(fotosByRemito.keys()));
 
-        console.log(`[CapturaForm] ✓ PDF ${index + 1} generated successfully`);
+      const pdfPromises = Array.from(fotosByRemito.entries()).map(async ([numeroRemito, fotosDelRemito]) => {
+        console.log(`[CapturaForm] Generando PDF para remito ${numeroRemito}: ${fotosDelRemito.length} foto(s)`);
 
-        return {
-          pdf,
-          numeroRemito: foto.numeroRemito || 'SIN_NUMERO',
-        };
+        let pdf: Blob;
+        if (fotosDelRemito.length === 1) {
+          pdf = await generateIndividualPDF({
+            photoBlob: fotosDelRemito[0].blob,
+            signature,
+            numeroRemito,
+            cliente,
+            geolocalizacion: finalGeoLocation || undefined,
+          });
+        } else {
+          // Múltiples fotos del mismo remito → PDF multipágina
+          pdf = await generateMultiPagePDF({
+            photoBlobs: fotosDelRemito.map(f => f.blob),
+            signature,
+            numeroRemito,
+            cliente,
+            geolocalizacion: finalGeoLocation || undefined,
+          });
+          console.log(`[CapturaForm] ✓ PDF multipágina generado: ${fotosDelRemito.length} páginas para remito ${numeroRemito}`);
+        }
+
+        return { pdf, numeroRemito };
       });
 
       console.log('[CapturaForm] Waiting for all PDFs to generate...');
       const pdfResults = await Promise.all(pdfPromises);
-      console.log(`[CapturaForm] ✓ All ${pdfResults.length} PDFs generated successfully`);
+      console.log(`[CapturaForm] ✓ All ${pdfResults.length} PDFs generated (${fotos.length} fotos → ${pdfResults.length} PDFs)`);
 
       // Step 2: Upload to Google Drive
       console.log('[CapturaForm] ===== STARTING GOOGLE DRIVE UPLOAD =====');
@@ -656,8 +672,8 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
       }, 100);
 
-      // Get new remitos from photos
-      const nuevosRemitos = fotos.map(f => f.numeroRemito).filter(Boolean);
+      // Get new remitos from photos — usar remitos únicos (agrupados por número)
+      const nuevosRemitos = Array.from(fotosByRemito.keys()).filter(Boolean);
       const nuevosPdfUrls = succeeded
         .filter(r => r.result.success)
         .map(r => r.result.webViewLink)
@@ -898,108 +914,161 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
             </span>
           </div>
 
-          {/* Photos List */}
-          {fotos.length > 0 && (
-            <div className="space-y-4">
-              {fotos.map((foto, index) => (
-                <div key={foto.id} className="card p-4 border-2 border-blue-200 bg-blue-50">
-                  <div className="flex gap-3">
-                    {/* Thumbnail */}
-                    <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden border-2 border-gray-300">
-                      <img
-                        src={foto.thumbnail}
-                        alt={`Remito ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute top-1 left-1 bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded">
-                        #{index + 1}
-                      </div>
-                    </div>
+          {/* Photos List — agrupar fotos con mismo grupoId en 1 tarjeta */}
+          {fotos.length > 0 && (() => {
+            // Construir lista de "entradas" para el render: grupos y fotos individuales
+            const renderEntradas: ({ tipo: 'grupo'; grupoId: string; fotos: typeof fotos } | { tipo: 'individual'; foto: typeof fotos[0] })[] = [];
+            const gruposVistos = new Set<string>();
 
-                    {/* Input and Actions */}
-                    <div className="flex-1 space-y-2">
-                      <label className="block text-xs font-semibold text-gray-700">
-                        Número de Remito #{index + 1} *
-                      </label>
+            fotos.forEach((foto) => {
+              if (foto.grupoId) {
+                if (!gruposVistos.has(foto.grupoId)) {
+                  gruposVistos.add(foto.grupoId);
+                  renderEntradas.push({ tipo: 'grupo', grupoId: foto.grupoId, fotos: fotos.filter(f => f.grupoId === foto.grupoId) });
+                }
+              } else {
+                renderEntradas.push({ tipo: 'individual', foto });
+              }
+            });
 
-                      {/* Input Field */}
-                      <input
-                        type="tel"
-                        value={foto.numeroRemito || ''}
-                        onChange={(e) => handleUpdateNumeroRemito(foto.id, e.target.value.replace(/\D/g, ''))}
-                        className="field-input w-full text-sm"
-                        placeholder="Ej: 38269"
-                        inputMode="numeric"
-                        disabled={processing || foto.ocrDetecting}
-                      />
+            let remitoCounter = 0;
 
-                      {/* Buttons Row */}
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* Edit Button */}
-                        <button
-                          onClick={() => handleOpenEditor(foto.id)}
-                          disabled={processing}
-                          className="py-2 px-3 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                          style={{ backgroundColor: '#2d3e50' }}
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Editar
-                        </button>
+            return (
+              <div className="space-y-4">
+                {renderEntradas.map((entrada) => {
+                  remitoCounter++;
+                  const cardIndex = remitoCounter;
 
-                        {/* Detect Number Button - Region-based OCR */}
-                        <button
-                          onClick={() => handleOpenOCRSelector(foto.id)}
-                          disabled={processing || foto.ocrDetecting}
-                          className="py-2 px-3 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 active:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                          style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
-                        >
-                          {foto.ocrDetecting ? (
-                            <>
-                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                              </svg>
-                              Detectando...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                              </svg>
-                              🔍 Detectar N°
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Status indicator */}
-                      {foto.numeroRemito && (
-                        <div className="text-xs text-green-700 font-semibold flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                          </svg>
-                          Remito: {foto.numeroRemito}
+                  if (entrada.tipo === 'grupo') {
+                    const primeraFoto = entrada.fotos[0];
+                    return (
+                      <div key={entrada.grupoId} className="card p-4 border-2 bg-blue-50" style={{ borderColor: '#a8e063' }}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="bg-green-600 text-white text-xs font-bold px-2 py-1 rounded">
+                            PDF MULTIPÁGINA — {entrada.fotos.length} fotos
+                          </span>
                         </div>
-                      )}
-                    </div>
 
-                    {/* Delete Button */}
-                    <button
-                      onClick={() => handleEliminarFoto(foto.id)}
-                      disabled={processing}
-                      className="self-start p-2 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600 active:bg-red-700 disabled:opacity-50"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                        {/* Miniaturas en fila */}
+                        <div className="flex gap-2 mb-3 flex-wrap">
+                          {entrada.fotos.map((f, i) => (
+                            <div key={f.id} className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 border-gray-300">
+                              <img src={f.thumbnail} alt={`Página ${i + 1}`} className="w-full h-full object-cover" />
+                              <div className="absolute top-1 left-1 bg-blue-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                                p{i + 1}
+                              </div>
+                              <button
+                                onClick={() => handleEliminarFoto(f.id)}
+                                disabled={processing}
+                                className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded disabled:opacity-50"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* 1 solo campo de número para todo el grupo */}
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">
+                          Número de Remito #{cardIndex} * (aplica a todas las páginas)
+                        </label>
+                        <input
+                          type="tel"
+                          value={primeraFoto.numeroRemito || ''}
+                          onChange={(e) => handleUpdateNumeroRemito(primeraFoto.id, e.target.value.replace(/\D/g, ''))}
+                          className="field-input w-full text-sm mb-2"
+                          placeholder="Ej: 38269"
+                          inputMode="numeric"
+                          disabled={processing}
+                        />
+                        {primeraFoto.numeroRemito && (
+                          <div className="text-xs text-green-700 font-semibold flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            Remito {primeraFoto.numeroRemito} — {entrada.fotos.length} páginas → 1 PDF
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Foto individual (sin grupo)
+                  const foto = entrada.foto;
+                  return (
+                    <div key={foto.id} className="card p-4 border-2 border-blue-200 bg-blue-50">
+                      <div className="flex gap-3">
+                        <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden border-2 border-gray-300">
+                          <img src={foto.thumbnail} alt={`Remito ${cardIndex}`} className="w-full h-full object-cover" />
+                          <div className="absolute top-1 left-1 bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded">
+                            #{cardIndex}
+                          </div>
+                        </div>
+
+                        <div className="flex-1 space-y-2">
+                          <label className="block text-xs font-semibold text-gray-700">
+                            Número de Remito #{cardIndex} *
+                          </label>
+                          <input
+                            type="tel"
+                            value={foto.numeroRemito || ''}
+                            onChange={(e) => handleUpdateNumeroRemito(foto.id, e.target.value.replace(/\D/g, ''))}
+                            className="field-input w-full text-sm"
+                            placeholder="Ej: 38269"
+                            inputMode="numeric"
+                            disabled={processing || foto.ocrDetecting}
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => handleOpenEditor(foto.id)}
+                              disabled={processing}
+                              className="py-2 px-3 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                              style={{ backgroundColor: '#2d3e50' }}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleOpenOCRSelector(foto.id)}
+                              disabled={processing || foto.ocrDetecting}
+                              className="py-2 px-3 text-white text-sm font-semibold rounded-lg shadow-sm hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                              style={{ background: 'linear-gradient(135deg, #a8e063 0%, #56ab2f 100%)' }}
+                            >
+                              {foto.ocrDetecting ? (
+                                <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Detectando...</>
+                              ) : (
+                                <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>🔍 Detectar N°</>
+                              )}
+                            </button>
+                          </div>
+                          {foto.numeroRemito && (
+                            <div className="text-xs text-green-700 font-semibold flex items-center gap-1">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                              Remito: {foto.numeroRemito}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => handleEliminarFoto(foto.id)}
+                          disabled={processing}
+                          className="self-start p-2 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600 disabled:opacity-50"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Hidden file inputs for web browsers */}
           {/* Camera input - forces camera on mobile browsers */}
@@ -1011,11 +1080,12 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
             onChange={handleFileInputChange}
             className="hidden"
           />
-          {/* Gallery input - allows selecting from gallery */}
+          {/* Gallery input - allows selecting from gallery (multiple files) */}
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             onChange={handleFileInputChange}
             className="hidden"
           />

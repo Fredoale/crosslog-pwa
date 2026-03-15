@@ -320,6 +320,209 @@ export async function generateIndividualPDF(
   }
 }
 
+// ==========================================
+// MULTI-PAGE PDF GENERATION (múltiples fotos mismo remito)
+// ==========================================
+
+export interface MultiPagePDFOptions {
+  photoBlobs: Blob[];
+  signature: SignatureData;
+  numeroRemito: string;
+  cliente: string;
+  geolocalizacion?: { lat: number; lng: number };
+}
+
+/**
+ * Genera 1 PDF multipágina con todas las fotos de un mismo remito.
+ * Estructura: Foto 1, Foto 2, ..., Página de firma/comprobante.
+ */
+export async function generateMultiPagePDF(options: MultiPagePDFOptions): Promise<Blob> {
+  const { photoBlobs, signature, numeroRemito, cliente, geolocalizacion } = options;
+
+  const pdfDoc = await PDFDocument.create();
+
+  // Agregar cada foto como una página
+  for (let i = 0; i < photoBlobs.length; i++) {
+    const photoBlob = photoBlobs[i];
+    const photoArrayBuffer = await photoBlob.arrayBuffer();
+    const photoBytes = new Uint8Array(photoArrayBuffer);
+
+    let photoImage;
+    const photoType = photoBlob.type;
+
+    if (photoType === 'image/jpeg' || photoType === 'image/jpg') {
+      photoImage = await pdfDoc.embedJpg(photoBytes);
+    } else if (photoType === 'image/png') {
+      photoImage = await pdfDoc.embedPng(photoBytes);
+    } else {
+      throw new Error(`Unsupported image type: ${photoType}`);
+    }
+
+    const photoPage = pdfDoc.addPage([photoImage.width, photoImage.height]);
+    photoPage.drawImage(photoImage, {
+      x: 0,
+      y: 0,
+      width: photoImage.width,
+      height: photoImage.height,
+    });
+
+    console.log(`[PDFGenerator] Added photo ${i + 1}/${photoBlobs.length} to multi-page PDF`);
+  }
+
+  // Última página: comprobante de entrega con firma (igual que generateIndividualPDF)
+  const signaturePage = pdfDoc.addPage([595, 842]);
+  const pageWidth = 595;
+  const pageHeight = 842;
+
+  signaturePage.drawRectangle({
+    x: 0,
+    y: pageHeight - 100,
+    width: pageWidth,
+    height: 100,
+    color: rgb(0.102, 0.137, 0.196),
+  });
+
+  signaturePage.drawText('COMPROBANTE DE ENTREGA', {
+    x: 50,
+    y: pageHeight - 55,
+    size: 20,
+    color: rgb(1, 1, 1),
+  });
+
+  signaturePage.drawText('CROSSLOG - Sistema de Entregas', {
+    x: 50,
+    y: pageHeight - 78,
+    size: 12,
+    color: rgb(0.659, 0.878, 0.388),
+  });
+
+  let signatureImage = null;
+  let sigWidth = 0;
+  let sigHeight = 0;
+
+  if (signature.dataUrl && signature.dataUrl.startsWith('data:image')) {
+    try {
+      const signatureBase64 = signature.dataUrl.split(',')[1];
+      if (signatureBase64) {
+        const signatureBytes = Uint8Array.from(atob(signatureBase64), c => c.charCodeAt(0));
+        signatureImage = await pdfDoc.embedPng(signatureBytes);
+
+        const maxWidth = 280;
+        const maxHeight = 140;
+        sigWidth = signatureImage.width;
+        sigHeight = signatureImage.height;
+
+        if (sigWidth > maxWidth) {
+          const ratio = maxWidth / sigWidth;
+          sigWidth = maxWidth;
+          sigHeight = sigHeight * ratio;
+        }
+        if (sigHeight > maxHeight) {
+          const ratio = maxHeight / sigHeight;
+          sigHeight = maxHeight;
+          sigWidth = sigWidth * ratio;
+        }
+      }
+    } catch (e) {
+      signatureImage = null;
+    }
+  }
+
+  const boxY = pageHeight - 350;
+  signaturePage.drawRectangle({
+    x: 50,
+    y: boxY,
+    width: pageWidth - 100,
+    height: 200,
+    borderColor: rgb(0.659, 0.878, 0.388),
+    borderWidth: 2,
+  });
+
+  signaturePage.drawText('Firma del Receptor:', {
+    x: 60,
+    y: boxY + 175,
+    size: 11,
+    color: rgb(0.176, 0.243, 0.314),
+  });
+
+  if (signatureImage && sigWidth > 0 && sigHeight > 0) {
+    const sigX = 50 + (pageWidth - 100 - sigWidth) / 2;
+    const sigY = boxY + (200 - sigHeight) / 2;
+    signaturePage.drawImage(signatureImage, { x: sigX, y: sigY, width: sigWidth, height: sigHeight });
+  } else {
+    signaturePage.drawText('(Firma digital no disponible)', {
+      x: 150,
+      y: boxY + 90,
+      size: 10,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+  }
+
+  let infoY = boxY - 40;
+  const lineHeight = 25;
+  const labelX = 60;
+  const valueX = 200;
+
+  signaturePage.drawText('Receptor:', { x: labelX, y: infoY, size: 11, color: rgb(0.176, 0.243, 0.314) });
+  signaturePage.drawText(signature.nombreReceptor, { x: valueX, y: infoY, size: 12, color: rgb(0, 0, 0) });
+  infoY -= lineHeight;
+
+  signaturePage.drawText('Destino:', { x: labelX, y: infoY, size: 11, color: rgb(0.176, 0.243, 0.314) });
+  const maxLineLength = 45;
+  if (cliente.length > maxLineLength) {
+    const lines: string[] = [];
+    let currentLine = '';
+    for (const word of cliente.split(' ')) {
+      if ((currentLine + ' ' + word).length <= maxLineLength) {
+        currentLine += (currentLine ? ' ' : '') + word;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    lines.forEach((line, idx) => {
+      signaturePage.drawText(line, { x: valueX, y: infoY - (idx * 15), size: 12, color: rgb(0, 0, 0) });
+    });
+    infoY -= lineHeight + ((lines.length - 1) * 15);
+  } else {
+    signaturePage.drawText(cliente, { x: valueX, y: infoY, size: 12, color: rgb(0, 0, 0) });
+    infoY -= lineHeight;
+  }
+
+  signaturePage.drawText('N° Remito:', { x: labelX, y: infoY, size: 11, color: rgb(0.176, 0.243, 0.314) });
+  signaturePage.drawText(numeroRemito, { x: valueX, y: infoY, size: 12, color: rgb(0, 0, 0) });
+  infoY -= lineHeight;
+
+  signaturePage.drawText('Paginas:', { x: labelX, y: infoY, size: 11, color: rgb(0.176, 0.243, 0.314) });
+  signaturePage.drawText(String(photoBlobs.length), { x: valueX, y: infoY, size: 12, color: rgb(0, 0, 0) });
+  infoY -= lineHeight;
+
+  const timestamp = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+  signaturePage.drawText('Fecha:', { x: labelX, y: infoY, size: 11, color: rgb(0.176, 0.243, 0.314) });
+  signaturePage.drawText(timestamp, { x: valueX, y: infoY, size: 12, color: rgb(0, 0, 0) });
+
+  if (geolocalizacion) {
+    infoY -= lineHeight;
+    signaturePage.drawText('Ubicacion GPS:', { x: labelX, y: infoY, size: 11, color: rgb(0.176, 0.243, 0.314) });
+    signaturePage.drawText(
+      `${geolocalizacion.lat.toFixed(6)}, ${geolocalizacion.lng.toFixed(6)}`,
+      { x: valueX, y: infoY, size: 10, color: rgb(0, 0, 0) }
+    );
+  }
+
+  signaturePage.drawText('Documento generado automaticamente por CROSSLOG', {
+    x: pageWidth / 2 - 130,
+    y: 30,
+    size: 9,
+    color: rgb(0.176, 0.243, 0.314),
+  });
+
+  const pdfBytes = await pdfDoc.save();
+  console.log(`[PDFGenerator] Multi-page PDF generated: ${photoBlobs.length} fotos + comprobante`);
+  return new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+}
+
 /**
  * Generate multiple PDFs from photos array
  */
