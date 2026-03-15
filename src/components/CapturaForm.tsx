@@ -144,11 +144,63 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
       console.log('[CapturaForm] ✓ Permissions granted, capturing photo...');
 
+      // Galería nativa: usar pickImages para soporte de selección múltiple
+      if (source === CameraSource.Photos) {
+        const result = await Camera.pickImages({ quality: 95, limit: MAX_FOTOS - fotos.length });
+        if (!result.photos || result.photos.length === 0) {
+          setCapturando(false);
+          return;
+        }
+
+        const grupoId = result.photos.length > 1 ? `grupo-${Date.now()}` : undefined;
+        const nuevasFotos: FotoCapturada[] = [];
+
+        for (let i = 0; i < result.photos.length; i++) {
+          const photo = result.photos[i];
+          const photoResponse = await fetch(photo.webPath!);
+          let blob = await photoResponse.blob();
+
+          const rotationResult = await rotateToVertical(blob);
+          blob = rotationResult.blob;
+
+          const reader = new FileReader();
+          const thumbnailPromise = new Promise<string>((resolve) => {
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+          const thumbnail = await thumbnailPromise;
+          const fotoId = `foto-${Date.now()}-${i}`;
+
+          nuevasFotos.push({
+            id: fotoId,
+            blob,
+            processed: false,
+            thumbnail,
+            timestamp: new Date().toISOString(),
+            numeroRemito: '',
+            ocrDetecting: false,
+            grupoId,
+          });
+        }
+
+        setFotos((prev) => [...prev, ...nuevasFotos]);
+
+        if (nuevasFotos.length === 1) {
+          setTimeout(() => {
+            setEditingFotoId(nuevasFotos[0].id);
+            setShowImageEditor(true);
+          }, 100);
+        }
+
+        return;
+      }
+
+      // Cámara nativa: una sola foto
       const image = await Camera.getPhoto({
-        quality: 95, // High quality (increased from 85)
+        quality: 95,
         allowEditing: false,
-        resultType: CameraResultType.DataUrl, // Use DataUrl instead of Base64 for better compatibility
-        source: source, // Use specific source (Camera or Photos)
+        resultType: CameraResultType.DataUrl,
+        source: source,
         saveToGallery: false,
         correctOrientation: true,
       });
@@ -159,11 +211,9 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
 
       console.log('[CapturaForm] Image received, converting to Blob...');
 
-      // Convert dataUrl to Blob (more reliable than base64 in PWAs)
       const response = await fetch(image.dataUrl);
       let blob = await response.blob();
 
-      // Auto-rotate to vertical (90 degrees) for all photos
       console.log('[CapturaForm] Rotating image to vertical...');
       const rotationResult = await rotateToVertical(blob);
       blob = rotationResult.blob;
@@ -172,7 +222,6 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         console.log('[CapturaForm] ✓ Image rotated 90° to vertical');
       }
 
-      // Create new thumbnail from rotated image
       const reader = new FileReader();
       const thumbnailPromise = new Promise<string>((resolve) => {
         reader.onloadend = () => resolve(reader.result as string);
@@ -188,13 +237,12 @@ export function CapturaForm({ entrega, onBack, onComplete }: CapturaFormProps) {
         processed: false,
         thumbnail,
         timestamp: new Date().toISOString(),
-        numeroRemito: '', // Start empty for manual input
+        numeroRemito: '',
         ocrDetecting: false,
       };
 
       setFotos((prev) => [...prev, nuevaFoto]);
 
-      // Auto-open editor after photo is taken
       console.log('[CapturaForm] Auto-opening editor for new photo...');
       setTimeout(() => {
         setEditingFotoId(fotoId);
