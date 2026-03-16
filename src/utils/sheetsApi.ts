@@ -1850,8 +1850,8 @@ export class GoogleSheetsAPI {
               console.log(`[SheetsAPI] Row has - Year: "${anioValue}", Month: "${mesValue}"`);
             }
 
-            // Column R = año, Column E = mes (1-12)
-            matches = anioValue === filterYear && mesValue === String(filterMonthNum);
+            // Column R = año, Column E = mes (puede ser "01" o "1")
+            matches = anioValue === filterYear && parseInt(mesValue, 10) === filterMonthNum;
           }
 
           if (matches) matchCount++;
