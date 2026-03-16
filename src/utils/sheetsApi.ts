@@ -2593,286 +2593,149 @@ export class GoogleSheetsAPI {
    * Procesa en tiempo real sin necesidad de ejecutar script de migración
    */
   private async getValoresDariosDesdeMilanesa(spreadsheetId: string, mesAnio?: string) {
-    console.log('[SheetsAPI] 📊 Leyendo valores directamente de Milanesa...');
+    console.log('[SheetsAPI] 📊 Leyendo Milanesa (estructura horizontal continua)...');
 
-    // Leer header para obtener mes/año (fila 1)
-    const headerRange = 'Milanesa!A1:A1';
-    const headerUrl = `${this.baseUrl}/${spreadsheetId}/values/${headerRange}?key=${this.config.apiKey}`;
-    const headerResponse = await fetch(headerUrl);
-    const headerData = await headerResponse.json();
-    const headerText = headerData.values?.[0]?.[0] || 'DICIEMBRE 2025';
+    // Determinar mes/año objetivo
+    const now = new Date();
+    let targetMes: number;
+    let targetAnio: number;
 
-    // Extraer mes y año del header de la hoja
-    const { mes, anio } = this.extraerMesAnio(headerText);
-    console.log(`[SheetsAPI] Mes disponible en Milanesa: ${mes}/${anio}`);
-
-    // Verificar si el mes solicitado coincide con el mes de la hoja
     if (mesAnio) {
-      const [anioSolicitado, mesSolicitado] = mesAnio.split('-').map(Number);
-      console.log(`[SheetsAPI] Mes solicitado: ${mesSolicitado}/${anioSolicitado}`);
+      [targetAnio, targetMes] = mesAnio.split('-').map(Number);
+    } else {
+      targetMes = now.getMonth() + 1;
+      targetAnio = now.getFullYear();
+    }
 
-      if (anioSolicitado !== anio || mesSolicitado !== mes) {
-        console.warn(`[SheetsAPI] ⚠️ El mes solicitado (${mesSolicitado}/${anioSolicitado}) no coincide con el mes disponible (${mes}/${anio})`);
-        return this.getEmptyValoresDiariosResponse();
+    const mesNombre = this.getMesNombre(targetMes);
+    console.log(`[SheetsAPI] Buscando: ${mesNombre} ${targetAnio}`);
+
+    // Leer fila 1 completa para encontrar dónde empieza el mes objetivo
+    const row1Url = `${this.baseUrl}/${spreadsheetId}/values/Milanesa!1:1?key=${this.config.apiKey}`;
+    const row1Response = await fetch(row1Url);
+    const row1Data = await row1Response.json();
+    const row1Values: string[] = row1Data.values?.[0] || [];
+
+    // Buscar la columna donde aparece el header del mes objetivo
+    let startColIndex = -1;
+    for (let i = 0; i < row1Values.length; i++) {
+      const cell = row1Values[i]?.toString().toUpperCase().trim() || '';
+      if (cell.includes(mesNombre.toUpperCase()) && cell.includes(String(targetAnio))) {
+        startColIndex = i;
+        break;
       }
     }
 
-    console.log(`[SheetsAPI] ✅ Procesando mes: ${mes}/${anio}`);
+    if (startColIndex === -1) {
+      console.warn(`[SheetsAPI] ⚠️ ${mesNombre} ${targetAnio} no encontrado en fila 1 de Milanesa`);
+      return this.getEmptyValoresDiariosResponse();
+    }
 
-    // Leer datos de CROSSLOG (filas 3-10) y FLETEROS (filas 12-15)
-    // Columnas: A=Chofer, B=Interno, C=Porte, D-AH=Días 1-31
-    const rangeCrosslog = 'Milanesa!A3:AH10';
-    const rangeFleteros = 'Milanesa!A12:AH15';
-    const rangeTotales = 'Milanesa!A16:C18'; // Leer totales calculados en Google Sheets
+    const diasDelMes = new Date(targetAnio, targetMes, 0).getDate();
+    const endColIndex = startColIndex + diasDelMes - 1;
+    const endColLetter = this.columnIndexToLetter(endColIndex);
 
-    const [crosslogResponse, fleterosResponse, totalesResponse] = await Promise.all([
-      fetch(`${this.baseUrl}/${spreadsheetId}/values/${rangeCrosslog}?key=${this.config.apiKey}`),
-      fetch(`${this.baseUrl}/${spreadsheetId}/values/${rangeFleteros}?key=${this.config.apiKey}`),
-      fetch(`${this.baseUrl}/${spreadsheetId}/values/${rangeTotales}?key=${this.config.apiKey}`)
+    console.log(`[SheetsAPI] ✅ Mes encontrado en col índice ${startColIndex}, leyendo hasta col ${endColLetter} (${diasDelMes} días)`);
+
+    // Leer CROSSLOG (filas 3-10) y FLETEROS (filas 12-15) incluyendo cols A,B,C + días del mes
+    const [crosslogResponse, fleterosResponse] = await Promise.all([
+      fetch(`${this.baseUrl}/${spreadsheetId}/values/Milanesa!A3:${endColLetter}10?key=${this.config.apiKey}`),
+      fetch(`${this.baseUrl}/${spreadsheetId}/values/Milanesa!A12:${endColLetter}15?key=${this.config.apiKey}`)
     ]);
 
     const crosslogData = await crosslogResponse.json();
     const fleterosData = await fleterosResponse.json();
-    const totalesData = await totalesResponse.json();
 
     const unidades: any[] = [];
     const totalesPorDia: any[] = [];
-    const mantenimientoPorDia: Map<number, string[]> = new Map(); // dia -> [internos]
+    const mantenimientoPorDia: Map<number, string[]> = new Map();
 
     let diasMantenimiento = 0;
     let diasSinServicio = 0;
     let diasViaje = 0;
 
-    // Calcular días reales del mes
-    const diasDelMes = new Date(anio, mes, 0).getDate(); // Obtiene el último día del mes
-    console.log(`[SheetsAPI] El mes ${mes}/${anio} tiene ${diasDelMes} días`);
-
-    // Inicializar totales por día (solo días válidos del mes)
     for (let dia = 1; dia <= diasDelMes; dia++) {
-      totalesPorDia.push({ dia, total: 0, fecha: this.formatearFecha(anio, mes, dia) });
+      totalesPorDia.push({ dia, total: 0, fecha: this.formatearFecha(targetAnio, targetMes, dia) });
     }
 
-    // Procesar CROSSLOG (filas 3-10)
-    const crosslogRows = crosslogData.values || [];
-    console.log(`[SheetsAPI] 🚛 CROSSLOG tiene ${crosslogRows.length} filas`);
-
-    for (const row of crosslogRows) {
+    const procesarFila = (row: any[], tipoTransporte: 'CROSSLOG' | 'FLETEROS') => {
       const chofer = row[0]?.toString().trim() || 'Sin asignar';
       const interno = row[1]?.toString().trim();
-      const porte = row[2]?.toString().trim();
+      const porte = row[2]?.toString().trim() || '-';
 
-      if (!interno) {
-        console.log(`[SheetsAPI] ⏭️ Saltando fila sin interno: ${chofer}`);
-        continue; // Saltar si no hay interno
-      }
-
-      console.log(`[SheetsAPI] 📝 Procesando: ${chofer} - ${interno} - ${porte}`);
+      if (!interno || interno.toLowerCase() === 'fleteros') return;
 
       const valoresDiarios: any[] = [];
       let totalMes = 0;
       let diasActivos = 0;
 
-      // Procesar solo los días válidos del mes (columnas D-AH = índices 3-33)
       for (let dia = 1; dia <= diasDelMes; dia++) {
-        const colIndex = 3 + (dia - 1); // Columna D=3, E=4, ..., AH=33
+        // Los valores del mes empiezan en startColIndex dentro del array del row
+        const colIndex = startColIndex + (dia - 1);
         const celdaValor = row[colIndex];
-
-        // Detectar estado y valor
         let valor = 0;
-        let estado = 'SIN_SERVICIO';
 
         if (celdaValor === 'M') {
-          estado = 'MANTENIMIENTO';
           diasMantenimiento++;
-          // Registrar unidad en mantenimiento para este día
-          if (!mantenimientoPorDia.has(dia)) {
-            mantenimientoPorDia.set(dia, []);
-          }
+          if (!mantenimientoPorDia.has(dia)) mantenimientoPorDia.set(dia, []);
           mantenimientoPorDia.get(dia)!.push(interno);
         } else if (celdaValor === 'V') {
-          estado = 'VIAJE';
           diasViaje++;
-        } else if (celdaValor === '' || celdaValor === null || celdaValor === undefined || celdaValor === 0) {
-          estado = 'SIN_SERVICIO';
+        } else if (!celdaValor || celdaValor === '' || celdaValor === 0) {
           diasSinServicio++;
         } else {
           const parsedValor = parseFloat(celdaValor);
-          if (!isNaN(parsedValor)) {
+          if (!isNaN(parsedValor) && parsedValor > 0) {
             valor = parsedValor;
-            estado = 'ACTIVO';
             totalMes += valor;
             diasActivos++;
-
-            // Sumar a total del día
             totalesPorDia[dia - 1].total += valor;
-
-            // Debug: Log valores significativos (> 500)
-            if (dia >= 17 && dia <= 20 && valor > 500) {
-              console.log(`[SheetsAPI] 💰 Día ${dia} (${interno}): ${valor}`);
-            }
           } else {
-            estado = 'SIN_SERVICIO';
             diasSinServicio++;
           }
         }
 
-        valoresDiarios.push({
-          dia,
-          valor,
-          fecha: this.formatearFecha(anio, mes, dia)
-        });
+        valoresDiarios.push({ dia, valor, fecha: this.formatearFecha(targetAnio, targetMes, dia) });
       }
 
       unidades.push({
         interno,
         porte,
-        tipoTransporte: 'CROSSLOG' as const,
-        chofer,
+        tipoTransporte,
+        chofer: tipoTransporte === 'FLETEROS' ? interno : chofer,
         valoresDiarios,
         totalMes,
         promedioDiario: diasActivos > 0 ? totalMes / diasActivos : 0,
         diasActivos
       });
-    }
+    };
 
-    // Procesar FLETEROS (filas 12-15)
+    const crosslogRows = crosslogData.values || [];
+    console.log(`[SheetsAPI] 🚛 CROSSLOG: ${crosslogRows.length} filas`);
+    for (const row of crosslogRows) procesarFila(row, 'CROSSLOG');
+
     const fleterosRows = fleterosData.values || [];
-    for (const row of fleterosRows) {
-      const nombreFletero = row[1]?.toString().trim(); // Columna B = nombre
+    console.log(`[SheetsAPI] 🚛 FLETEROS: ${fleterosRows.length} filas`);
+    for (const row of fleterosRows) procesarFila(row, 'FLETEROS');
 
-      if (!nombreFletero || nombreFletero.toLowerCase() === 'fleteros') continue;
+    // Calcular totales desde los datos procesados
+    const totalMesCrosslog = unidades.filter(u => u.tipoTransporte === 'CROSSLOG').reduce((s, u) => s + u.totalMes, 0);
+    const totalMesFleteros = unidades.filter(u => u.tipoTransporte === 'FLETEROS').reduce((s, u) => s + u.totalMes, 0);
+    const totalMesGeneral = totalMesCrosslog + totalMesFleteros;
 
-      const valoresDiarios: any[] = [];
-      let totalMes = 0;
-      let diasActivos = 0;
+    const diasConActividad = totalesPorDia.filter(d => d.total > 0);
+    const mejorDia = diasConActividad.length > 0
+      ? diasConActividad.reduce((max, d) => d.total > max.total ? d : max, diasConActividad[0])
+      : totalesPorDia[0];
+    const peorDia = diasConActividad.length > 0
+      ? diasConActividad.reduce((min, d) => d.total < min.total ? d : min, mejorDia)
+      : mejorDia;
 
-      // Procesar solo los días válidos del mes
-      for (let dia = 1; dia <= diasDelMes; dia++) {
-        const colIndex = 3 + (dia - 1);
-        const celdaValor = row[colIndex];
-
-        let valor = 0;
-        let estado = 'SIN_SERVICIO';
-
-        if (celdaValor === 'M') {
-          estado = 'MANTENIMIENTO';
-          diasMantenimiento++;
-          // Registrar unidad en mantenimiento para este día
-          if (!mantenimientoPorDia.has(dia)) {
-            mantenimientoPorDia.set(dia, []);
-          }
-          mantenimientoPorDia.get(dia)!.push(nombreFletero);
-        } else if (celdaValor === 'V') {
-          estado = 'VIAJE';
-          diasViaje++;
-        } else if (celdaValor === '' || celdaValor === null || celdaValor === undefined || celdaValor === 0) {
-          estado = 'SIN_SERVICIO';
-          diasSinServicio++;
-        } else {
-          const parsedValor = parseFloat(celdaValor);
-          if (!isNaN(parsedValor)) {
-            valor = parsedValor;
-            estado = 'ACTIVO';
-            totalMes += valor;
-            diasActivos++;
-            totalesPorDia[dia - 1].total += valor;
-          } else {
-            estado = 'SIN_SERVICIO';
-            diasSinServicio++;
-          }
-        }
-
-        valoresDiarios.push({
-          dia,
-          valor,
-          fecha: this.formatearFecha(anio, mes, dia)
-        });
-      }
-
-      unidades.push({
-        interno: nombreFletero,
-        porte: '-',
-        tipoTransporte: 'FLETEROS' as const,
-        chofer: nombreFletero,
-        valoresDiarios,
-        totalMes,
-        promedioDiario: diasActivos > 0 ? totalMes / diasActivos : 0,
-        diasActivos
-      });
-    }
-
-    // Leer totales desde celdas A16:C18 (calculados por Google Sheets)
-    const totalesRows = totalesData.values || [];
-    let totalMesFleteros = 0;
-    let totalMesCrosslog = 0;
-    let totalMesGeneral = 0;
-
-    // Parsear totales de las celdas
-    if (totalesRows.length >= 3) {
-      // Fila 16 (índice 0): Total Fleteros
-      const totalFleterosStr = totalesRows[0]?.[2]?.toString().trim() || '0';
-      totalMesFleteros = parseFloat(totalFleterosStr.replace(/[^0-9.-]/g, '')) || 0;
-
-      // Fila 17 (índice 1): Total Propios
-      const totalPropiosStr = totalesRows[1]?.[2]?.toString().trim() || '0';
-      totalMesCrosslog = parseFloat(totalPropiosStr.replace(/[^0-9.-]/g, '')) || 0;
-
-      // Fila 18 (índice 2): Total General
-      const totalGeneralStr = totalesRows[2]?.[2]?.toString().trim() || '0';
-      totalMesGeneral = parseFloat(totalGeneralStr.replace(/[^0-9.-]/g, '')) || 0;
-
-      console.log('[SheetsAPI] 📋 Totales leídos desde A16:C18:');
-      console.log(`  A16 (Total Fleteros): ${totalMesFleteros}`);
-      console.log(`  A17 (Total Propios): ${totalMesCrosslog}`);
-      console.log(`  A18 (Total General): ${totalMesGeneral}`);
-    } else {
-      // Fallback: calcular manualmente si no se pueden leer las celdas
-      console.warn('[SheetsAPI] ⚠️ No se pudieron leer totales de A16:C18, calculando manualmente...');
-      totalMesCrosslog = unidades
-        .filter(u => u.tipoTransporte === 'CROSSLOG')
-        .reduce((sum, u) => sum + u.totalMes, 0);
-
-      totalMesFleteros = unidades
-        .filter(u => u.tipoTransporte === 'FLETEROS')
-        .reduce((sum, u) => sum + u.totalMes, 0);
-
-      totalMesGeneral = totalMesCrosslog + totalMesFleteros;
-    }
-
-    const mejorDia = totalesPorDia
-      .filter(d => d.total > 0)
-      .reduce((max, d) => d.total > max.total ? d : max, totalesPorDia[0]);
-
-    const peorDia = totalesPorDia
-      .filter(d => d.total > 0)
-      .reduce((min, d) => d.total < min.total ? d : min, mejorDia);
-
-    const promedioGeneral = totalesPorDia.length > 0
-      ? totalMesGeneral / totalesPorDia.filter(d => d.total > 0).length
-      : 0;
-
-    console.log(`[SheetsAPI] ✅ KPIs calculados - Mantenimiento: ${diasMantenimiento}, Sin Servicio: ${diasSinServicio}, Viaje: ${diasViaje}`);
-
-    // Debug: Mostrar totales leídos de Google Sheets
-    console.log('[SheetsAPI] 📊 TOTALES DESDE GOOGLE SHEETS (A16:C18):');
-    console.log(`  Total PROPIOS (A17): $${totalMesCrosslog.toLocaleString('es-AR')}`);
-    console.log(`  Total FLETEROS (A16): $${totalMesFleteros.toLocaleString('es-AR')}`);
-    console.log(`  Total GENERAL (A18): $${totalMesGeneral.toLocaleString('es-AR')}`);
-    console.log(`  Promedio Diario: $${promedioGeneral.toFixed(2)}`);
-    console.log('[SheetsAPI] 📊 Muestra de días 17-20:');
-    for (let i = 16; i < 20 && i < totalesPorDia.length; i++) {
-      console.log(`  Día ${totalesPorDia[i].dia}: $${totalesPorDia[i].total.toLocaleString('es-AR')}`);
-    }
-
-    // Convertir mapa de mantenimiento a array
     const diasConMantenimiento = Array.from(mantenimientoPorDia.entries())
       .map(([dia, internos]) => ({ dia, internos }))
       .sort((a, b) => a.dia - b.dia);
 
-    console.log(`[SheetsAPI] 🔧 Días con mantenimiento: ${diasConMantenimiento.length}`);
-    diasConMantenimiento.forEach(dm => {
-      console.log(`  Día ${dm.dia}: ${dm.internos.join(', ')}`);
-    });
+    console.log(`[SheetsAPI] ✅ PROPIOS: $${totalMesCrosslog.toLocaleString('es-AR')} | FLETEROS: $${totalMesFleteros.toLocaleString('es-AR')} | GENERAL: $${totalMesGeneral.toLocaleString('es-AR')}`);
 
     return {
       unidades,
@@ -2883,13 +2746,36 @@ export class GoogleSheetsAPI {
         totalMesGeneral,
         mejorDia: { dia: mejorDia.dia, valor: mejorDia.total, fecha: mejorDia.fecha },
         peorDia: { dia: peorDia.dia, valor: peorDia.total, fecha: peorDia.fecha },
-        promedioGeneral,
+        promedioGeneral: diasConActividad.length > 0 ? totalMesGeneral / diasConActividad.length : 0,
         diasMantenimiento,
         diasSinServicio,
         diasViaje,
-        diasConMantenimiento // Agregamos el detalle de mantenimiento por día
+        diasConMantenimiento
       }
     };
+  }
+
+  /**
+   * Convierte un índice de columna 0-based a letra de columna de Google Sheets (A, B, ..., Z, AA, AB...)
+   */
+  private columnIndexToLetter(index: number): string {
+    let letter = '';
+    let n = index + 1;
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      letter = String.fromCharCode(65 + rem) + letter;
+      n = Math.floor((n - 1) / 26);
+    }
+    return letter;
+  }
+
+  /**
+   * Retorna el nombre del mes en español dado su número (1-12)
+   */
+  private getMesNombre(mes: number): string {
+    const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    return MESES[mes - 1] || 'Enero';
   }
 
   /**
