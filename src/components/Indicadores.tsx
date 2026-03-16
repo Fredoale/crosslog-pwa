@@ -53,7 +53,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
     return Array.from(anios).sort((a, b) => b.localeCompare(a));
   }, [mesesDisponibles]);
 
-  // Get unique month names (1-12)
+  // Get unique month names filtered by selected year
   const mesesUnicos = React.useMemo(() => {
     const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
                         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -61,6 +61,8 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
 
     mesesDisponibles.forEach(mes => {
       const [year, month] = mes.value.split('-');
+      // Si hay un año seleccionado, solo mostrar meses de ese año
+      if (anioSeleccionado !== 'todos' && year !== anioSeleccionado) return;
       const monthNum = parseInt(month, 10);
       mesesSet.add(monthNum);
     });
@@ -71,7 +73,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
         value: String(monthNum),
         label: monthNames[monthNum - 1]
       }));
-  }, [mesesDisponibles]);
+  }, [mesesDisponibles, anioSeleccionado]);
 
   useEffect(() => {
     // Load data immediately
@@ -377,7 +379,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
               <label className="block text-xs font-medium text-gray-600 mb-1">Año</label>
               <select
                 value={anioSeleccionado}
-                onChange={(e) => setAnioSeleccionado(e.target.value)}
+                onChange={(e) => { setAnioSeleccionado(e.target.value); setMesSeleccionado('todos'); }}
                 className="w-full px-4 py-3 rounded-lg border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all font-medium text-gray-700"
               >
                 <option value="todos">📅 Todos los años</option>
