@@ -6,6 +6,7 @@ import { collectHistoricalData } from '../utils/reportData';
 import { generateClaudeAnalysis, validateClaudeApiKey } from '../utils/claudeAnalysis';
 import { generatePDFReport, prepareChartsForPDF } from '../utils/pdfGenerator';
 import ValoresDiariosChart from './ValoresDiariosChart';
+import ChatAsistente from './ChatAsistente';
 import { showError, showWarning } from '../utils/toast';
 
 interface IndicadoresProps {
@@ -159,6 +160,16 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
       return data;
     } catch (error) {
       console.error('[Indicadores] Error loading valores diarios:', error);
+      return null;
+    }
+  };
+
+  // Solo fetch sin actualizar estado padre — para navegación del chart
+  const fetchValoresDiariosChart = async (mes: string) => {
+    try {
+      return await sheetsApi.getValoresDiariosDistribucion(mes);
+    } catch (error) {
+      console.error('[Indicadores] Error fetching valores diarios chart:', error);
       return null;
     }
   };
@@ -567,15 +578,15 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
                 <BarChart
                   data={data.topFleteros}
                   layout="vertical"
-                  margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+                  margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis type="number" style={{ fontSize: '12px' }} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
                   <YAxis
                     type="category"
                     dataKey="nombre"
-                    width={90}
-                    style={{ fontSize: '11px' }}
+                    width={75}
+                    tick={{ fontSize: 11 }}
                   />
                   <Tooltip
                     contentStyle={{
@@ -618,15 +629,15 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
                   viajes: item.viajes
                 }))}
                 layout="vertical"
-                margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
+                margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
-                <XAxis type="number" style={{ fontSize: '12px' }} />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis
                   type="category"
                   dataKey="nombre"
-                  width={110}
-                  style={{ fontSize: '11px' }}
+                  width={95}
+                  tick={{ fontSize: 11 }}
                 />
                 <Tooltip
                   contentStyle={{
@@ -654,15 +665,15 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
             <BarChart
               data={data.topTiposUnidad}
               layout="vertical"
-              margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+              margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#d1fae5" />
-              <XAxis type="number" style={{ fontSize: '12px' }} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
               <YAxis
                 type="category"
                 dataKey="tipo"
-                width={90}
-                style={{ fontSize: '11px' }}
+                width={75}
+                tick={{ fontSize: 11 }}
               />
               <Tooltip
                 contentStyle={{
@@ -689,15 +700,15 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
             <BarChart
               data={data.topInternos}
               layout="vertical"
-              margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+              margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis type="number" style={{ fontSize: '12px' }} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
               <YAxis
                 type="category"
                 dataKey="nombre"
-                width={70}
-                style={{ fontSize: '11px' }}
+                width={45}
+                tick={{ fontSize: 11 }}
               />
               <Tooltip
                 contentStyle={{
@@ -812,16 +823,16 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
           {/* Gráfico de barras */}
           {dataMensual.length > 0 ? (
             <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={dataMensual} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <BarChart data={dataMensual} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis
                   dataKey="mes"
                   angle={-45}
                   textAnchor="end"
-                  height={100}
-                  style={{ fontSize: '12px' }}
+                  height={80}
+                  tick={{ fontSize: 11 }}
                 />
-                <YAxis style={{ fontSize: '12px' }} />
+                <YAxis tick={{ fontSize: 11 }} width={35} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#fff', border: '2px solid #475569', borderRadius: '8px' }}
                   formatter={(value: any) => [`${value} viajes`, 'Total']}
@@ -850,7 +861,7 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
           mostrarSoloActivos={mostrarSoloActivos}
           onChangeFiltroTipoTransporte={setFiltroTipoTransporteVD}
           onChangeMostrarSoloActivos={setMostrarSoloActivos}
-          onLoadMes={loadValoresDiarios}
+          onLoadMes={fetchValoresDiariosChart}
         />
 
         {/* Footer */}
@@ -863,6 +874,13 @@ const Indicadores: React.FC<IndicadoresProps> = ({ onClose }) => {
           </button>
         </div>
       </div>
+
+      {/* Asistente IA */}
+      <ChatAsistente
+        dataMensual={dataMensual}
+        dataIndicadores={data}
+        dataValoresDiarios={dataValoresDiarios}
+      />
 
       {/* Report Generation Modal */}
       {showReportModal && (

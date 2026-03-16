@@ -2559,6 +2559,7 @@ export class GoogleSheetsAPI {
       dia: number;
       total: number;
       fecha: string;
+      estadoDia: 'activo' | 'viaje' | 'mantenimiento' | 'sinServicio';
     }>;
     resumen: {
       totalMesCrosslog: number;
@@ -2616,31 +2617,46 @@ export class GoogleSheetsAPI {
     const row1Data = await row1Response.json();
     const row1Values: string[] = row1Data.values?.[0] || [];
 
-    // Buscar la columna donde aparece el header del mes objetivo
-    let startColIndex = -1;
+    // Milanesa tiene DOS secciones con sus propios headers de mes:
+    // 1. Sección CROSSLOG (filas 3-10): primera ocurrencia del mes en fila 1
+    // 2. Sección FLETEROS (filas 12-15): segunda ocurrencia del mes en fila 1 (puede no existir)
+    let startColCrosslog = -1;
+    let startColFleteros = -1;
+    let firstFound = false;
+
     for (let i = 0; i < row1Values.length; i++) {
       const cell = row1Values[i]?.toString().toUpperCase().trim() || '';
-      if (cell.includes(mesNombre.toUpperCase()) && cell.includes(String(targetAnio))) {
-        startColIndex = i;
-        break;
+      const match = (cell.includes(mesNombre.toUpperCase()) && cell.includes(String(targetAnio)))
+        || cell.includes(mesNombre.toUpperCase()); // fallback sin año
+      if (match) {
+        if (!firstFound) {
+          startColCrosslog = i;
+          firstFound = true;
+        } else {
+          startColFleteros = i;
+          break;
+        }
       }
     }
 
-    if (startColIndex === -1) {
+    if (startColCrosslog === -1) {
       console.warn(`[SheetsAPI] ⚠️ ${mesNombre} ${targetAnio} no encontrado en fila 1 de Milanesa`);
       return this.getEmptyValoresDiariosResponse();
     }
 
+    // Si no hay sección FLETEROS separada, usar la misma que CROSSLOG
+    if (startColFleteros === -1) startColFleteros = startColCrosslog;
+
+    console.log(`[SheetsAPI] ✅ CROSSLOG col=${startColCrosslog}, FLETEROS col=${startColFleteros}`);
+
     const diasDelMes = new Date(targetAnio, targetMes, 0).getDate();
-    const endColIndex = startColIndex + diasDelMes - 1;
-    const endColLetter = this.columnIndexToLetter(endColIndex);
+    const endColLetterCrosslog = this.columnIndexToLetter(startColCrosslog + diasDelMes - 1);
+    const endColLetterFleteros = this.columnIndexToLetter(startColFleteros + diasDelMes - 1);
 
-    console.log(`[SheetsAPI] ✅ Mes encontrado en col índice ${startColIndex}, leyendo hasta col ${endColLetter} (${diasDelMes} días)`);
-
-    // Leer CROSSLOG (filas 3-10) y FLETEROS (filas 12-15) incluyendo cols A,B,C + días del mes
+    // Leer CROSSLOG (filas 3-10) y FLETEROS (filas 12-15) usando el rango real (segunda ocurrencia)
     const [crosslogResponse, fleterosResponse] = await Promise.all([
-      fetch(`${this.baseUrl}/${spreadsheetId}/values/Milanesa!A3:${endColLetter}10?key=${this.config.apiKey}`),
-      fetch(`${this.baseUrl}/${spreadsheetId}/values/Milanesa!A12:${endColLetter}15?key=${this.config.apiKey}`)
+      fetch(`${this.baseUrl}/${spreadsheetId}/values/Milanesa!A3:${endColLetterFleteros}10?key=${this.config.apiKey}`),
+      fetch(`${this.baseUrl}/${spreadsheetId}/values/Milanesa!A12:${endColLetterFleteros}15?key=${this.config.apiKey}`)
     ]);
 
     const crosslogData = await crosslogResponse.json();
@@ -2653,9 +2669,10 @@ export class GoogleSheetsAPI {
     let diasMantenimiento = 0;
     let diasSinServicio = 0;
     let diasViaje = 0;
+    const viajesPorDia: Map<number, string[]> = new Map();
 
     for (let dia = 1; dia <= diasDelMes; dia++) {
-      totalesPorDia.push({ dia, total: 0, fecha: this.formatearFecha(targetAnio, targetMes, dia) });
+      totalesPorDia.push({ dia, total: 0, fecha: this.formatearFecha(targetAnio, targetMes, dia), estadoDia: 'sinServicio' as const });
     }
 
     const procesarFila = (row: any[], tipoTransporte: 'CROSSLOG' | 'FLETEROS') => {
@@ -2665,6 +2682,10 @@ export class GoogleSheetsAPI {
 
       if (!interno || interno.toLowerCase() === 'fleteros') return;
 
+      // Cuando hay dos ocurrencias del header, la segunda (startColFleteros) es donde
+      // están los datos reales para TODOS los vehículos (CROSSLOG y FLETEROS).
+      // La primera ocurrencia (startColCrosslog) cae en columnas ocultas sin datos.
+      const startColIndex = startColFleteros;
       const valoresDiarios: any[] = [];
       let totalMes = 0;
       let diasActivos = 0;
@@ -2681,6 +2702,8 @@ export class GoogleSheetsAPI {
           mantenimientoPorDia.get(dia)!.push(interno);
         } else if (celdaValor === 'V') {
           diasViaje++;
+          if (!viajesPorDia.has(dia)) viajesPorDia.set(dia, []);
+          viajesPorDia.get(dia)!.push(interno);
         } else if (!celdaValor || celdaValor === '' || celdaValor === 0) {
           diasSinServicio++;
         } else {
@@ -2717,6 +2740,19 @@ export class GoogleSheetsAPI {
     const fleterosRows = fleterosData.values || [];
     console.log(`[SheetsAPI] 🚛 FLETEROS: ${fleterosRows.length} filas`);
     for (const row of fleterosRows) procesarFila(row, 'FLETEROS');
+
+    // Asignar estadoDia a cada día según lo que ocurrió
+    totalesPorDia.forEach(d => {
+      if (d.total > 0) {
+        d.estadoDia = 'activo';
+      } else if (viajesPorDia.has(d.dia)) {
+        d.estadoDia = 'viaje';
+      } else if (mantenimientoPorDia.has(d.dia)) {
+        d.estadoDia = 'mantenimiento';
+      } else {
+        d.estadoDia = 'sinServicio';
+      }
+    });
 
     // Calcular totales desde los datos procesados
     const totalMesCrosslog = unidades.filter(u => u.tipoTransporte === 'CROSSLOG').reduce((s, u) => s + u.totalMes, 0);

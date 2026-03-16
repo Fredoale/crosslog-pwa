@@ -31,6 +31,7 @@ interface ValoresDiariosData {
     dia: number;
     total: number;
     fecha: string;
+    estadoDia?: 'activo' | 'viaje' | 'mantenimiento' | 'sinServicio';
   }>;
   resumen: {
     totalMesCrosslog: number;
@@ -441,7 +442,9 @@ const ValoresDiariosChart: React.FC<Props> = ({
             const primerDia = new Date(anio, mes - 1, dia); // mes - 1 porque JavaScript cuenta meses desde 0
             const diaSemanaInicio = primerDia.getDay();
 
-            const getColorIntensidad = (valor: number) => {
+            const getColorIntensidad = (valor: number, estado?: string) => {
+              if (estado === 'viaje') return 'bg-gray-900 border-gray-800 text-white';
+              if (estado === 'mantenimiento') return 'bg-red-200 border-red-400 text-red-900';
               if (valor === 0) return 'bg-gray-100 border-gray-300 text-gray-500';
               const porcentaje = (valor / maxValor) * 100;
               if (porcentaje < 25) return 'bg-green-200 border-green-300 text-green-900';
@@ -462,19 +465,16 @@ const ValoresDiariosChart: React.FC<Props> = ({
             // Días del mes
             datosCalendario.totalesPorDia.forEach((diaData: any) => {
               const esSeleccionado = diaSeleccionado === diaData.dia;
-              const colorClasses = getColorIntensidad(diaData.total);
+              const estado = diaData.estadoDia;
+              const colorClasses = getColorIntensidad(diaData.total, estado);
 
-              // Formatear valor con separador de miles estilo argentino
-              const formatearValor = (valor: number) => {
-                if (valor === 0) return '$0';
-
-                // Los valores ya vienen en miles desde la API
-                // Ejemplo: 1283 → "1.283" → "$1.283k"
-                // Ejemplo: 2111 → "2.111" → "$2.111k"
-                const valorRedondeado = Math.floor(valor);
-                const formateado = valorRedondeado.toLocaleString('es-AR');
-                return `$${formateado}k`;
-              };
+              const etiqueta = estado === 'viaje' ? 'V'
+                : estado === 'mantenimiento' ? 'M'
+                : diaData.total === 0 ? '$0'
+                : (() => {
+                    const v = Math.floor(diaData.total);
+                    return `$${v.toLocaleString('es-AR')}k`;
+                  })();
 
               celdas.push(
                 <div
@@ -484,11 +484,15 @@ const ValoresDiariosChart: React.FC<Props> = ({
                     flex flex-col items-center justify-center
                     ${colorClasses}
                   `}
-                  title={`Día ${diaData.dia}: $${diaData.total.toLocaleString('es-AR')}`}
+                  title={
+                    estado === 'viaje' ? `Día ${diaData.dia}: En viaje`
+                    : estado === 'mantenimiento' ? `Día ${diaData.dia}: Mantenimiento`
+                    : `Día ${diaData.dia}: $${diaData.total.toLocaleString('es-AR')}`
+                  }
                 >
                   <div className="text-[10px] md:text-xs font-bold">{diaData.dia}</div>
                   <div className="text-[7px] md:text-[9px] font-semibold">
-                    {formatearValor(diaData.total)}
+                    {etiqueta}
                   </div>
                 </div>
               );
@@ -499,26 +503,34 @@ const ValoresDiariosChart: React.FC<Props> = ({
             </div>
 
             {/* Leyenda */}
-            <div className="flex items-center justify-center gap-4 text-xs text-gray-600 pt-3 border-t border-green-200">
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-gray-600 pt-3 border-t border-green-200">
               <span className="flex items-center gap-1">
-                <div className="w-4 h-4 bg-gray-100 border border-gray-300 rounded"></div>
+                <div className="w-3 h-3 bg-gray-100 border border-gray-300 rounded"></div>
                 Sin actividad
               </span>
               <span className="flex items-center gap-1">
-                <div className="w-4 h-4 bg-green-200 border border-green-300 rounded"></div>
+                <div className="w-3 h-3 bg-green-200 border border-green-300 rounded"></div>
                 Bajo
               </span>
               <span className="flex items-center gap-1">
-                <div className="w-4 h-4 bg-green-400 border border-green-500 rounded"></div>
+                <div className="w-3 h-3 bg-green-400 border border-green-500 rounded"></div>
                 Medio
               </span>
               <span className="flex items-center gap-1">
-                <div className="w-4 h-4 bg-green-600 border border-green-700 rounded"></div>
+                <div className="w-3 h-3 bg-green-600 border border-green-700 rounded"></div>
                 Alto
               </span>
               <span className="flex items-center gap-1">
-                <div className="w-4 h-4 bg-green-800 border border-green-900 rounded"></div>
+                <div className="w-3 h-3 bg-green-800 border border-green-900 rounded"></div>
                 Muy Alto
+              </span>
+              <span className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-gray-900 border border-gray-700 rounded"></div>
+                En Viaje
+              </span>
+              <span className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-red-200 border border-red-400 rounded"></div>
+                Mantenimiento
               </span>
             </div>
           </>
@@ -565,158 +577,7 @@ const ValoresDiariosChart: React.FC<Props> = ({
         </ResponsiveContainer>
       </div>
 
-      {/* Filtros */}
-      <div className="mb-6 bg-white rounded-xl p-4 border-2 border-gray-300 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            <span className="text-sm font-semibold text-gray-800">Filtros:</span>
-          </div>
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={mostrarSoloActivos}
-              onChange={(e) => onChangeMostrarSoloActivos(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-400 text-green-600 focus:ring-2 focus:ring-green-300"
-            />
-            <span className="text-sm font-medium text-gray-700">Solo unidades activas</span>
-          </label>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo / Interno</label>
-            <select
-              value={filtroTipoTransporte}
-              onChange={(e) => onChangeFiltroTipoTransporte(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all font-medium text-sm"
-            >
-              <option value="todos">Todos</option>
-              <option value="PROPIOS">PROPIOS</option>
-              <option value="FLETEROS">FLETEROS</option>
-              <option value="54">54</option>
-              <option value="817">817</option>
-              <option value="62">62</option>
-              <option value="64">64</option>
-              <option value="813">813</option>
-              <option value="46/61">46/61</option>
-              <option value="45/803">45/803</option>
-              <option value="41/818">41/818</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabla Detallada por Unidad */}
-      <div className="bg-white rounded-lg p-4 border-2 border-gray-300 shadow-sm">
-        <h4 className="text-md font-bold text-gray-800 mb-4">
-          📋 Detalle por Unidad
-          {diaSeleccionado && (
-            <span className="ml-3 text-sm bg-red-600 text-white px-3 py-1 rounded-full">
-              Día {diaSeleccionado} seleccionado
-            </span>
-          )}
-        </h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-gray-800 border-b-2 border-gray-600">
-                <th className="px-4 py-3 text-left font-bold text-white">Chofer</th>
-                <th className="px-4 py-3 text-left font-bold text-white">Unidad</th>
-                <th className="px-4 py-3 text-left font-bold text-white">Tipo</th>
-                <th className="px-4 py-3 text-right font-bold text-white">
-                  {diaSeleccionado !== null ? `Valor Día ${diaSeleccionado}` : 'Total Mes'}
-                </th>
-                <th className="px-4 py-3 text-right font-bold text-white">
-                  {diaSeleccionado !== null ? 'Valor' : 'Promedio Diario'}
-                </th>
-                <th className="px-4 py-3 text-right font-bold text-white">
-                  {diaSeleccionado !== null ? 'Activo' : 'Días Activos'}
-                </th>
-                <th className="px-4 py-3 text-center font-bold text-white">Tendencia</th>
-              </tr>
-            </thead>
-            <tbody>
-              {unidadesFiltradas
-                .sort((a: any, b: any) => {
-                  // Si hay día seleccionado, ordenar por valor de ese día
-                  if (diaSeleccionado !== null) {
-                    const valorA = a.valoresDiarios.find((v: any) => v.dia === diaSeleccionado)?.valor || 0;
-                    const valorB = b.valoresDiarios.find((v: any) => v.dia === diaSeleccionado)?.valor || 0;
-                    return valorB - valorA;
-                  }
-                  // Si no, ordenar por total del mes
-                  return b.totalMes - a.totalMes;
-                })
-                .map((unidad: any, idx: number) => {
-                  const nombre = unidad.tipoTransporte === 'CROSSLOG'
-                    ? `${unidad.interno} (${unidad.porte})`
-                    : unidad.chofer;
-
-                  // Calcular valores según filtro de día
-                  const valorMostrar = diaSeleccionado !== null
-                    ? unidad.valoresDiarios.find((v: any) => v.dia === diaSeleccionado)?.valor || 0
-                    : unidad.totalMes;
-
-                  const promedioDiarioMostrar = diaSeleccionado !== null
-                    ? valorMostrar // Si es un día específico, mostrar el valor de ese día
-                    : unidad.promedioDiario;
-
-                  const diasActivosMostrar = diaSeleccionado !== null
-                    ? (valorMostrar > 0 ? 1 : 0) // Si es un día específico, 1 si tuvo actividad, 0 si no
-                    : unidad.diasActivos;
-
-                  // Calcular tendencia (últimos 7 días vs primeros 7 días)
-                  const valoresIniciales = unidad.valoresDiarios.slice(0, 7).reduce((s: number, d: any) => s + d.valor, 0);
-                  const valoresFinales = unidad.valoresDiarios.slice(-7).reduce((s: number, d: any) => s + d.valor, 0);
-                  const tendencia = valoresFinales > valoresIniciales ? 'up' : valoresFinales < valoresIniciales ? 'down' : 'stable';
-
-                  return (
-                    <tr
-                      key={idx}
-                      className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
-                        unidad.tipoTransporte === 'CROSSLOG' ? 'bg-green-50' : 'bg-white'
-                      }`}
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900">{unidad.chofer}</td>
-                      <td className="px-4 py-3 font-medium text-gray-900">{nombre}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          unidad.tipoTransporte === 'CROSSLOG'
-                            ? 'bg-green-600 text-white'
-                            : 'bg-gray-200 text-gray-800'
-                        }`}>
-                          {unidad.tipoTransporte === 'CROSSLOG' ? 'PROPIOS' : 'FLETEROS'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-gray-900">
-                        ${valorMostrar.toLocaleString('es-AR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-700">
-                        ${promedioDiarioMostrar.toLocaleString('es-AR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-700">{diasActivosMostrar}</td>
-                      <td className="px-4 py-3 text-center">
-                        {tendencia === 'up' && <span className="text-green-600 text-lg" title="Tendencia al alza">↑</span>}
-                        {tendencia === 'down' && <span className="text-red-600 text-lg" title="Tendencia a la baja">↓</span>}
-                        {tendencia === 'stable' && <span className="text-gray-400 text-lg" title="Tendencia estable">→</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-
-        {unidadesFiltradas.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            No hay unidades que coincidan con los filtros seleccionados
-          </div>
-        )}
-      </div>
     </div>
   );
 };
