@@ -11,6 +11,8 @@ interface Props {
   dataValoresDiarios: any;
 }
 
+const CODIGO_ACCESO = '2711';
+
 const PREGUNTAS_FIJAS = [
   '¿Qué unidad o fletero recomendás incorporar según la demanda actual?',
   '¿Cuál es la tendencia de viajes en los últimos 6 meses?',
@@ -133,12 +135,25 @@ function parseMesNum(mes: string): number {
 
 export default function ChatAsistente({ dataMensual, dataIndicadores, dataValoresDiarios }: Props) {
   const [abierto, setAbierto] = useState(false);
+  const [autorizado, setAutorizado] = useState(false);
+  const [codigoInput, setCodigoInput] = useState('');
+  const [codigoError, setCodigoError] = useState(false);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
   const [input, setInput] = useState('');
   const [cargando, setCargando] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const sugerenciasDinamicas = generarSugerenciasDinamicas(dataMensual, dataIndicadores);
+
+  function validarCodigo() {
+    if (codigoInput === CODIGO_ACCESO) {
+      setAutorizado(true);
+      setCodigoError(false);
+    } else {
+      setCodigoError(true);
+      setCodigoInput('');
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -199,8 +214,37 @@ export default function ChatAsistente({ dataMensual, dataIndicadores, dataValore
               </button>
             </div>
 
+            {/* Pantalla de código de acceso */}
+            {!autorizado && (
+              <div className="flex-1 flex flex-col items-center justify-center px-6 bg-gray-50 gap-4">
+                <div className="text-4xl">🔐</div>
+                <div className="text-center">
+                  <p className="font-semibold text-gray-800">Código de acceso</p>
+                  <p className="text-xs text-gray-500 mt-1">Ingresá el código para usar el asistente</p>
+                </div>
+                <input
+                  type="password"
+                  value={codigoInput}
+                  onChange={e => { setCodigoInput(e.target.value); setCodigoError(false); }}
+                  onKeyDown={e => e.key === 'Enter' && validarCodigo()}
+                  placeholder="••••"
+                  maxLength={8}
+                  className={`w-32 text-center text-lg tracking-widest border-2 rounded-xl px-3 py-2 focus:outline-none ${
+                    codigoError ? 'border-red-400 bg-red-50' : 'border-gray-300 focus:border-slate-500'
+                  }`}
+                />
+                {codigoError && <p className="text-xs text-red-500">Código incorrecto</p>}
+                <button
+                  onClick={validarCodigo}
+                  className="bg-slate-700 hover:bg-slate-800 text-white px-6 py-2 rounded-xl text-sm font-semibold transition-all"
+                >
+                  Ingresar
+                </button>
+              </div>
+            )}
+
             {/* Mensajes */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-gray-50">
+            {autorizado && <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-gray-50">
 
               {mensajes.length === 0 && (
                 <div className="space-y-3">
@@ -269,10 +313,10 @@ export default function ChatAsistente({ dataMensual, dataIndicadores, dataValore
               )}
 
               <div ref={bottomRef} />
-            </div>
+            </div>}
 
-            {/* Input */}
-            <div className="px-3 py-3 border-t border-gray-200 bg-white flex gap-2">
+            {/* Input — solo si autorizado */}
+            {autorizado && <div className="px-3 py-3 border-t border-gray-200 bg-white flex gap-2">
               <input
                 type="text"
                 value={input}
@@ -289,7 +333,7 @@ export default function ChatAsistente({ dataMensual, dataIndicadores, dataValore
               >
                 ↑
               </button>
-            </div>
+            </div>}
           </div>
         </div>
       )}
