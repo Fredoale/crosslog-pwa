@@ -109,6 +109,17 @@ service cloud.firestore {
     }
 
     // ==============================
+    // BATERÍAS
+    // ==============================
+    match /baterias/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    match /estado_cubiertas_unidades/{document=**} {
+      allow read, write, delete: if true;
+    }
+
+    // ==============================
     // BLOQUEAR TODO LO DEMÁS (debe ir al final)
     // ==============================
     match /{document=**} {

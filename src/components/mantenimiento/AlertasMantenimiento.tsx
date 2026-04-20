@@ -11,6 +11,10 @@ import {
   type EstadoAlerta,
   type SectorAlerta,
 } from '../../services/alertasMantenimientoService';
+import {
+  obtenerAnalisisCombustible,
+  type AnomaliaCombustible,
+} from '../../services/combustibleAnalisisService';
 
 // ============================================================================
 // HELPERS
@@ -91,6 +95,7 @@ interface AlertasMantenimientoProps {
   /** 'coordinador' muestra cards + filtros; 'taller' muestra tabla compacta */
   modo?: 'coordinador' | 'taller';
   onGenerarOT?: (alerta: AlertaMantenimiento) => void;
+  onVerFicha?: (alerta: AlertaMantenimiento) => void;
 }
 
 // ============================================================================
@@ -100,20 +105,37 @@ interface AlertasMantenimientoProps {
 export default function AlertasMantenimiento({
   modo = 'coordinador',
   onGenerarOT,
+  onVerFicha,
 }: AlertasMantenimientoProps) {
   const [alertas, setAlertas] = useState<AlertaMantenimiento[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<EstadoAlerta | 'todas'>('todas');
   const [filtroSector, setFiltroSector] = useState<SectorAlerta | 'todos'>('todos');
+  const [anomaliasComb, setAnomaliasComb] = useState<Map<string, AnomaliaCombustible>>(new Map());
 
   useEffect(() => {
     let cancelado = false;
     setLoading(true);
     getAlertasMantenimiento().then((data) => {
-      if (!cancelado) {
-        setAlertas(data);
-        setLoading(false);
-      }
+      if (cancelado) return;
+      setAlertas(data);
+      setLoading(false);
+      // Fetch de anomalías de combustible en paralelo, sin bloquear la UI
+      Promise.all(
+        data.map((a) =>
+          obtenerAnalisisCombustible(a.unidad.numero).then((analisis) => ({
+            numero: a.unidad.numero,
+            anomalia: analisis.anomalia,
+          }))
+        )
+      ).then((resultados) => {
+        if (cancelado) return;
+        const mapa = new Map<string, AnomaliaCombustible>();
+        resultados.forEach(({ numero, anomalia }) => {
+          if (anomalia) mapa.set(numero, anomalia);
+        });
+        setAnomaliasComb(mapa);
+      });
     });
     return () => { cancelado = true; };
   }, []);
@@ -212,10 +234,12 @@ export default function AlertasMantenimiento({
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {alertasFiltradas.map((alerta) => {
             const cfg = estadoConfig(alerta.estado);
+            const anomComb = anomaliasComb.get(alerta.unidad.numero) ?? null;
             return (
               <div
                 key={alerta.unidad.numero}
-                className={`bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow border-t-4 ${cfg.borde}`}
+                onClick={() => onVerFicha?.(alerta)}
+                className={`bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all border-t-4 ${cfg.borde} ${onVerFicha ? 'cursor-pointer hover:-translate-y-0.5' : ''}`}
               >
                 {/* Card Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
@@ -238,6 +262,20 @@ export default function AlertasMantenimiento({
                       <span className={`w-1.5 h-1.5 rounded-full inline-block ${cfg.dot}`}></span>
                       {cfg.texto}
                     </span>
+                    {anomComb && (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-0.5 ${
+                        anomComb.severidad === 'alta'
+                          ? 'bg-red-50 border-red-200 text-red-700'
+                          : 'bg-orange-50 border-orange-200 text-orange-700'
+                      }`}>
+                        ⛽{' '}
+                        {anomComb.tipo === 'consumo_alto'
+                          ? `+${anomComb.desviacionPct}%`
+                          : anomComb.tipo === 'km_retrocedido'
+                          ? 'KM ⚠️'
+                          : 'Sin cargas'}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -289,20 +327,30 @@ export default function AlertasMantenimiento({
                     Últ. service:{' '}
                     <span className="text-gray-600 font-medium">{formatFecha(alerta.fechaUltimoService)}</span>
                   </div>
-                  {onGenerarOT && alerta.estado !== 'ok' && (
-                    <button
-                      onClick={() => onGenerarOT(alerta)}
-                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
-                        alerta.estado === 'vencido' || alerta.estado === 'urgente'
-                          ? 'bg-red-500 hover:bg-red-600 text-white'
-                          : 'bg-gradient-to-r from-[#56ab2f] to-[#a8e063] hover:opacity-90 text-white'
-                      }`}
-                    >
-                      {alerta.estado === 'vencido' || alerta.estado === 'urgente'
-                        ? 'Generar OT'
-                        : 'Programar OT'}
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {onVerFicha && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onVerFicha(alerta); }}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-colors"
+                      >
+                        Ver ficha
+                      </button>
+                    )}
+                    {onGenerarOT && alerta.estado !== 'ok' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onGenerarOT(alerta); }}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                          alerta.estado === 'vencido' || alerta.estado === 'urgente'
+                            ? 'bg-red-500 hover:bg-red-600 text-white'
+                            : 'bg-gradient-to-r from-[#56ab2f] to-[#a8e063] hover:opacity-90 text-white'
+                        }`}
+                      >
+                        {alerta.estado === 'vencido' || alerta.estado === 'urgente'
+                          ? 'Generar OT'
+                          : 'Programar OT'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

@@ -37,6 +37,8 @@ import ChecklistTrenRodante80K from '../trenRodante/ChecklistTrenRodante80K';
 import ChecklistTrenRodante160K from '../trenRodante/ChecklistTrenRodante160K';
 import { VisorFlotaCubiertas } from '../cubiertas';
 import AlertasMantenimiento from './AlertasMantenimiento';
+import FichaUnidad from './FichaUnidad';
+import type { ConfigUnidad } from '../../services/alertasMantenimientoService';
 import { getAlertasMantenimiento, contarAlertasActivas } from '../../services/alertasMantenimientoService';
 import { obtenerAlertasFlota } from '../../services/cubiertasService';
 
@@ -3078,6 +3080,7 @@ function AlertasUnidad({ unidadNumero, cargas }: { unidadNumero: string; cargas?
 // ============================================================================
 const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack, tabInicial }) => {
   const [activeTab, setActiveTab] = useState<TabType>(tabInicial || 'kanban');
+  const [fichaUnidad, setFichaUnidad] = useState<ConfigUnidad | null>(null);
   const [badgeAlertas, setBadgeAlertas] = useState(0);
   const [badgeCub, setBadgeCub] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -5188,13 +5191,23 @@ const DashboardMantenimiento: React.FC<DashboardMantenimientoProps> = ({ onBack,
 
                 {/* Tab Alertas de Mantenimiento */}
                 {activeTab === 'alertas' && (
-                  <AlertasMantenimiento
-                    modo="coordinador"
-                    onGenerarOT={(alerta) => {
-                      console.log('[DashboardMant] Generar OT desde alerta:', alerta);
-                      // TODO: Abrir modal de nueva OT PREVENTIVO pre-completada
-                    }}
-                  />
+                  <>
+                    {fichaUnidad ? (
+                      <FichaUnidad
+                        unidad={fichaUnidad}
+                        onClose={() => setFichaUnidad(null)}
+                      />
+                    ) : (
+                      <AlertasMantenimiento
+                        modo="coordinador"
+                        onVerFicha={(alerta) => setFichaUnidad(alerta.unidad)}
+                        onGenerarOT={(alerta) => {
+                          console.log('[DashboardMant] Generar OT desde alerta:', alerta);
+                          // TODO: Abrir modal de nueva OT PREVENTIVO pre-completada
+                        }}
+                      />
+                    )}
+                  </>
                 )}
               </div>
             )}

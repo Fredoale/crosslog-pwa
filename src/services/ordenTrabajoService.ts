@@ -1,5 +1,46 @@
-import { doc, runTransaction, getDoc, setDoc } from 'firebase/firestore';
+import { doc, runTransaction, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from '../config/firebase';
+
+/**
+ * Registra un service ya realizado (quick-register).
+ * Crea una OT PREVENTIVO en estado CERRADO con fechaFin = fecha del service.
+ * Se usa para:
+ *  - Services históricos (trabajo ya hecho sin OT previa)
+ *  - Services en taller externo
+ *  - Registro manual sin pasar por el kanban
+ */
+export async function registrarServiceRapido(params: {
+  unidadNumero: string;
+  unidadPatente: string;
+  fecha: Date;
+  km: number;
+  mecanico: string;
+  descripcion: string;
+  costo?: number;
+  observaciones?: string;
+}): Promise<number> {
+  const numeroOT = await generarNumeroOT();
+  const now = new Date();
+
+  await addDoc(collection(db, 'ordenes_trabajo'), {
+    numeroOT,
+    unidad: { numero: params.unidadNumero, patente: params.unidadPatente },
+    tipo: 'PREVENTIVO',
+    estado: 'CERRADO',
+    prioridad: 'MEDIA',
+    fecha: now,
+    fechaInicio: params.fecha,
+    fechaFin: params.fecha,
+    kmService: params.km,
+    mecanico: params.mecanico,
+    descripcion: params.descripcion,
+    costo: params.costo ?? 0,
+    comentarioFin: params.observaciones ?? '',
+    origen: 'quick_register',
+  });
+
+  return numeroOT;
+}
 
 /**
  * Genera el siguiente número de Orden de Trabajo de forma secuencial y atómica

@@ -80,9 +80,15 @@ export const UNIDADES_MANTENIMIENTO: ConfigUnidad[] = [
 // ============================================================================
 
 /**
- * Obtiene el KM actual de una unidad desde su último checklist
+ * Obtiene el KM actual de una unidad desde la fuente más actualizada disponible:
+ *  - Último checklist (campo odometroFinal/Inicial)
+ *  - Última carga de combustible (campo kilometrajeActual)
+ * Devuelve el KM MÁS ALTO (los odómetros no bajan) con su fecha.
  */
 async function getKmActualUnidad(numeroUnidad: string): Promise<{ km: number | null; fecha: Date | null }> {
+  const candidatos: { km: number; fecha: Date | null }[] = [];
+
+  // 1) Último checklist
   try {
     const q = query(
       collection(db, 'checklists'),
@@ -91,16 +97,40 @@ async function getKmActualUnidad(numeroUnidad: string): Promise<{ km: number | n
       limit(1)
     );
     const snap = await getDocs(q);
-    if (snap.empty) return { km: null, fecha: null };
+    if (!snap.empty) {
+      const d = snap.docs[0].data();
+      const km = Number(d.odometroFinal?.valor ?? d.odometroInicial?.valor ?? d.kilometraje ?? d.km ?? NaN);
+      if (!isNaN(km) && km > 0) {
+        candidatos.push({ km, fecha: d.timestamp?.toDate?.() ?? null });
+      }
+    }
+  } catch (e) { console.warn('[km] checklist fail', e); }
 
-    const data = snap.docs[0].data();
-    // Intentar odometroFinal primero, luego odometroInicial
-    const km = data.odometroFinal?.valor ?? data.odometroInicial?.valor ?? null;
-    const fecha = data.timestamp?.toDate?.() ?? null;
-    return { km, fecha };
-  } catch {
-    return { km: null, fecha: null };
-  }
+  // 2) Última carga de combustible (sin orderBy para evitar índice compuesto; ordenamos en JS)
+  try {
+    const q = query(
+      collection(db, 'cargas_combustible'),
+      where('unidad.numero', '==', numeroUnidad)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      // Ordenar por fecha desc y tomar el primero
+      const docs = snap.docs
+        .map((d) => ({ data: d.data(), fecha: d.data().fecha?.toDate?.() ?? new Date(0) }))
+        .sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+      const d = docs[0].data;
+      const km = Number(d.kilometrajeActual ?? d.kilometraje ?? NaN);
+      if (!isNaN(km) && km > 0) {
+        candidatos.push({ km, fecha: docs[0].fecha });
+      }
+    }
+  } catch (e) { console.warn('[km] combustible fail', e); }
+
+  if (candidatos.length === 0) return { km: null, fecha: null };
+
+  // Odómetro no baja → elegimos el MÁS ALTO (el más reciente en la práctica)
+  candidatos.sort((a, b) => b.km - a.km);
+  return candidatos[0];
 }
 
 /**
@@ -112,24 +142,29 @@ async function getUltimoServiceUnidad(numeroUnidad: string): Promise<{
   otId?: string;
 }> {
   try {
+    // Sin orderBy para evitar índice compuesto; ordenamos en JS por fechaFin desc
     const q = query(
       collection(db, 'ordenes_trabajo'),
       where('unidad.numero', '==', numeroUnidad),
       where('tipo', '==', 'PREVENTIVO'),
-      where('estado', 'in', ['CERRADO', 'COMPLETADA']),
-      orderBy('fechaFin', 'desc'),
-      limit(1)
+      where('estado', 'in', ['CERRADO', 'COMPLETADA'])
     );
     const snap = await getDocs(q);
     if (snap.empty) return { km: null, fecha: null };
 
-    const data = snap.docs[0].data();
+    // Ordenar por fechaFin desc y tomar el más reciente
+    const docs = snap.docs
+      .map((d) => ({ id: d.id, data: d.data(), fechaFin: d.data().fechaFin?.toDate?.() ?? new Date(0) }))
+      .sort((a, b) => b.fechaFin.getTime() - a.fechaFin.getTime());
+
+    const { id, data, fechaFin } = docs[0];
     return {
       km: data.kmService ?? null,
-      fecha: data.fechaFin?.toDate?.() ?? data.fechaCompletado?.toDate?.() ?? null,
-      otId: snap.docs[0].id,
+      fecha: fechaFin.getTime() > 0 ? fechaFin : (data.fechaCompletado?.toDate?.() ?? null),
+      otId: id,
     };
-  } catch {
+  } catch (e) {
+    console.error('[getUltimoServiceUnidad]', e);
     return { km: null, fecha: null };
   }
 }
@@ -156,7 +191,9 @@ export async function getAlertasMantenimiento(): Promise<AlertaMantenimiento[]> 
         getUltimoServiceUnidad(unidad.numero),
       ]);
 
-      const kmActual = kmData.km;
+      // KM actual: checklist/combustible primero; fallback al km del último service
+      // (el odómetro no baja, así que el km del service es el mínimo conocido)
+      const kmActual = kmData.km ?? serviceData.km;
       const kmUltimoService = serviceData.km;
       const kmProximoService =
         kmUltimoService !== null ? kmUltimoService + unidad.intervaloKm : null;
